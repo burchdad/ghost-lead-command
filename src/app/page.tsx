@@ -961,7 +961,18 @@ export default function Home() {
     });
 
     if (response.ok) {
-      setOperationStatus("Reply recorded and classified.");
+      const payload = await response.json();
+      if (payload.lead) {
+        const mapped = mapApiLead(payload.lead);
+        selectLead(mapped);
+        setLiveLeads((current) => current.map((lead) => (lead.id === mapped.id ? mapped : lead)));
+      }
+      setOperationStatus(
+        payload.route
+          ? `Reply classified as ${payload.reply.classification}. Next action updated.`
+          : "Reply recorded and classified.",
+      );
+      setReplyDraft("");
       await refreshOpsData();
       await refreshLeads();
     }
