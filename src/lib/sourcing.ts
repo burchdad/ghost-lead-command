@@ -199,23 +199,65 @@ async function searchGhostLeadAgent(input: SourceSearchInput) {
 }
 
 function buildPdlQuery(input: SourceSearchInput) {
-  const terms = [input.query, input.location, ...(input.titles || []), ...(input.industries || [])]
+  const queryTerms = [input.query]
+    .map((term) => clean(term))
+    .filter(Boolean);
+  const industries = (input.industries || []).map((term) => clean(term)).filter(Boolean);
+  const titles = (input.titles?.length ? input.titles : ["Owner", "Founder", "CEO", "President"])
     .map((term) => clean(term))
     .filter(Boolean);
 
-  const must = terms.map((term) => ({
-    query_string: {
-      query: escapeQueryString(term),
-      fields: [
-        "job_title",
-        "job_title_role",
-        "job_company_name",
-        "job_company_industry",
-        "location_name",
-        "job_company_location_name",
-      ],
+  const must: Record<string, unknown>[] = [
+    {
+      bool: {
+        should: titles.map((title) => ({
+          query_string: {
+            query: escapeQueryString(title),
+            fields: ["job_title", "job_title_role", "job_title_sub_role"],
+          },
+        })),
+        minimum_should_match: 1,
+      },
     },
-  }));
+    {
+      bool: {
+        should: [{ exists: { field: "work_email" } }, { exists: { field: "mobile_phone" } }],
+        minimum_should_match: 1,
+      },
+    },
+  ];
+
+  if (queryTerms.length) {
+    must.push({
+      query_string: {
+        query: queryTerms.map(escapeQueryString).join(" "),
+        fields: ["job_company_name", "job_company_industry", "job_title", "summary"],
+      },
+    });
+  }
+
+  if (industries.length) {
+    must.push({
+      bool: {
+        should: industries.map((industry) => ({
+          query_string: {
+            query: escapeQueryString(industry),
+            fields: ["job_company_industry", "job_company_name"],
+          },
+        })),
+        minimum_should_match: 1,
+      },
+    });
+  }
+
+  if (clean(input.location)) {
+    must.push({
+      query_string: {
+        query: escapeQueryString(clean(input.location)),
+        fields: ["location_name", "job_company_location_name", "job_company_location_region"],
+      },
+    });
+  }
 
   return {
     query: must.length ? { bool: { must } } : { match_all: {} },

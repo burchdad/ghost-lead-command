@@ -18,6 +18,15 @@ type ImportRecord = {
   value?: number;
 };
 
+function normalizeDomain(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0];
+}
+
 export async function POST(request: Request) {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
@@ -30,6 +39,12 @@ export async function POST(request: Request) {
 
   const created = [];
   let skipped = 0;
+  const skipReasons: Record<string, number> = {};
+
+  function skip(reason: string) {
+    skipped += 1;
+    skipReasons[reason] = (skipReasons[reason] || 0) + 1;
+  }
 
   for (const record of records.slice(0, 250)) {
     const companyName = String(record.companyName || record.company || "Unknown Company").trim();
@@ -40,7 +55,7 @@ export async function POST(request: Request) {
     const email = record.email ? String(record.email).trim().toLowerCase() : "";
     const phone = record.phone ? String(record.phone).trim() : "";
     const website = record.website ? String(record.website).trim() : "";
-    const domain = record.domain ? String(record.domain).trim().toLowerCase() : "";
+    const domain = normalizeDomain(record.domain ? String(record.domain) : website);
 
     const suppression = await findSuppressionMatch({
       email,
@@ -50,7 +65,7 @@ export async function POST(request: Request) {
     });
 
     if (suppression) {
-      skipped += 1;
+      skip("suppressed");
       continue;
     }
 
@@ -60,16 +75,39 @@ export async function POST(request: Request) {
     if (email) duplicateChecks.push({ email });
     if (phone) duplicateChecks.push({ phone });
 
-    const existingContact = await prisma.contact.findFirst({
-      where: {
-        workspaceId: workspace.id,
-        OR: duplicateChecks,
-      },
-      select: { id: true },
-    });
+    const [existingContact, existingLead, existingCompany] = await Promise.all([
+      prisma.contact.findFirst({
+        where: {
+          workspaceId: workspace.id,
+          OR: duplicateChecks,
+        },
+        select: { id: true },
+      }),
+      prisma.lead.findFirst({
+        where: {
+          workspaceId: workspace.id,
+          OR: [
+            { name: contactName, companyName },
+            ...(email ? [{ contact: { is: { email } } }] : []),
+            ...(phone ? [{ contact: { is: { phone } } }] : []),
+          ],
+        },
+        select: { id: true },
+      }),
+      prisma.company.findFirst({
+        where: {
+          workspaceId: workspace.id,
+          OR: [
+            { name: companyName },
+            ...(domain ? [{ website: { contains: domain, mode: "insensitive" as const } }] : []),
+          ],
+        },
+        select: { id: true, name: true },
+      }),
+    ]);
 
-    if (existingContact) {
-      skipped += 1;
+    if (existingContact || existingLead || existingCompany) {
+      skip("duplicate");
       continue;
     }
 
@@ -78,7 +116,7 @@ export async function POST(request: Request) {
         workspaceId: workspace.id,
         name: companyName,
         niche,
-        website: website || null,
+        website: website || domain || null,
         crmSource: String(record.source || "csv"),
       },
     });
@@ -124,5 +162,5 @@ export async function POST(request: Request) {
     created.push(lead);
   }
 
-  return NextResponse.json({ created, count: created.length, skipped }, { status: 201 });
+  return NextResponse.json({ created, count: created.length, skipped, skipReasons }, { status: 201 });
 }

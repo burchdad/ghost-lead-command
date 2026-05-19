@@ -340,6 +340,7 @@ const nav = [
   { id: "queue", label: "Queue", icon: ClipboardList },
   { id: "inbox", label: "Inbox", icon: Inbox },
   { id: "analytics", label: "Analytics", icon: Brain },
+  { id: "readiness", label: "Readiness", icon: CheckCircle2 },
   { id: "proposal", label: "Proposal", icon: FileText },
   { id: "library", label: "Library", icon: Bot },
 ];
@@ -1102,6 +1103,52 @@ export default function Home() {
     const calls = leads.filter((lead) => lead.stage === "Call Booked").length;
     return { pipeline, won, hot, calls };
   }, [leads]);
+
+  const readinessItems = [
+    {
+      label: "Database",
+      ok: operationStatus.toLowerCase().includes("database connected") || leads.length > 0,
+      detail: operationStatus,
+    },
+    {
+      label: "People Data Labs",
+      ok: sourcingStatus.pdlConfigured,
+      detail: sourcingStatus.pdlConfigured ? "PDL key configured for source search." : "Add PDL_API_KEY before buying contact volume.",
+    },
+    {
+      label: "Mock sourcing",
+      ok: !sourcingStatus.mockSourceEnabled,
+      detail: sourcingStatus.mockSourceEnabled ? "Demo contacts are enabled." : "Demo contacts are disabled for production sourcing.",
+    },
+    {
+      label: "Outreach mode",
+      ok: outreachStatus.mode !== "live",
+      detail:
+        outreachStatus.mode === "live"
+          ? "Live sending is enabled. Keep approvals tight."
+          : "Dry-run mode is active, so outreach will queue safely.",
+    },
+    {
+      label: "SendGrid",
+      ok: outreachStatus.mode !== "live" || outreachStatus.sendgridConfigured,
+      detail: outreachStatus.sendgridConfigured ? "Email provider configured." : "SendGrid not configured.",
+    },
+    {
+      label: "Telnyx",
+      ok: outreachStatus.mode !== "live" || outreachStatus.telnyxConfigured,
+      detail: outreachStatus.telnyxConfigured ? "Preferred SMS provider configured." : "Telnyx not configured.",
+    },
+    {
+      label: "GhostCRM sync",
+      ok: Boolean(integrations.ghostcrm?.configured),
+      detail: integrations.ghostcrm?.configured ? "GhostCRM endpoint configured." : "GhostCRM sync is not fully configured.",
+    },
+    {
+      label: "Approval queue",
+      ok: queueItems.filter((item) => item.status === "pending").length < 25,
+      detail: `${queueItems.filter((item) => item.status === "pending").length} drafts waiting for approval.`,
+    },
+  ];
 
   const smsOpener = `Hey ${selectedLead.name.split(" ")[0]}, quick one: are you still trying to convert the old ${selectedLead.niche.toLowerCase()} leads sitting in ${selectedLead.company}'s pipeline? I can show you an AI follow-up system that revives them and only takes 15 minutes to demo.`;
   const emailFollowup = `Subject: old leads hiding revenue\n\n${selectedLead.name.split(" ")[0]}, I built a dead-lead revival workflow for businesses like ${selectedLead.company}. It pulls old inquiries, writes human follow-up, classifies replies, and books the interested ones. Worth a quick look this week?`;
@@ -1916,6 +1963,41 @@ export default function Home() {
                         </p>
                       </div>
                     ))}
+                  </div>
+                </Panel>
+              </div>
+            )}
+
+            {active === "readiness" && (
+              <div className="grid gap-6 xl:grid-cols-[1fr_0.8fr]">
+                <Panel title="Launch Readiness" icon={CheckCircle2}>
+                  <div className="grid gap-3">
+                    {readinessItems.map((item) => (
+                      <div key={item.label} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <h3 className="font-semibold">{item.label}</h3>
+                            <p className="mt-1 text-sm text-[#aebbb7]">{item.detail}</p>
+                          </div>
+                          <span
+                            className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                              item.ok ? "bg-[#d8ff5f] text-[#101417]" : "bg-[#283239] text-[#d6dfdc]"
+                            }`}
+                          >
+                            {item.ok ? "ready" : "needs work"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+
+                <Panel title="Before Paid Volume" icon={Target}>
+                  <div className="space-y-3 text-sm text-[#b6c4bf]">
+                    <p className="rounded-md bg-white/[0.04] p-3">Run PDL previews at 5-10 records until match quality is right.</p>
+                    <p className="rounded-md bg-white/[0.04] p-3">Import only records with an email or mobile and a clear decision-maker title.</p>
+                    <p className="rounded-md bg-white/[0.04] p-3">Keep outreach in approval mode until the first real replies are classified cleanly.</p>
+                    <p className="rounded-md bg-white/[0.04] p-3">Use suppression rules for existing customers, competitors, and bad-fit domains.</p>
                   </div>
                 </Panel>
               </div>
