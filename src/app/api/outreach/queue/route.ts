@@ -60,7 +60,18 @@ export async function POST(request: Request) {
     });
 
     if (existing) {
-      return NextResponse.json({ item: existing, duplicate: true }, { status: 200 });
+      const updated = await prisma.outreachQueueItem.update({
+        where: { id: existing.id },
+        data: {
+          provider: String(body.provider || (body.channel === "sms" ? "telnyx" : "sendgrid")),
+          subject: body.subject ? String(body.subject) : null,
+          body: String(body.body || existing.body),
+          reason: body.reason ? String(body.reason) : existing.reason,
+          scheduledFor: body.scheduledFor ? new Date(String(body.scheduledFor)) : existing.scheduledFor,
+        },
+        include: { lead: true },
+      });
+      return NextResponse.json({ item: updated, duplicate: true, refreshed: true }, { status: 200 });
     }
   }
 
