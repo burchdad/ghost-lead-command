@@ -831,17 +831,53 @@ export default function Home() {
     await refreshOpsData();
   }
 
+  async function ensureSelectedLeadRecord() {
+    if (selectedLead.id) return selectedLead;
+
+    setOperationStatus(`Saving ${selectedLead.company} before queueing outreach...`);
+    const response = await fetch("/api/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: selectedLead.name,
+        companyName: selectedLead.company,
+        niche: selectedLead.niche,
+        stage: selectedLead.stage,
+        score: selectedLead.score,
+        value: selectedLead.value,
+        source: selectedLead.source,
+        lastTouch: selectedLead.lastTouch,
+        nextAction: selectedLead.next,
+      }),
+    });
+
+    if (!response.ok) {
+      setOperationStatus("Could not save this lead before queueing outreach.");
+      return null;
+    }
+
+    const payload = await response.json();
+    const mapped = mapApiLead(payload.lead);
+    selectLead(mapped);
+    setLiveLeads((current) =>
+      current.map((lead) => (lead.company === selectedLead.company ? mapped : lead)),
+    );
+    return mapped;
+  }
+
   async function queueSelectedLead(channel: "email" | "sms" = "email") {
-    if (!selectedLead.id) return;
+    const leadToQueue = await ensureSelectedLeadRecord();
+    if (!leadToQueue?.id) return;
+
     const body = channel === "sms" ? smsOpener : emailFollowup;
     const response = await fetch("/api/outreach/queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        leadId: selectedLead.id,
+        leadId: leadToQueue.id,
         channel,
         provider: channel === "sms" ? outreachStatus.smsProvider : "sendgrid",
-        subject: `Quick idea for ${selectedLead.company}`,
+        subject: `Quick idea for ${leadToQueue.company}`,
         body,
         reason: "Queued from Lead Command approval workflow.",
       }),
