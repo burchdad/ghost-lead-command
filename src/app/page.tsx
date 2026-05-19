@@ -384,6 +384,15 @@ function mapApiLead(lead: {
   };
 }
 
+async function readErrorDetail(response: Response, fallback: string) {
+  try {
+    const payload = await response.json();
+    return [payload.error, payload.detail].filter(Boolean).join(": ") || fallback;
+  } catch {
+    return `${fallback} HTTP ${response.status}`;
+  }
+}
+
 export default function Home() {
   const [active, setActive] = useState("dashboard");
   const [liveLeads, setLiveLeads] = useState(seedLeads);
@@ -393,7 +402,7 @@ export default function Home() {
   const [campaignMode, setCampaignMode] = useState("revival");
   const [csvText, setCsvText] = useState(sampleCsv);
   const [importPreview, setImportPreview] = useState<ImportPreview[]>([]);
-  const [operationStatus, setOperationStatus] = useState("Database connected. Ready to work leads.");
+  const [operationStatus, setOperationStatus] = useState("Connecting to Lead Command data...");
   const [actionToast, setActionToast] = useState<ActionToast | null>(null);
   const [outreachStatus, setOutreachStatus] = useState<OutreachStatus>({
     mode: "dry-run",
@@ -466,6 +475,10 @@ export default function Home() {
             setLiveLeads(mappedLeads);
             selectLead(mappedLeads[0]);
           }
+          setOperationStatus("Database connected. Ready to work leads.");
+        } else if (!cancelled) {
+          const detail = await readErrorDetail(leadsResponse, "Live leads unavailable.");
+          setOperationStatus(`${detail} Showing demo fallback until the database responds.`);
         }
 
         if (!cancelled && libraryResponse.ok) {
@@ -533,8 +546,12 @@ export default function Home() {
         if (!cancelled && integrationsResponse.ok) {
           setIntegrations(await integrationsResponse.json());
         }
-      } catch {
-        // Seed data keeps the cockpit usable if the local DB is not ready yet.
+      } catch (error) {
+        if (!cancelled) {
+          setOperationStatus(
+            `Live data request failed${error instanceof Error ? `: ${error.message}` : ""}. Showing demo fallback.`,
+          );
+        }
       }
     }
 
@@ -546,7 +563,11 @@ export default function Home() {
 
   async function refreshLeads() {
     const response = await fetch("/api/leads");
-    if (!response.ok) return;
+    if (!response.ok) {
+      const detail = await readErrorDetail(response, "Unable to refresh live leads.");
+      setOperationStatus(detail);
+      return;
+    }
     const payload = await response.json();
     const mappedLeads = (payload.leads || []).map(mapApiLead);
     if (mappedLeads.length) {
