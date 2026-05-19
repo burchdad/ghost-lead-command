@@ -3,14 +3,21 @@ import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export async function GET() {
-  const prisma = getPrisma();
-  const workspace = await getDefaultWorkspace();
-  const campaigns = await prisma.sourcingCampaign.findMany({
-    where: { workspaceId: workspace.id },
-    orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
-  });
+  try {
+    const prisma = getPrisma();
+    const workspace = await getDefaultWorkspace();
+    const campaigns = await prisma.sourcingCampaign.findMany({
+      where: { workspaceId: workspace.id },
+      orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+    });
 
-  return NextResponse.json({ campaigns });
+    return NextResponse.json({ campaigns });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Source campaigns unavailable", detail: error instanceof Error ? error.message : "Unknown error" },
+      { status: 503 },
+    );
+  }
 }
 
 export async function POST(request: Request) {

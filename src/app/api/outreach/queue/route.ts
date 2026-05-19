@@ -4,15 +4,22 @@ import { getDefaultWorkspace } from "@/lib/workspace";
 import { findSuppressionMatch } from "@/lib/suppression";
 
 export async function GET() {
-  const prisma = getPrisma();
-  const workspace = await getDefaultWorkspace();
-  const items = await prisma.outreachQueueItem.findMany({
-    where: { workspaceId: workspace.id },
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-    include: { lead: true },
-  });
+  try {
+    const prisma = getPrisma();
+    const workspace = await getDefaultWorkspace();
+    const items = await prisma.outreachQueueItem.findMany({
+      where: { workspaceId: workspace.id },
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+      include: { lead: true },
+    });
 
-  return NextResponse.json({ items });
+    return NextResponse.json({ items });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Outreach queue unavailable", detail: error instanceof Error ? error.message : "Unknown error" },
+      { status: 503 },
+    );
+  }
 }
 
 export async function POST(request: Request) {

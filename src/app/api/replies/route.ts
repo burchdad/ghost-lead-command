@@ -13,15 +13,22 @@ function classify(body: string) {
 }
 
 export async function GET() {
-  const prisma = getPrisma();
-  const workspace = await getDefaultWorkspace();
-  const replies = await prisma.reply.findMany({
-    where: { workspaceId: workspace.id },
-    orderBy: { createdAt: "desc" },
-    include: { lead: true },
-  });
+  try {
+    const prisma = getPrisma();
+    const workspace = await getDefaultWorkspace();
+    const replies = await prisma.reply.findMany({
+      where: { workspaceId: workspace.id },
+      orderBy: { createdAt: "desc" },
+      include: { lead: true },
+    });
 
-  return NextResponse.json({ replies });
+    return NextResponse.json({ replies });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Replies unavailable", detail: error instanceof Error ? error.message : "Unknown error" },
+      { status: 503 },
+    );
+  }
 }
 
 export async function POST(request: Request) {

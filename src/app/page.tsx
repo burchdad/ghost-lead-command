@@ -446,29 +446,16 @@ export default function Home() {
 
     async function loadLiveData() {
       try {
-        const [
-          leadsResponse,
-          libraryResponse,
-          outreachResponse,
-          sourceResponse,
-          campaignsResponse,
-          queueResponse,
-          repliesResponse,
-          suppressionResponse,
-          analyticsResponse,
-          integrationsResponse,
-        ] = await Promise.all([
-          fetch("/api/leads"),
-          fetch("/api/library"),
-          fetch("/api/outreach/status"),
-          fetch("/api/source/search"),
-          fetch("/api/source/campaigns"),
-          fetch("/api/outreach/queue"),
-          fetch("/api/replies"),
-          fetch("/api/suppression"),
-          fetch("/api/analytics"),
-          fetch("/api/health/integrations"),
-        ]);
+        const outreachResponse = await fetch("/api/outreach/status");
+        const sourceResponse = await fetch("/api/source/search");
+        const integrationsResponse = await fetch("/api/health/integrations");
+        const leadsResponse = await fetch("/api/leads");
+        const libraryResponse = await fetch("/api/library");
+        const campaignsResponse = await fetch("/api/source/campaigns");
+        const queueResponse = await fetch("/api/outreach/queue");
+        const repliesResponse = await fetch("/api/replies");
+        const suppressionResponse = await fetch("/api/suppression");
+        const analyticsResponse = await fetch("/api/analytics");
 
         if (!cancelled && leadsResponse.ok) {
           const payload = await leadsResponse.json();
@@ -782,15 +769,12 @@ export default function Home() {
   }
 
   async function refreshOpsData() {
-    const [campaignsResponse, queueResponse, repliesResponse, suppressionResponse, analyticsResponse, integrationsResponse] =
-      await Promise.all([
-        fetch("/api/source/campaigns"),
-        fetch("/api/outreach/queue"),
-        fetch("/api/replies"),
-        fetch("/api/suppression"),
-        fetch("/api/analytics"),
-        fetch("/api/health/integrations"),
-      ]);
+    const campaignsResponse = await fetch("/api/source/campaigns");
+    const queueResponse = await fetch("/api/outreach/queue");
+    const repliesResponse = await fetch("/api/replies");
+    const suppressionResponse = await fetch("/api/suppression");
+    const analyticsResponse = await fetch("/api/analytics");
+    const integrationsResponse = await fetch("/api/health/integrations");
 
     if (campaignsResponse.ok) setSourceCampaigns((await campaignsResponse.json()).campaigns || []);
     if (queueResponse.ok) setQueueItems((await queueResponse.json()).items || []);

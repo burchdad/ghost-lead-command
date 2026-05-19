@@ -4,14 +4,21 @@ import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export async function GET() {
-  const prisma = getPrisma();
-  const workspace = await getDefaultWorkspace();
-  const records = await prisma.suppressionRecord.findMany({
-    where: { workspaceId: workspace.id },
-    orderBy: { createdAt: "desc" },
-  });
+  try {
+    const prisma = getPrisma();
+    const workspace = await getDefaultWorkspace();
+    const records = await prisma.suppressionRecord.findMany({
+      where: { workspaceId: workspace.id },
+      orderBy: { createdAt: "desc" },
+    });
 
-  return NextResponse.json({ records });
+    return NextResponse.json({ records });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Suppression records unavailable", detail: error instanceof Error ? error.message : "Unknown error" },
+      { status: 503 },
+    );
+  }
 }
 
 export async function POST(request: Request) {

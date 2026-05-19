@@ -3,21 +3,28 @@ import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export async function GET() {
-  const prisma = getPrisma();
-  const workspace = await getDefaultWorkspace();
-  const leads = await prisma.lead.findMany({
-    where: { workspaceId: workspace.id },
-    orderBy: [{ score: "desc" }, { updatedAt: "desc" }],
-    include: {
-      opportunities: true,
-      interactions: {
-        orderBy: { createdAt: "desc" },
-        take: 3,
+  try {
+    const prisma = getPrisma();
+    const workspace = await getDefaultWorkspace();
+    const leads = await prisma.lead.findMany({
+      where: { workspaceId: workspace.id },
+      orderBy: [{ score: "desc" }, { updatedAt: "desc" }],
+      include: {
+        opportunities: true,
+        interactions: {
+          orderBy: { createdAt: "desc" },
+          take: 3,
+        },
       },
-    },
-  });
+    });
 
-  return NextResponse.json({ leads });
+    return NextResponse.json({ leads });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Leads unavailable", detail: error instanceof Error ? error.message : "Unknown error" },
+      { status: 503 },
+    );
+  }
 }
 
 export async function POST(request: Request) {
