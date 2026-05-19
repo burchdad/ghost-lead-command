@@ -13,6 +13,7 @@ import {
   Gauge,
   Inbox,
   Layers3,
+  LoaderCircle,
   MessageSquareText,
   PhoneCall,
   PlayCircle,
@@ -175,6 +176,12 @@ type AnalyticsPayload = {
 };
 
 type IntegrationPayload = Record<string, Record<string, string | boolean>>;
+
+type ActionToast = {
+  phase: "loading" | "success" | "error";
+  title: string;
+  detail: string;
+};
 
 const seedLeads: Lead[] = [
   {
@@ -383,6 +390,7 @@ export default function Home() {
   const [csvText, setCsvText] = useState(sampleCsv);
   const [importPreview, setImportPreview] = useState<ImportPreview[]>([]);
   const [operationStatus, setOperationStatus] = useState("Database connected. Ready to work leads.");
+  const [actionToast, setActionToast] = useState<ActionToast | null>(null);
   const [outreachStatus, setOutreachStatus] = useState<OutreachStatus>({
     mode: "dry-run",
     smsProvider: "telnyx",
@@ -834,7 +842,6 @@ export default function Home() {
   async function ensureSelectedLeadRecord() {
     if (selectedLead.id) return selectedLead;
 
-    setOperationStatus(`Saving ${selectedLead.company} before queueing outreach...`);
     const response = await fetch("/api/leads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -852,7 +859,6 @@ export default function Home() {
     });
 
     if (!response.ok) {
-      setOperationStatus("Could not save this lead before queueing outreach.");
       return null;
     }
 
@@ -866,8 +872,21 @@ export default function Home() {
   }
 
   async function queueSelectedLead(channel: "email" | "sms" = "email") {
+    setActionToast({
+      phase: "loading",
+      title: "Adding to approval queue",
+      detail: `Saving ${selectedLead.company} and preparing the ${channel} draft.`,
+    });
+
     const leadToQueue = await ensureSelectedLeadRecord();
-    if (!leadToQueue?.id) return;
+    if (!leadToQueue?.id) {
+      setActionToast({
+        phase: "error",
+        title: "Queue failed",
+        detail: "Could not save this lead before queueing outreach.",
+      });
+      return;
+    }
 
     const body = channel === "sms" ? smsOpener : emailFollowup;
     const response = await fetch("/api/outreach/queue", {
@@ -884,10 +903,20 @@ export default function Home() {
     });
 
     if (response.ok) {
-      setOperationStatus(`Queued ${channel} for approval.`);
       await refreshOpsData();
+      setActionToast({
+        phase: "success",
+        title: "Queued for approval",
+        detail: `${leadToQueue.company} is ready for review in the queue.`,
+      });
+      setActive("queue");
+      window.setTimeout(() => setActionToast(null), 2200);
     } else {
-      setOperationStatus("Queue blocked by suppression or missing lead data.");
+      setActionToast({
+        phase: "error",
+        title: "Queue blocked",
+        detail: "Suppression rules or missing lead data blocked this draft.",
+      });
     }
   }
 
@@ -1155,10 +1184,32 @@ export default function Home() {
             </div>
           </header>
 
-          <div className="space-y-6 px-5 py-6 md:px-8">
-            <div className="rounded-md border border-[#83d0c2]/25 bg-[#83d0c2]/8 px-4 py-3 text-sm text-[#cfe7e0]">
-              {operationStatus}
+          {actionToast && (
+            <div className="fixed right-6 top-6 z-50 w-[min(360px,calc(100vw-32px))] rounded-md border border-[#83d0c2]/35 bg-[#111815] p-4 text-sm text-[#d6dfdc] shadow-2xl shadow-black/40">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md bg-[#d8ff5f] text-[#101417]">
+                  {actionToast.phase === "loading" ? (
+                    <LoaderCircle className="animate-spin" size={18} />
+                  ) : actionToast.phase === "success" ? (
+                    <CheckCircle2 size={18} />
+                  ) : (
+                    <Flame size={18} />
+                  )}
+                </div>
+                <div>
+                  <p className="font-semibold text-white">{actionToast.title}</p>
+                  <p className="mt-1 leading-5 text-[#aebbb7]">{actionToast.detail}</p>
+                </div>
+              </div>
             </div>
+          )}
+
+          <div className="space-y-6 px-5 py-6 md:px-8">
+            {active !== "queue" && (
+              <div className="rounded-md border border-[#83d0c2]/25 bg-[#83d0c2]/8 px-4 py-3 text-sm text-[#cfe7e0]">
+                {operationStatus}
+              </div>
+            )}
 
             {active === "dashboard" && (
               <>
