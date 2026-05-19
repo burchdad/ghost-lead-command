@@ -1,0 +1,294 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  companies   Company[]
+  contacts    Contact[]
+  leads       Lead[]
+  campaigns   Campaign[]
+  sourcingCampaigns SourcingCampaign[]
+  suppressionRecords SuppressionRecord[]
+  outreachQueue OutreachQueueItem[]
+  replies     Reply[]
+  integrationHealth IntegrationHealth[]
+  proposals   Proposal[]
+  agents      AgentTemplate[]
+  prompts     PromptTemplate[]
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  niche       String
+  website     String?
+  crmSource   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contacts    Contact[]
+  leads       Lead[]
+  opportunities Opportunity[]
+
+  @@index([workspaceId])
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  workspaceId String
+  companyId   String?
+  name        String
+  email       String?
+  phone       String?
+  role        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  leads       Lead[]
+  interactions Interaction[]
+
+  @@index([workspaceId])
+  @@index([companyId])
+}
+
+model Lead {
+  id          String   @id @default(cuid())
+  workspaceId String
+  companyId   String?
+  contactId   String?
+  name        String
+  companyName String
+  niche       String
+  stage       String
+  score       Int      @default(0)
+  value       Int      @default(0)
+  source      String
+  lastTouch   String
+  nextAction  String
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contact     Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  opportunities Opportunity[]
+  interactions Interaction[]
+  outreachQueue OutreachQueueItem[]
+  replies      Reply[]
+
+  @@index([workspaceId])
+  @@index([stage])
+  @@index([score])
+}
+
+model Opportunity {
+  id          String   @id @default(cuid())
+  companyId   String
+  leadId      String?
+  title       String
+  stage       String
+  value       Int
+  probability Int      @default(50)
+  closeDate   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  proposals   Proposal[]
+
+  @@index([companyId])
+  @@index([leadId])
+}
+
+model Interaction {
+  id          String   @id @default(cuid())
+  leadId      String?
+  contactId   String?
+  channel     String
+  direction   String
+  body        String
+  classification String?
+  createdAt   DateTime @default(now())
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact     Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([contactId])
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  mode        String
+  audience    String
+  status      String
+  replyTarget Float
+  bookingTarget Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  steps       CampaignStep[]
+
+  @@index([workspaceId])
+}
+
+model CampaignStep {
+  id          String   @id @default(cuid())
+  campaignId  String
+  dayOffset   Int
+  channel     String
+  body        String
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+}
+
+model SourcingCampaign {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  provider    String
+  query       String
+  location    String?
+  industries  String?
+  titles      String?
+  dailyLimit  Int      @default(25)
+  scoreThreshold Int   @default(70)
+  status      String   @default("draft")
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([status])
+}
+
+model SuppressionRecord {
+  id          String   @id @default(cuid())
+  workspaceId String
+  type        String
+  value       String
+  reason      String
+  source      String
+  createdAt   DateTime @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, type, value])
+  @@index([workspaceId])
+}
+
+model OutreachQueueItem {
+  id          String   @id @default(cuid())
+  workspaceId String
+  leadId      String?
+  channel     String
+  provider    String
+  subject     String?
+  body        String
+  status      String   @default("pending")
+  reason      String?
+  scheduledFor DateTime?
+  approvedAt  DateTime?
+  sentAt      DateTime?
+  rejectedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([leadId])
+  @@index([status])
+}
+
+model Reply {
+  id          String   @id @default(cuid())
+  workspaceId String
+  leadId      String?
+  channel     String
+  from        String
+  body        String
+  classification String
+  source      String
+  createdAt   DateTime @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([leadId])
+  @@index([classification])
+}
+
+model IntegrationHealth {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  status      String
+  detail      String
+  checkedAt   DateTime @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+}
+
+model Proposal {
+  id          String   @id @default(cuid())
+  workspaceId String
+  opportunityId String?
+  title       String
+  status      String
+  setupFee    Int
+  monthlyFee  Int
+  revSharePct Float
+  summary     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([opportunityId])
+}
+
+model AgentTemplate {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  source      String
+  useCase     String
+  price       String
+  demoScript  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model PromptTemplate {
+  id          String   @id @default(cuid())
+  workspaceId String
+  title       String
+  body        String
+  category    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
