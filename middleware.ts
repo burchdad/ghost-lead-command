@@ -22,6 +22,7 @@ function isAllowedPath(pathname: string) {
     pathname.startsWith("/favicon") ||
     pathname === "/access" ||
     pathname === "/api/access" ||
+    pathname === "/api/access/logout" ||
     PUBLIC_FILE.test(pathname)
   );
 }

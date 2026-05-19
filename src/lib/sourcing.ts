@@ -47,10 +47,15 @@ function clampSize(size: number | undefined) {
   return Math.min(100, Math.max(1, Number(size || 25)));
 }
 
+function mockSourceEnabled() {
+  return process.env.LEAD_COMMAND_ALLOW_MOCK_SOURCING === "true" || process.env.NODE_ENV !== "production";
+}
+
 export function getSourcingStatus() {
   return {
     pdlConfigured: Boolean(clean(process.env.PDL_API_KEY)),
     ghostLeadAgentConfigured: Boolean(clean(process.env.GHOST_LEAD_AGENT_SEARCH_URL)),
+    mockSourceEnabled: mockSourceEnabled(),
     maxPreviewSize: 100,
   };
 }
@@ -63,6 +68,17 @@ export async function searchFreshLeads(input: SourceSearchInput) {
 async function searchPeopleDataLabs(input: SourceSearchInput) {
   const apiKey = clean(process.env.PDL_API_KEY);
   if (!apiKey) {
+    if (!mockSourceEnabled()) {
+      return {
+        provider: "pdl" as const,
+        dryRun: false,
+        total: 0,
+        scrollToken: null,
+        leads: [],
+        message: "People Data Labs is not configured. Add PDL_API_KEY or set LEAD_COMMAND_ALLOW_MOCK_SOURCING=true for demos.",
+      };
+    }
+
     return {
       provider: "pdl" as const,
       dryRun: true,
@@ -117,6 +133,17 @@ async function searchPeopleDataLabs(input: SourceSearchInput) {
 async function searchGhostLeadAgent(input: SourceSearchInput) {
   const url = clean(process.env.GHOST_LEAD_AGENT_SEARCH_URL);
   if (!url) {
+    if (!mockSourceEnabled()) {
+      return {
+        provider: "ghost-lead-agent" as const,
+        dryRun: false,
+        total: 0,
+        scrollToken: null,
+        leads: [],
+        message: "Ghost Lead Agent is not configured. Add GHOST_LEAD_AGENT_SEARCH_URL or enable mock sourcing for demos.",
+      };
+    }
+
     return {
       provider: "ghost-lead-agent" as const,
       dryRun: true,

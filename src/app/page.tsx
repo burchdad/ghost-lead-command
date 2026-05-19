@@ -14,6 +14,7 @@ import {
   Inbox,
   Layers3,
   LoaderCircle,
+  LogOut,
   MessageSquareText,
   PhoneCall,
   PlayCircle,
@@ -109,6 +110,7 @@ type SourceLead = {
 type SourcingStatus = {
   pdlConfigured: boolean;
   ghostLeadAgentConfigured: boolean;
+  mockSourceEnabled: boolean;
   maxPreviewSize: number;
 };
 
@@ -401,6 +403,7 @@ export default function Home() {
   const [sourcingStatus, setSourcingStatus] = useState<SourcingStatus>({
     pdlConfigured: false,
     ghostLeadAgentConfigured: false,
+    mockSourceEnabled: false,
     maxPreviewSize: 100,
   });
   const [sourceProvider, setSourceProvider] = useState<"pdl" | "ghost-lead-agent">("pdl");
@@ -942,6 +945,11 @@ export default function Home() {
     await refreshOpsData();
   }
 
+  async function logout() {
+    await fetch("/api/access/logout", { method: "POST" });
+    window.location.replace("/access");
+  }
+
   async function recordReply() {
     if (!selectedLead.id || !replyDraft.trim()) return;
     const response = await fetch("/api/replies", {
@@ -1167,6 +1175,14 @@ export default function Home() {
               <div className="flex gap-2">
                 <button
                   type="button"
+                  title="Lock command center"
+                  onClick={logout}
+                  className="grid size-11 place-items-center rounded-md bg-white/[0.08] text-[#d6dfdc] transition hover:bg-white hover:text-[#101417]"
+                >
+                  <LogOut size={20} />
+                </button>
+                <button
+                  type="button"
                   title="Import leads"
                   onClick={() => setActive("revival")}
                   className="grid size-11 place-items-center rounded-md bg-white text-[#101417] transition hover:bg-[#d8ff5f]"
@@ -1302,7 +1318,11 @@ export default function Home() {
                           >
                             <span className="block font-semibold">{provider.label}</span>
                             <span className="mt-1 block text-xs text-[#9fb0a8]">
-                              {provider.active ? "configured" : "mock mode"}
+                              {provider.active
+                                ? "configured"
+                                : sourcingStatus.mockSourceEnabled
+                                  ? "demo mode"
+                                  : "needs env"}
                             </span>
                           </button>
                         ))}
