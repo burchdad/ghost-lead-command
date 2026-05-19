@@ -428,6 +428,7 @@ export default function Home() {
   const [replyText, setReplyText] = useState("Sounds interesting. Can you send pricing and maybe book something this week?");
   const [replyClassification, setReplyClassification] = useState("");
   const [proposalSummary, setProposalSummary] = useState("");
+  const [callPrep, setCallPrep] = useState("");
   const [editScore, setEditScore] = useState(String(seedLeads[0].score));
   const [editValue, setEditValue] = useState(String(seedLeads[0].value));
   const [editNextAction, setEditNextAction] = useState(seedLeads[0].next);
@@ -638,6 +639,11 @@ export default function Home() {
       return;
     }
     const payload = await response.json();
+    if (kind === "call-prep") {
+      setCallPrep(payload.text || "");
+      setOperationStatus(`Generated call prep using ${payload.provider}.`);
+      return;
+    }
     setGeneratedOutreach(payload.text || "");
     setOperationStatus(`Generated ${kind} using ${payload.provider}.`);
   }
@@ -2018,13 +2024,22 @@ export default function Home() {
               <div className="grid gap-6 xl:grid-cols-2">
                 <Panel title="Call Prep" icon={PhoneCall}>
                   <LeadBrief lead={selectedLead} />
+                  <button
+                    type="button"
+                    onClick={() => generateOutreach("call-prep")}
+                    className="mt-5 rounded-md bg-[#d8ff5f] px-4 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white"
+                  >
+                    Generate Call Prep
+                  </button>
                   <div className="mt-5 grid gap-3">
-                    {[
+                    {(callPrep
+                      ? callPrep.split("\n").filter(Boolean)
+                      : [
                       "Lead waste is the opening pain.",
                       "Demo the revival board before discussing technology.",
                       "Offer setup plus monthly optimization, with optional rev share.",
                       "Close on a 7-day pilot against old contacts.",
-                    ].map((item) => (
+                    ]).map((item) => (
                       <div key={item} className="flex gap-3 rounded-md bg-white/[0.04] p-3 text-sm text-[#d6dfdc]">
                         <CheckCircle2 size={18} className="shrink-0 text-[#83d0c2]" />
                         <span>{item}</span>

@@ -83,11 +83,24 @@ function buildFallback({ kind, lead, input }: GenerateArgs) {
     lead?.nextAction?.toLowerCase().includes("first-touch");
 
   if (kind === "call-prep") {
+    if (freshSourced) {
+      return [
+        `Agenda: confirm how ${company} handles missed calls, estimate requests, form fills, and follow-up ownership today.`,
+        `Likely pain: ${niche.toLowerCase()} leads leak when speed-to-lead is slow, calls are missed, or follow-up stops after one touch.`,
+        "Demo path: show fresh lead intake, source-aware outreach, approval queue, reply classification, and the booked-call board.",
+        "Proof angle: frame the system as a lightweight follow-up layer, not a CRM replacement.",
+        "Pricing angle: offer a small install plus monthly optimization once they see where lead waste is happening.",
+        "Close question: if this recovered even one extra booked job a month, would it be worth piloting for 7 days?",
+      ].join("\n");
+    }
+
     return [
-      `Lead: ${company}`,
+      `Agenda: confirm how many old ${niche.toLowerCase()} contacts are sitting untouched and what offers they previously responded to.`,
       `Likely pain: old ${niche.toLowerCase()} inquiries are not being followed up fast enough.`,
-      "Demo hook: show dead-lead import, revival sequence, reply classification, and booked-call tracking.",
-      "Close angle: 7-day pilot, setup fee, monthly optimization, optional recovered-revenue share.",
+      "Demo path: show dead-lead import, revival sequence, reply classification, and booked-call tracking.",
+      "Proof angle: position the install as recovered revenue from contacts they already paid to acquire.",
+      "Pricing angle: setup fee, monthly optimization, and optional recovered-revenue share.",
+      "Close question: should we run a 7-day pilot against one old segment and measure booked calls?",
     ].join("\n");
   }
 
