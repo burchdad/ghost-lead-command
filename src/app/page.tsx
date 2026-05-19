@@ -628,6 +628,8 @@ export default function Home() {
           stage: selectedLead.stage,
           score: selectedLead.score,
           value: selectedLead.value,
+          source: selectedLead.source,
+          nextAction: selectedLead.next,
         },
       }),
     });
@@ -893,7 +895,7 @@ export default function Home() {
         leadId: leadToQueue.id,
         channel,
         provider: channel === "sms" ? outreachStatus.smsProvider : "sendgrid",
-        subject: `Quick idea for ${leadToQueue.company}`,
+        subject: channel === "email" ? outreachSubject : undefined,
         body,
         reason: "Queued from Lead Command approval workflow.",
       }),
@@ -1143,8 +1145,10 @@ export default function Home() {
     },
   ];
 
-  const smsOpener = `Hey ${selectedLead.name.split(" ")[0]}, quick one: are you still trying to convert the old ${selectedLead.niche.toLowerCase()} leads sitting in ${selectedLead.company}'s pipeline? I can show you an AI follow-up system that revives them and only takes 15 minutes to demo.`;
-  const emailFollowup = `Subject: old leads hiding revenue\n\n${selectedLead.name.split(" ")[0]}, I built a dead-lead revival workflow for businesses like ${selectedLead.company}. It pulls old inquiries, writes human follow-up, classifies replies, and books the interested ones. Worth a quick look this week?`;
+  const outreachCopy = buildOutreachCopy(selectedLead);
+  const smsOpener = outreachCopy.sms;
+  const emailFollowup = outreachCopy.email;
+  const outreachSubject = outreachCopy.subject;
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -2325,10 +2329,37 @@ function CopyBlock({ title, text }: { title: string; text: string }) {
   );
 }
 
+function isFreshSourcedLead(lead: Lead) {
+  return lead.source.toLowerCase().includes("people data labs") || lead.next.toLowerCase().includes("first-touch");
+}
+
+function buildOutreachCopy(lead: Lead) {
+  const firstName = lead.name.split(" ")[0] || "there";
+  const company = lead.company;
+  const niche = lead.niche.toLowerCase();
+
+  if (isFreshSourcedLead(lead)) {
+    return {
+      subject: `quick ${niche} follow-up idea`,
+      sms: `Hey ${firstName}, quick idea for ${company}: we help ${niche} teams catch missed estimate requests, old form fills, and unworked calls with a lightweight AI follow-up system. Worth a quick look?`,
+      email: `Subject: quick ${niche} follow-up idea\n\n${firstName}, quick idea for ${company}.\n\nI help ${niche} companies catch and follow up with missed estimate requests, old form fills, and unworked calls using a lightweight AI follow-up system.\n\nWorth a quick look if I showed you the workflow against your current lead flow?`,
+    };
+  }
+
+  return {
+    subject: "old leads hiding revenue",
+    sms: `Hey ${firstName}, quick one: are you still trying to convert the old ${niche} leads sitting in ${company}'s pipeline? I can show you an AI follow-up system that revives them and only takes 15 minutes to demo.`,
+    email: `Subject: old leads hiding revenue\n\n${firstName}, I built a dead-lead revival workflow for businesses like ${company}. It pulls old inquiries, writes human follow-up, classifies replies, and books the interested ones.\n\nWorth a quick look this week?`,
+  };
+}
+
 function GeneratedCopy({ mode, lead }: { mode: string; lead: Lead }) {
+  const outreachCopy = buildOutreachCopy(lead);
   const copy = {
-    revival: `Hey ${lead.name.split(" ")[0]}, I noticed ${lead.company} likely has old inquiries that never converted. We install an AI revival system that reopens those conversations, qualifies replies, and books the interested ones. Want me to show you what it would look like with your list?`,
-    audit: `${lead.company} could probably recover missed revenue in three places: old leads, slow follow-up, and untracked calls. I can run a quick AI audit and show the exact automation stack I would install.`,
+    revival: outreachCopy.email,
+    audit: isFreshSourcedLead(lead)
+      ? `${lead.company} could probably recover missed revenue in three places: missed calls, slow estimate follow-up, and form fills that never get worked. I can run a quick AI follow-up audit and show the exact workflow I would install.`
+      : `${lead.company} could probably recover missed revenue in three places: old leads, slow follow-up, and untracked calls. I can run a quick AI audit and show the exact automation stack I would install.`,
     retainer: `After the revival install, the monthly layer keeps improving replies, call prep, offers, and follow-up. The goal is simple: every lead gets worked, every reply gets routed, and every booked call gets a proposal.`,
   }[mode];
 

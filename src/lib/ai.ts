@@ -7,6 +7,8 @@ type GenerateArgs = {
     stage?: string;
     score?: number;
     value?: number;
+    source?: string;
+    nextAction?: string;
   };
   input?: string;
 };
@@ -76,6 +78,9 @@ function buildFallback({ kind, lead, input }: GenerateArgs) {
   const firstName = lead?.name?.split(" ")[0] || "there";
   const company = lead?.companyName || "your business";
   const niche = lead?.niche || "local business";
+  const freshSourced =
+    lead?.source?.toLowerCase().includes("people data labs") ||
+    lead?.nextAction?.toLowerCase().includes("first-touch");
 
   if (kind === "call-prep") {
     return [
@@ -100,6 +105,18 @@ function buildFallback({ kind, lead, input }: GenerateArgs) {
     if (text.includes("price") || text.includes("cost")) return "objection";
     if (text.includes("later") || text.includes("not now")) return "nurture";
     return "needs review";
+  }
+
+  if (freshSourced) {
+    return [
+      `Subject: quick ${niche.toLowerCase()} follow-up idea`,
+      "",
+      `${firstName}, quick idea for ${company}.`,
+      "",
+      `I help ${niche.toLowerCase()} companies catch and follow up with missed estimate requests, old form fills, and unworked calls using a lightweight AI follow-up system.`,
+      "",
+      "Worth a quick look if I showed you the workflow against your current lead flow?",
+    ].join("\n");
   }
 
   return `Hey ${firstName}, quick question: does ${company} have old leads sitting in the CRM that never converted? I built an AI revival system that follows up, qualifies replies, and books interested prospects. Want me to show you what it would look like with your list?`;
