@@ -11,6 +11,7 @@ function isAllowedPath(pathname: string) {
   return (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
+    pathname === "/access" ||
     pathname === "/api/access" ||
     PUBLIC_FILE.test(pathname)
   );
