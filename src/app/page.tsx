@@ -724,8 +724,12 @@ export default function Home() {
     const payload = await response.json();
     setSourceResults((current) => (scrollToken ? [...current, ...(payload.leads || [])] : payload.leads || []));
     setSourceScrollToken(payload.scrollToken || null);
+    const foundCount = payload.leads?.length || 0;
+    const foundMessage = `${foundCount} fresh contacts found${payload.dryRun ? " in mock mode" : ""}${
+      payload.scrollToken ? ". More available." : "."
+    }`;
     setSourceStatus(
-      `${payload.leads?.length || 0} fresh contacts found${payload.dryRun ? " in mock mode" : ""}${payload.scrollToken ? ". More available." : "."}`,
+      payload.message ? `${foundMessage} ${payload.message}` : foundMessage,
     );
   }
 

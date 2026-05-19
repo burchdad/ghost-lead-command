@@ -89,6 +89,7 @@ async function searchPeopleDataLabs(input: SourceSearchInput) {
     };
   }
 
+  const sql = buildPdlSql(input);
   const response = await fetch("https://api.peopledatalabs.com/v5/person/search", {
     method: "POST",
     headers: {
@@ -96,7 +97,7 @@ async function searchPeopleDataLabs(input: SourceSearchInput) {
       "X-Api-Key": apiKey,
     },
     body: JSON.stringify({
-      sql: buildPdlSql(input),
+      sql,
       size: clampSize(input.size),
       scroll_token: input.scrollToken || undefined,
       dataset: "email,phone,mobile_phone,resume",
@@ -105,13 +106,14 @@ async function searchPeopleDataLabs(input: SourceSearchInput) {
   });
 
   if (!response.ok) {
+    const detail = await response.text();
     return {
       provider: "pdl" as const,
       dryRun: false,
       total: 0,
       scrollToken: null,
       leads: [],
-      message: `People Data Labs returned ${response.status}.`,
+      message: `People Data Labs returned ${response.status}${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
     };
   }
 
@@ -119,14 +121,21 @@ async function searchPeopleDataLabs(input: SourceSearchInput) {
     data?: RawPdlPerson[];
     total?: number;
     scroll_token?: string;
+    error?: string;
+    message?: string;
   };
+  const leads = (payload.data || []).map((person) => normalizePdlPerson(person));
 
   return {
     provider: "pdl" as const,
     dryRun: false,
     total: payload.total || 0,
     scrollToken: payload.scroll_token || null,
-    leads: (payload.data || []).map((person) => normalizePdlPerson(person)),
+    leads,
+    message:
+      leads.length === 0
+        ? payload.message || payload.error || "People Data Labs returned 0 matches. Try a city/state or a broader industry term."
+        : undefined,
   };
 }
 
@@ -199,30 +208,30 @@ async function searchGhostLeadAgent(input: SourceSearchInput) {
 }
 
 function buildPdlSql(input: SourceSearchInput) {
-  const queryTerms = tokenizeSearch(input.query);
+  const queryTerms = tokenizeSearch(input.query).slice(0, 4);
   const industries = (input.industries || [])
     .flatMap((term) => tokenizeSearch(term))
+    .slice(0, 4)
     .filter(Boolean);
   const titles = (input.titles?.length ? input.titles : ["Owner", "Founder", "CEO", "President"])
-    .map((term) => clean(term).toLowerCase())
+    .flatMap((term) => tokenizeSearch(term))
     .filter(Boolean);
-  const where = [
-    orLike("LOWER(job_title)", titles),
-    "(work_email IS NOT NULL OR mobile_phone IS NOT NULL)",
-  ];
+  const where = ["(work_email IS NOT NULL OR mobile_phone IS NOT NULL)"];
 
-  const queryClause = orLikeMany(["LOWER(job_company_name)", "LOWER(job_company_industry)", "LOWER(job_title)"], queryTerms);
-  if (queryClause) {
-    where.push(queryClause);
+  const titleClause = orLike("job_title", titles);
+  if (titleClause) {
+    where.push(titleClause);
   }
 
-  const industryClause = orLikeMany(["LOWER(job_company_industry)", "LOWER(job_company_name)"], industries);
+  const industryTerms = industries.length ? industries : queryTerms;
+  const industryClause = orLikeMany(["job_company_industry", "job_company_name"], industryTerms);
   if (industryClause) {
     where.push(industryClause);
   }
 
-  if (clean(input.location)) {
-    where.push(orLikeMany(["LOWER(location_name)", "LOWER(job_company_location_name)"], tokenizeSearch(input.location)));
+  const location = clean(input.location).toLowerCase();
+  if (location) {
+    where.push(orLikeMany(["location_name", "job_company_location_name"], [location]));
   }
 
   return `SELECT * FROM person WHERE ${where.filter(Boolean).join(" AND ")}`;
