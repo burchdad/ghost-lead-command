@@ -15,20 +15,28 @@ function AccessForm() {
     setLoading(true);
     setStatus("Checking access...");
 
-    const response = await fetch("/api/access", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accessKey }),
-    });
+    try {
+      const response = await fetch("/api/access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessKey: accessKey.trim() }),
+      });
 
-    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setLoading(false);
+        setStatus(payload.error || "That key did not work.");
+        return;
+      }
+
+      const next = searchParams.get("next") || "/";
+      setStatus("Access granted. Opening command center...");
+      window.location.replace(next === "/access" ? "/" : next);
+    } catch {
       setLoading(false);
-      setStatus("That key did not work.");
-      return;
+      setStatus("Access check failed. Try again in a moment.");
     }
-
-    const next = searchParams.get("next") || "/";
-    window.location.assign(next);
   }
 
   return (

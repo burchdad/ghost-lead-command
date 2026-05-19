@@ -7,6 +7,15 @@ function getAccessKey() {
   return (process.env.LEAD_COMMAND_ACCESS_KEY || "").trim();
 }
 
+async function accessHash(value: string) {
+  const data = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function isAllowedPath(pathname: string) {
   return (
     pathname.startsWith("/_next") ||
@@ -17,14 +26,14 @@ function isAllowedPath(pathname: string) {
   );
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const accessKey = getAccessKey();
   if (!accessKey || isAllowedPath(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
 
   const cookieValue = request.cookies.get(COOKIE_NAME)?.value;
-  if (cookieValue === accessKey) {
+  if (cookieValue && cookieValue === (await accessHash(accessKey))) {
     return NextResponse.next();
   }
 
