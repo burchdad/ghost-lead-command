@@ -10,6 +10,9 @@ type ImportRecord = {
   company?: string;
   email?: string;
   phone?: string;
+  title?: string;
+  location?: string;
+  confidence?: string;
   website?: string;
   domain?: string;
   niche?: string;
@@ -25,6 +28,27 @@ function normalizeDomain(value: string) {
     .replace(/^https?:\/\//, "")
     .replace(/^www\./, "")
     .split("/")[0];
+}
+
+function buildNextAction({
+  companyName,
+  contactName,
+  title,
+  niche,
+  location,
+  confidence,
+}: {
+  companyName: string;
+  contactName: string;
+  title: string;
+  niche: string;
+  location: string;
+  confidence: string;
+}) {
+  const role = title ? `${contactName} (${title})` : contactName;
+  const market = [niche, location].filter(Boolean).join(" in ");
+  const contactability = confidence ? ` ${confidence}.` : "";
+  return `Quality-check ${companyName}, then queue a first-touch opener to ${role}${market ? ` for ${market}` : ""}.${contactability}`;
 }
 
 export async function POST(request: Request) {
@@ -54,6 +78,9 @@ export async function POST(request: Request) {
     const value = Number(record.value || 2500);
     const email = record.email ? String(record.email).trim().toLowerCase() : "";
     const phone = record.phone ? String(record.phone).trim() : "";
+    const title = record.title ? String(record.title).trim() : "Decision maker";
+    const location = record.location ? String(record.location).trim() : "";
+    const confidence = record.confidence ? String(record.confidence).trim() : "";
     const website = record.website ? String(record.website).trim() : "";
     const domain = normalizeDomain(record.domain ? String(record.domain) : website);
 
@@ -128,7 +155,7 @@ export async function POST(request: Request) {
         name: contactName,
         email: email || null,
         phone: phone || null,
-        role: "Owner",
+        role: title || "Decision maker",
       },
     });
 
@@ -145,7 +172,7 @@ export async function POST(request: Request) {
         value,
         source: String(record.source || "csv"),
         lastTouch: "Never",
-        nextAction: "Run first revival opener and watch for hot replies.",
+        nextAction: buildNextAction({ companyName, contactName, title, niche, location, confidence }),
         opportunities: {
           create: {
             companyId: company.id,

@@ -125,16 +125,21 @@ async function searchPeopleDataLabs(input: SourceSearchInput) {
     message?: string;
   };
   const leads = (payload.data || []).map((person) => normalizePdlPerson(person));
+  const qualified = leads
+    .filter((lead) => !isSuppressedSourceLead(lead))
+    .sort((a, b) => b.score - a.score);
 
   return {
     provider: "pdl" as const,
     dryRun: false,
     total: payload.total || 0,
     scrollToken: payload.scroll_token || null,
-    leads,
+    leads: qualified,
     message:
-      leads.length === 0
-        ? payload.message || payload.error || "People Data Labs returned 0 matches. Try a city/state or a broader industry term."
+      qualified.length === 0
+        ? payload.message ||
+          payload.error ||
+          "People Data Labs returned matches, but none passed the owner/operator quality filter. Try a city/state or broaden titles."
         : undefined,
   };
 }
@@ -261,7 +266,7 @@ function normalizePdlPerson(person: RawPdlPerson): SourceLead {
     niche,
     location: clean(person.location_name),
     source: "People Data Labs",
-    score: scoreLead({ title, email, phone, niche }),
+    score: scoreLead({ title, email, phone, niche, companyName }),
     confidence: email || phone ? "contactable" : "needs enrichment",
   };
 }
@@ -288,7 +293,7 @@ function normalizeGenericLead(
     niche,
     location: String(lead.location || lead.location_name || ""),
     source,
-    score: Number(lead.score || scoreLead({ title, email, phone, niche })),
+    score: Number(lead.score || scoreLead({ title, email, phone, niche, companyName })),
     confidence: String(lead.confidence || (email || phone ? "contactable" : "needs enrichment")),
   };
 }
@@ -298,22 +303,58 @@ function scoreLead({
   email,
   phone,
   niche,
+  companyName,
 }: {
   title: string;
   email: string;
   phone: string;
   niche: string;
+  companyName: string;
 }) {
   let score = 45;
-  const text = `${title} ${niche}`.toLowerCase();
+  const text = `${title} ${niche} ${companyName}`.toLowerCase();
   if (email) score += 15;
   if (phone) score += 15;
-  if (text.includes("owner") || text.includes("founder") || text.includes("ceo")) score += 15;
-  if (text.includes("operations") || text.includes("marketing") || text.includes("growth")) score += 8;
+  if (text.includes("owner") || text.includes("founder") || text.includes("ceo") || text.includes("president")) {
+    score += 20;
+  }
+  if (text.includes("general manager") || text.includes("managing partner") || text.includes("operator")) score += 12;
+  if (text.includes("operations") || text.includes("marketing") || text.includes("growth")) score += 4;
   if (text.includes("dental") || text.includes("hvac") || text.includes("roofing") || text.includes("med spa")) {
     score += 7;
   }
+  if (isInstitutionalCompany(companyName)) score -= 25;
+  if (isNonBuyerTitle(title)) score -= 10;
   return Math.min(100, score);
+}
+
+function isSuppressedSourceLead(lead: SourceLead) {
+  if (!lead.email && !lead.phone) return true;
+  if (isInstitutionalCompany(lead.companyName)) return true;
+  if (lead.score < 60) return true;
+  return false;
+}
+
+function isInstitutionalCompany(companyName: string) {
+  const company = companyName.toLowerCase();
+  return [
+    "association",
+    "institute",
+    "university",
+    "college",
+    "school",
+    "government",
+    "municipal",
+    "department",
+    "foundation",
+    "nonprofit",
+    "non-profit",
+  ].some((term) => company.includes(term));
+}
+
+function isNonBuyerTitle(title: string) {
+  const role = title.toLowerCase();
+  return ["intern", "assistant", "student", "recruiter", "future executives"].some((term) => role.includes(term));
 }
 
 function tokenizeSearch(value: string | undefined) {
