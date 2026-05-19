@@ -96,7 +96,7 @@ async function searchPeopleDataLabs(input: SourceSearchInput) {
       "X-Api-Key": apiKey,
     },
     body: JSON.stringify({
-      query: buildPdlQuery(input),
+      sql: buildPdlSql(input),
       size: clampSize(input.size),
       scroll_token: input.scrollToken || undefined,
       dataset: "email,phone,mobile_phone,resume",
@@ -198,70 +198,34 @@ async function searchGhostLeadAgent(input: SourceSearchInput) {
   };
 }
 
-function buildPdlQuery(input: SourceSearchInput) {
-  const queryTerms = [input.query]
-    .map((term) => clean(term))
+function buildPdlSql(input: SourceSearchInput) {
+  const queryTerms = tokenizeSearch(input.query);
+  const industries = (input.industries || [])
+    .flatMap((term) => tokenizeSearch(term))
     .filter(Boolean);
-  const industries = (input.industries || []).map((term) => clean(term)).filter(Boolean);
   const titles = (input.titles?.length ? input.titles : ["Owner", "Founder", "CEO", "President"])
-    .map((term) => clean(term))
+    .map((term) => clean(term).toLowerCase())
     .filter(Boolean);
-
-  const must: Record<string, unknown>[] = [
-    {
-      bool: {
-        should: titles.map((title) => ({
-          query_string: {
-            query: escapeQueryString(title),
-            fields: ["job_title", "job_title_role", "job_title_sub_role"],
-          },
-        })),
-        minimum_should_match: 1,
-      },
-    },
-    {
-      bool: {
-        should: [{ exists: { field: "work_email" } }, { exists: { field: "mobile_phone" } }],
-        minimum_should_match: 1,
-      },
-    },
+  const where = [
+    orLike("LOWER(job_title)", titles),
+    "(work_email IS NOT NULL OR mobile_phone IS NOT NULL)",
   ];
 
-  if (queryTerms.length) {
-    must.push({
-      query_string: {
-        query: queryTerms.map(escapeQueryString).join(" "),
-        fields: ["job_company_name", "job_company_industry", "job_title", "summary"],
-      },
-    });
+  const queryClause = orLikeMany(["LOWER(job_company_name)", "LOWER(job_company_industry)", "LOWER(job_title)"], queryTerms);
+  if (queryClause) {
+    where.push(queryClause);
   }
 
-  if (industries.length) {
-    must.push({
-      bool: {
-        should: industries.map((industry) => ({
-          query_string: {
-            query: escapeQueryString(industry),
-            fields: ["job_company_industry", "job_company_name"],
-          },
-        })),
-        minimum_should_match: 1,
-      },
-    });
+  const industryClause = orLikeMany(["LOWER(job_company_industry)", "LOWER(job_company_name)"], industries);
+  if (industryClause) {
+    where.push(industryClause);
   }
 
   if (clean(input.location)) {
-    must.push({
-      query_string: {
-        query: escapeQueryString(clean(input.location)),
-        fields: ["location_name", "job_company_location_name", "job_company_location_region"],
-      },
-    });
+    where.push(orLikeMany(["LOWER(location_name)", "LOWER(job_company_location_name)"], tokenizeSearch(input.location)));
   }
 
-  return {
-    query: must.length ? { bool: { must } } : { match_all: {} },
-  };
+  return `SELECT * FROM person WHERE ${where.filter(Boolean).join(" AND ")}`;
 }
 
 function normalizePdlPerson(person: RawPdlPerson): SourceLead {
@@ -343,8 +307,28 @@ function scoreLead({
   return Math.min(100, score);
 }
 
-function escapeQueryString(value: string) {
-  return value.replace(/[+\-=&|><!(){}[\]^"~*?:\\/]/g, "\\$&");
+function tokenizeSearch(value: string | undefined) {
+  return clean(value)
+    .split(/[\s,]+/)
+    .map((term) => term.toLowerCase().replace(/[^a-z0-9-]/g, ""))
+    .filter((term) => term.length > 2 && !["and", "the", "for", "with", "businesses", "owners"].includes(term));
+}
+
+function sqlValue(value: string) {
+  return value.replace(/'/g, "''");
+}
+
+function like(field: string, value: string) {
+  return `${field} LIKE '%${sqlValue(value)}%'`;
+}
+
+function orLike(field: string, values: string[]) {
+  return `(${values.map((value) => like(field, value)).join(" OR ")})`;
+}
+
+function orLikeMany(fields: string[], values: string[]) {
+  const clauses = values.flatMap((value) => fields.map((field) => like(field, value)));
+  return clauses.length ? `(${clauses.join(" OR ")})` : "";
 }
 
 function mockLeads(input: SourceSearchInput): SourceLead[] {
