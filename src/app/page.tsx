@@ -105,6 +105,7 @@ type SourceLead = {
   source: string;
   score: number;
   confidence: string;
+  buyerFit: string;
 };
 
 type SourcingStatus = {
@@ -751,6 +752,7 @@ export default function Home() {
           title: lead.title,
           location: lead.location,
           confidence: lead.confidence,
+          buyerFit: lead.buyerFit,
           niche: lead.niche,
           source: lead.source,
           score: lead.score,
@@ -1494,6 +1496,9 @@ export default function Home() {
                             <div className="text-left sm:text-right">
                               <p className="font-mono text-2xl text-[#d8ff5f]">{lead.score}</p>
                               <p className="text-xs text-[#9fb0a8]">{lead.confidence}</p>
+                              <p className="mt-1 rounded-sm bg-[#d8ff5f]/15 px-2 py-1 text-xs font-semibold text-[#d8ff5f]">
+                                {lead.buyerFit}
+                              </p>
                             </div>
                           </div>
                           <div className="mt-4 grid gap-2 text-xs text-[#b6c4bf] md:grid-cols-3">
@@ -2172,6 +2177,7 @@ function ProviderPill({
 }
 
 function LeadBrief({ lead }: { lead: Lead }) {
+  const buyerFit = lead.next.match(/Buyer fit: ([^.]+)/)?.[1];
   return (
     <div className="rounded-md border border-white/10 bg-[#101417] p-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -2192,6 +2198,11 @@ function LeadBrief({ lead }: { lead: Lead }) {
         <span className="rounded-sm bg-white/[0.04] px-3 py-2">{lead.source}</span>
         <span className="rounded-sm bg-white/[0.04] px-3 py-2">{lead.lastTouch}</span>
       </div>
+      {buyerFit ? (
+        <p className="mt-3 inline-flex rounded-sm bg-[#d8ff5f]/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#d8ff5f]">
+          Buyer fit: {buyerFit}
+        </p>
+      ) : null}
       <p className="mt-4 text-sm text-[#d6dfdc]">{lead.next}</p>
     </div>
   );

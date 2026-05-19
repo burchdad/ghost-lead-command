@@ -13,6 +13,7 @@ type ImportRecord = {
   title?: string;
   location?: string;
   confidence?: string;
+  buyerFit?: string;
   website?: string;
   domain?: string;
   niche?: string;
@@ -37,6 +38,7 @@ function buildNextAction({
   niche,
   location,
   confidence,
+  buyerFit,
 }: {
   companyName: string;
   contactName: string;
@@ -44,11 +46,13 @@ function buildNextAction({
   niche: string;
   location: string;
   confidence: string;
+  buyerFit: string;
 }) {
   const role = title ? `${contactName} (${title})` : contactName;
   const market = [niche, location].filter(Boolean).join(" in ");
   const contactability = confidence ? ` ${confidence}.` : "";
-  return `Quality-check ${companyName}, then queue a first-touch opener to ${role}${market ? ` for ${market}` : ""}.${contactability}`;
+  const fit = buyerFit ? ` Buyer fit: ${buyerFit}.` : "";
+  return `Quality-check ${companyName}, then queue a first-touch opener to ${role}${market ? ` for ${market}` : ""}.${contactability}${fit}`;
 }
 
 export async function POST(request: Request) {
@@ -81,6 +85,7 @@ export async function POST(request: Request) {
     const title = record.title ? String(record.title).trim() : "Decision maker";
     const location = record.location ? String(record.location).trim() : "";
     const confidence = record.confidence ? String(record.confidence).trim() : "";
+    const buyerFit = record.buyerFit ? String(record.buyerFit).trim() : "";
     const website = record.website ? String(record.website).trim() : "";
     const domain = normalizeDomain(record.domain ? String(record.domain) : website);
 
@@ -172,7 +177,7 @@ export async function POST(request: Request) {
         value,
         source: String(record.source || "csv"),
         lastTouch: "Never",
-        nextAction: buildNextAction({ companyName, contactName, title, niche, location, confidence }),
+        nextAction: buildNextAction({ companyName, contactName, title, niche, location, confidence, buyerFit }),
         opportunities: {
           create: {
             companyId: company.id,

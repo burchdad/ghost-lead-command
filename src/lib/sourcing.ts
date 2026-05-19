@@ -22,6 +22,7 @@ export type SourceLead = {
   source: string;
   score: number;
   confidence: string;
+  buyerFit: string;
 };
 
 type RawPdlPerson = {
@@ -256,6 +257,8 @@ function normalizePdlPerson(person: RawPdlPerson): SourceLead {
   const companyName = clean(person.job_company_name) || "Unknown Company";
   const title = clean(person.job_title) || "Decision maker";
 
+  const buyerFit = classifyBuyerFit({ title, companyName });
+
   return {
     id: person.id || `${name}:${companyName}`,
     name,
@@ -268,6 +271,7 @@ function normalizePdlPerson(person: RawPdlPerson): SourceLead {
     source: "People Data Labs",
     score: scoreLead({ title, email, phone, niche, companyName }),
     confidence: email || phone ? "contactable" : "needs enrichment",
+    buyerFit,
   };
 }
 
@@ -282,6 +286,7 @@ function normalizeGenericLead(
   const email = String(lead.email || lead.work_email || "");
   const phone = String(lead.phone || lead.mobile_phone || lead.mobile || "");
   const niche = String(lead.niche || lead.industry || lead.company_industry || "General");
+  const buyerFit = String(lead.buyerFit || lead.buyer_fit || classifyBuyerFit({ title, companyName }));
 
   return {
     id: String(lead.id || `${source}:${index}:${name}:${companyName}`),
@@ -295,6 +300,7 @@ function normalizeGenericLead(
     source,
     score: Number(lead.score || scoreLead({ title, email, phone, niche, companyName })),
     confidence: String(lead.confidence || (email || phone ? "contactable" : "needs enrichment")),
+    buyerFit,
   };
 }
 
@@ -313,26 +319,46 @@ function scoreLead({
 }) {
   let score = 45;
   const text = `${title} ${niche} ${companyName}`.toLowerCase();
+  const buyerFit = classifyBuyerFit({ title, companyName });
   if (email) score += 15;
   if (phone) score += 15;
-  if (text.includes("owner") || text.includes("founder") || text.includes("ceo") || text.includes("president")) {
-    score += 20;
-  }
-  if (text.includes("general manager") || text.includes("managing partner") || text.includes("operator")) score += 12;
+  if (buyerFit === "Owner") score += 20;
+  if (buyerFit === "Operator") score += 12;
   if (text.includes("operations") || text.includes("marketing") || text.includes("growth")) score += 4;
   if (text.includes("dental") || text.includes("hvac") || text.includes("roofing") || text.includes("med spa")) {
     score += 7;
   }
   if (isInstitutionalCompany(companyName)) score -= 25;
+  if (isVendorCompany(companyName) || buyerFit === "Vendor risk") score -= 20;
   if (isNonBuyerTitle(title)) score -= 10;
-  return Math.min(100, score);
+  const cap =
+    buyerFit === "Owner" ? 100 :
+    buyerFit === "Operator" ? 94 :
+    buyerFit === "Manager" ? 88 :
+    buyerFit === "Vendor risk" ? 74 :
+    buyerFit === "Institutional risk" ? 60 :
+    82;
+  return Math.max(0, Math.min(cap, score));
 }
 
 function isSuppressedSourceLead(lead: SourceLead) {
   if (!lead.email && !lead.phone) return true;
   if (isInstitutionalCompany(lead.companyName)) return true;
+  if (isVendorCompany(lead.companyName) || lead.buyerFit === "Vendor risk") return true;
   if (lead.score < 60) return true;
   return false;
+}
+
+function classifyBuyerFit({ title, companyName }: { title: string; companyName: string }) {
+  const role = title.toLowerCase();
+  if (isInstitutionalCompany(companyName)) return "Institutional risk";
+  if (isVendorCompany(companyName) || isVendorTitle(title)) return "Vendor risk";
+  if (["vice president", "vp ", "general manager", "managing partner", "operator", "operations"].some((term) => role.includes(term))) {
+    return "Operator";
+  }
+  if (["owner", "founder", "ceo", "president", "principal"].some((term) => role.includes(term))) return "Owner";
+  if (["manager", "director", "head of"].some((term) => role.includes(term))) return "Manager";
+  return "Unclear";
 }
 
 function isInstitutionalCompany(companyName: string) {
@@ -355,6 +381,18 @@ function isInstitutionalCompany(companyName: string) {
 function isNonBuyerTitle(title: string) {
   const role = title.toLowerCase();
   return ["intern", "assistant", "student", "recruiter", "future executives"].some((term) => role.includes(term));
+}
+
+function isVendorCompany(companyName: string) {
+  const company = companyName.toLowerCase();
+  return ["marketing", "media", "agency", "consulting", "consultant", "coach", "seo", "advertising"].some((term) =>
+    company.includes(term),
+  );
+}
+
+function isVendorTitle(title: string) {
+  const role = title.toLowerCase();
+  return ["marketing expert", "consultant", "coach", "agency", "seo"].some((term) => role.includes(term));
 }
 
 function tokenizeSearch(value: string | undefined) {
@@ -398,6 +436,7 @@ function mockLeads(input: SourceSearchInput): SourceLead[] {
       source: "People Data Labs mock",
       score: 92,
       confidence: "contactable",
+      buyerFit: "Owner",
     },
     {
       id: "mock:2",
@@ -411,6 +450,7 @@ function mockLeads(input: SourceSearchInput): SourceLead[] {
       source: "People Data Labs mock",
       score: 90,
       confidence: "contactable",
+      buyerFit: "Owner",
     },
     {
       id: "mock:3",
@@ -424,6 +464,7 @@ function mockLeads(input: SourceSearchInput): SourceLead[] {
       source: "People Data Labs mock",
       score: 76,
       confidence: "contactable",
+      buyerFit: "Manager",
     },
   ].slice(0, clampSize(input.size));
 }
