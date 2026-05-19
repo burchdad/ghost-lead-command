@@ -903,10 +903,11 @@ export default function Home() {
     });
 
     if (response.ok) {
+      const payload = await response.json();
       await refreshOpsData();
       setActionToast({
         phase: "success",
-        title: "Queued for approval",
+        title: payload.duplicate ? "Already in queue" : "Queued for approval",
         detail: `${leadToQueue.company} is ready for review in the queue.`,
       });
       setActive("queue");
@@ -1749,22 +1750,28 @@ export default function Home() {
                               <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#b6c4bf]">{item.body}</p>
                               {item.reason && <p className="mt-2 text-xs text-[#9fb0a8]">{item.reason}</p>}
                             </div>
-                            <div className="flex shrink-0 gap-2">
-                              <button
-                                type="button"
-                                onClick={() => approveQueueItem(item.id)}
-                                className="rounded-md bg-[#d8ff5f] px-3 py-2 text-xs font-semibold text-[#101417]"
-                              >
-                                Approve
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => rejectQueueItem(item.id)}
-                                className="rounded-md bg-white/[0.08] px-3 py-2 text-xs font-semibold text-[#d6dfdc]"
-                              >
-                                Reject
-                              </button>
-                            </div>
+                            {item.status === "pending" ? (
+                              <div className="flex shrink-0 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => approveQueueItem(item.id)}
+                                  className="rounded-md bg-[#d8ff5f] px-3 py-2 text-xs font-semibold text-[#101417]"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => rejectQueueItem(item.id)}
+                                  className="rounded-md bg-white/[0.08] px-3 py-2 text-xs font-semibold text-[#d6dfdc]"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="rounded-md bg-white/[0.05] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#9fb0a8]">
+                                Final
+                              </span>
+                            )}
                           </div>
                         </div>
                       ))

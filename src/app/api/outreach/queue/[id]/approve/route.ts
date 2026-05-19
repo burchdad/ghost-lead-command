@@ -19,6 +19,13 @@ export async function POST(
     return NextResponse.json({ error: "Queue item not found" }, { status: 404 });
   }
 
+  if (item.status !== "pending") {
+    return NextResponse.json(
+      { error: `Queue item is already ${item.status}`, item },
+      { status: 409 },
+    );
+  }
+
   if (!item.lead) {
     return NextResponse.json({ error: "Queue item is missing a lead" }, { status: 400 });
   }

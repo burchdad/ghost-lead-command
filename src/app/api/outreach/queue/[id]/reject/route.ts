@@ -8,6 +8,19 @@ export async function POST(
   const { id } = await params;
   const prisma = getPrisma();
   const body = await request.json().catch(() => ({}));
+  const existing = await prisma.outreachQueueItem.findUnique({ where: { id } });
+
+  if (!existing) {
+    return NextResponse.json({ error: "Queue item not found" }, { status: 404 });
+  }
+
+  if (existing.status !== "pending") {
+    return NextResponse.json(
+      { error: `Queue item is already ${existing.status}`, item: existing },
+      { status: 409 },
+    );
+  }
+
   const item = await prisma.outreachQueueItem.update({
     where: { id },
     data: {

@@ -40,6 +40,23 @@ export async function POST(request: Request) {
     );
   }
 
+  if (leadId) {
+    const existing = await prisma.outreachQueueItem.findFirst({
+      where: {
+        workspaceId: workspace.id,
+        leadId,
+        channel: String(body.channel || "email"),
+        status: "pending",
+      },
+      include: { lead: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existing) {
+      return NextResponse.json({ item: existing, duplicate: true }, { status: 200 });
+    }
+  }
+
   const item = await prisma.outreachQueueItem.create({
     data: {
       workspaceId: workspace.id,
