@@ -38,5 +38,19 @@ export async function GET() {
     telnyx: { configured: outreach.telnyxConfigured, preferred: outreach.smsProvider === "telnyx" },
     twilio: { configured: outreach.twilioConfigured, preferred: outreach.smsProvider === "twilio" },
     ghostcrm: getGhostCrmStatus(),
+    calendar: {
+      configured: Boolean(process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.OUTLOOK_CLIENT_ID),
+      provider: process.env.GOOGLE_CALENDAR_CLIENT_ID ? "google" : process.env.OUTLOOK_CLIENT_ID ? "outlook" : "missing",
+      owner: process.env.BOOKING_OWNER_EMAIL ? "configured" : "missing",
+      defaultDuration: process.env.DEFAULT_MEETING_DURATION_MINUTES || "30",
+    },
+    zoom: {
+      configured: Boolean(process.env.ZOOM_ACCOUNT_ID && process.env.ZOOM_CLIENT_ID && process.env.ZOOM_CLIENT_SECRET),
+      meetingLink: process.env.DEFAULT_MEETING_URL ? "static" : "missing",
+    },
+    slack: {
+      configured: Boolean(process.env.SLACK_WEBHOOK_URL || process.env.SLACK_BOT_TOKEN),
+      channel: process.env.SLACK_OPS_CHANNEL ? "configured" : "missing",
+    },
   });
 }

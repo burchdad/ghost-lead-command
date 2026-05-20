@@ -186,6 +186,14 @@ type ActionToast = {
   detail: string;
 };
 
+type AutomationEvent = {
+  id: string;
+  title: string;
+  detail: string;
+  status: "done" | "blocked" | "planned";
+  createdAt: string;
+};
+
 const seedLeads: Lead[] = [
   {
     name: "Maya Collins",
@@ -448,6 +456,15 @@ export default function Home() {
   const [proposalSummary, setProposalSummary] = useState("");
   const [callPrep, setCallPrep] = useState("");
   const [sequenceMode, setSequenceMode] = useState<"fresh" | "revival" | "booked">("fresh");
+  const [automationEvents, setAutomationEvents] = useState<AutomationEvent[]>([
+    {
+      id: "boot",
+      title: "Command center initialized",
+      detail: "Automation log is ready for sourcing, approval, booking, CRM, and notification events.",
+      status: "done",
+      createdAt: "",
+    },
+  ]);
   const [editScore, setEditScore] = useState(String(seedLeads[0].score));
   const [editValue, setEditValue] = useState(String(seedLeads[0].value));
   const [editNextAction, setEditNextAction] = useState(seedLeads[0].next);
@@ -464,6 +481,17 @@ export default function Home() {
     setSmsDraft(copy.sms);
     setEmailDraft(copy.email);
     setEmailSubjectDraft(copy.subject);
+  }
+
+  function addAutomationEvent(event: Omit<AutomationEvent, "id" | "createdAt">) {
+    setAutomationEvents((current) => [
+      {
+        ...event,
+        id: `${Date.now()}-${event.title}`,
+        createdAt: new Date().toISOString(),
+      },
+      ...current,
+    ].slice(0, 12));
   }
 
   useEffect(() => {
@@ -987,6 +1015,11 @@ export default function Home() {
         title: payload.duplicate ? "Already in queue" : "Queued for approval",
         detail: `${leadToQueue.company} is ready for review in the queue.`,
       });
+      addAutomationEvent({
+        title: "Outreach queued",
+        detail: `${leadToQueue.company} has a ${channel} draft waiting for approval.`,
+        status: "done",
+      });
       setActive("queue");
       window.setTimeout(() => setActionToast(null), 2200);
     } else {
@@ -1025,6 +1058,11 @@ export default function Home() {
       const delivery = payload.delivery;
       const state = delivery?.dryRun ? "queued in dry-run" : delivery?.status || "approved";
       setOperationStatus(`Approved queue item and ${state}.`);
+      addAutomationEvent({
+        title: "Approval processed",
+        detail: `${approvalItem.lead?.company || approvalItem.lead?.companyName || "Queued outreach"} ${state}.`,
+        status: "done",
+      });
       setActionToast({
         phase: "success",
         title: delivery?.dryRun ? "Approved and queued" : "Approved",
@@ -1052,6 +1090,11 @@ export default function Home() {
       body: JSON.stringify({ reason: "Rejected in approval queue." }),
     });
     setOperationStatus("Rejected queue item.");
+    addAutomationEvent({
+      title: "Outreach rejected",
+      detail: "A queued draft was rejected before send.",
+      status: "done",
+    });
     await refreshOpsData();
   }
 
@@ -1080,6 +1123,15 @@ export default function Home() {
         const mapped = mapApiLead(payload.lead);
         selectLead(mapped);
         setLiveLeads((current) => current.map((lead) => (lead.id === mapped.id ? mapped : lead)));
+        if (String(payload.reply?.classification || "").toLowerCase().includes("booked")) {
+          await runBookingAgent(mapped, "manual reply");
+        } else {
+          addAutomationEvent({
+            title: "Reply classified",
+            detail: `${mapped.company} reply classified as ${payload.reply?.classification || "needs review"}.`,
+            status: "done",
+          });
+        }
       }
       setOperationStatus(
         payload.route
@@ -1179,9 +1231,11 @@ export default function Home() {
 
     if (selectedLead.id) {
       const nextStage: Stage | undefined =
-        classification.includes("hot") || classification.includes("booked")
-          ? "Replied"
-          : undefined;
+        classification.includes("booked")
+          ? "Call Booked"
+          : classification.includes("hot")
+            ? "Replied"
+            : undefined;
       await fetch(`/api/leads/${encodeURIComponent(selectedLead.id)}/interactions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1194,7 +1248,48 @@ export default function Home() {
         }),
       });
       await refreshLeads();
+      if (classification.includes("booked")) {
+        await runBookingAgent({ ...selectedLead, stage: "Call Booked", lastTouch: "Just now" }, "reply classifier");
+      } else {
+        addAutomationEvent({
+          title: "Reply classified",
+          detail: `${selectedLead.company} classified as ${classification}.`,
+          status: "done",
+        });
+      }
     }
+  }
+
+  async function runBookingAgent(lead: Lead = selectedLead, source = "operator") {
+    const prep = buildBookingPrep(lead);
+    setCallPrep(prep.map((item) => item.detail).join("\n"));
+    setSequenceMode("booked");
+    setActive("proposal");
+
+    if (!forceDemoMode && lead.id && lead.stage !== "Call Booked") {
+      await updateLead(lead.id, {
+        stage: "Call Booked",
+        lastTouch: "Just now",
+        next: `Confirm calendar slot, attach meeting link, and prep the ${lead.company} discovery call.`,
+      });
+    }
+
+    addAutomationEvent({
+      title: "Booking Agent triggered",
+      detail: `${lead.company} moved into call prep from ${source}. Discovery workflow prepared.`,
+      status: "done",
+    });
+    addAutomationEvent({
+      title: "Calendar event blocked",
+      detail: "Calendar owner, provider auth, and Zoom/meeting-link config are not connected yet.",
+      status: "blocked",
+    });
+    addAutomationEvent({
+      title: "Slack booking alert blocked",
+      detail: "Slack webhook/channel config is not connected yet.",
+      status: "blocked",
+    });
+    setOperationStatus(`Booking Agent prepared call workflow for ${lead.company}.`);
   }
 
   async function createProposalFromLead() {
@@ -1300,13 +1395,17 @@ export default function Home() {
     },
     {
       label: "Calendar and Zoom",
-      ok: false,
-      detail: "Next integration lane: create calendar events with meeting links after booked replies.",
+      ok: Boolean(integrations.calendar?.configured && (integrations.zoom?.configured || integrations.zoom?.meetingLink === "static")),
+      detail: integrations.calendar?.configured
+        ? `Calendar ${integrations.calendar.provider || "configured"} with owner ${integrations.calendar.owner || "missing"}. Zoom link ${integrations.zoom?.meetingLink || "missing"}.`
+        : "Next integration lane: create calendar events with meeting links after booked replies.",
     },
     {
       label: "Slack alerts",
-      ok: false,
-      detail: "Next integration lane: notify when hot replies, bookings, failed sends, and CRM syncs happen.",
+      ok: Boolean(integrations.slack?.configured && integrations.slack?.channel === "configured"),
+      detail: integrations.slack?.configured
+        ? `Slack configured. Ops channel ${integrations.slack.channel || "missing"}.`
+        : "Next integration lane: notify when hot replies, bookings, failed sends, and CRM syncs happen.",
     },
     {
       label: "Approval queue",
@@ -1606,6 +1705,7 @@ export default function Home() {
                     </div>
                   </Panel>
                 </div>
+                <AutomationEventLog events={automationEvents} />
               </>
             )}
 
@@ -2361,13 +2461,33 @@ export default function Home() {
               <div className="grid gap-6 xl:grid-cols-2">
                 <Panel title="Call Prep" icon={PhoneCall}>
                   <LeadBrief lead={selectedLead} />
-                  <button
-                    type="button"
-                    onClick={() => generateOutreach("call-prep")}
-                    className="mt-5 rounded-md bg-[#d8ff5f] px-4 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white"
-                  >
-                    Generate Call Prep
-                  </button>
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => generateOutreach("call-prep")}
+                      className="rounded-md bg-[#d8ff5f] px-4 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white"
+                    >
+                      Generate Call Prep
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runBookingAgent(selectedLead, "operator")}
+                      className="rounded-md bg-[#83d0c2] px-4 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white"
+                    >
+                      Run Booking Agent
+                    </button>
+                  </div>
+                  <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">
+                    <h3 className="font-semibold">Booking Payload</h3>
+                    <div className="mt-3 grid gap-2 text-sm text-[#b6c4bf] md:grid-cols-2">
+                      {buildBookingPayload(selectedLead, integrations).map((item) => (
+                        <div key={item.label} className="rounded-md bg-white/[0.04] p-3">
+                          <p className="text-xs uppercase tracking-[0.12em] text-[#8fa09a]">{item.label}</p>
+                          <p className="mt-1 text-white">{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   <div className="mt-5 grid gap-3">
                     {(callPrep
                       ? callPrep.split("\n").filter(Boolean)
@@ -2653,6 +2773,37 @@ function LeadBrief({ lead }: { lead: Lead }) {
   );
 }
 
+function AutomationEventLog({ events }: { events: AutomationEvent[] }) {
+  return (
+    <Panel title="Automation Event Log" icon={Rocket}>
+      <div className="grid gap-3 lg:grid-cols-3">
+        {events.slice(0, 6).map((event) => (
+          <div key={event.id} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="font-semibold text-white">{event.title}</h3>
+              <span
+                className={`rounded-sm px-2 py-1 text-xs font-semibold ${
+                  event.status === "done"
+                    ? "bg-[#d8ff5f] text-[#101417]"
+                    : event.status === "blocked"
+                      ? "bg-[#3a2b2b] text-[#ffc7c7]"
+                      : "bg-[#283239] text-[#d6dfdc]"
+                }`}
+              >
+                {event.status}
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-5 text-[#aebbb7]">{event.detail}</p>
+            <p className="mt-3 text-xs text-[#7f8b86]">
+              {event.createdAt ? new Date(event.createdAt).toLocaleTimeString() : "Session start"}
+            </p>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
 function PipelineCard({
   lead,
   selected,
@@ -2898,20 +3049,20 @@ function buildAutomationLanes(integrations: IntegrationPayload, outreachStatus: 
   return [
     {
       title: "Booking to Calendar",
-      status: "planned",
-      ready: false,
+      status: integrations.calendar?.configured ? "payload ready" : "needs env",
+      ready: Boolean(integrations.calendar?.configured),
       detail: "When a reply is classified as booked, create a calendar event, attach call prep, and move the lead to Call Booked.",
     },
     {
       title: "Zoom Link Generation",
-      status: "planned",
-      ready: false,
+      status: integrations.zoom?.configured || integrations.zoom?.meetingLink === "static" ? "link ready" : "needs env",
+      ready: Boolean(integrations.zoom?.configured || integrations.zoom?.meetingLink === "static"),
       detail: "Generate or attach a meeting link during booking confirmation so every call has one source of truth.",
     },
     {
       title: "Slack Revenue Alerts",
-      status: "planned",
-      ready: false,
+      status: integrations.slack?.configured ? "payload ready" : "needs env",
+      ready: Boolean(integrations.slack?.configured),
       detail: "Notify the operator when a hot reply, booked call, approval failure, or won proposal happens.",
     },
     {
@@ -2926,6 +3077,40 @@ function buildAutomationLanes(integrations: IntegrationPayload, outreachStatus: 
       ready: outreachStatus.telnyxConfigured && outreachStatus.twilioConfigured,
       detail: "Use Telnyx first, then Twilio fallback for SMS after approval.",
     },
+  ];
+}
+
+function buildBookingPrep(lead: Lead) {
+  return [
+    {
+      label: "Opening",
+      detail: `Confirm ${lead.company}'s current lead flow and where missed requests are leaking.`,
+    },
+    {
+      label: "Proof",
+      detail: `Show the Lead Command path: source/import, approve outreach, classify replies, and book calls.`,
+    },
+    {
+      label: "Offer",
+      detail: "Position a 7-day pilot with setup, response desk, and optional recovered-revenue share.",
+    },
+    {
+      label: "Close",
+      detail: "Ask for approval to start with one segment and measure booked calls.",
+    },
+  ];
+}
+
+function buildBookingPayload(lead: Lead, integrations: IntegrationPayload) {
+  const calendarReady = Boolean(integrations.calendar?.configured);
+  const zoomReady = Boolean(integrations.zoom?.configured || integrations.zoom?.meetingLink === "static");
+  return [
+    { label: "Lead", value: `${lead.name} at ${lead.company}` },
+    { label: "Stage", value: lead.stage },
+    { label: "Calendar", value: calendarReady ? `Ready via ${integrations.calendar?.provider}` : "Blocked: calendar env missing" },
+    { label: "Meeting link", value: zoomReady ? "Ready" : "Blocked: Zoom/static meeting URL missing" },
+    { label: "Duration", value: `${integrations.calendar?.defaultDuration || "30"} minutes` },
+    { label: "Owner", value: integrations.calendar?.owner === "configured" ? "Booking owner configured" : "Blocked: BOOKING_OWNER_EMAIL missing" },
   ];
 }
 
