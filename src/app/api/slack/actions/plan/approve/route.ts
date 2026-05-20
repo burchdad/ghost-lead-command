@@ -1,0 +1,32 @@
+import { NextResponse } from "next/server";
+import { approveAgentPlan, type AgentPlan } from "@/lib/autopilot";
+import { isSlackActionAuthorized } from "@/lib/slack";
+
+function planFromUrl(url: URL): AgentPlan {
+  const industries = url.searchParams.getAll("industries").filter(Boolean);
+  const niche = url.searchParams.get("niche") || "Roofing";
+  return {
+    niche,
+    query: url.searchParams.get("query") || `owners and operators of ${niche.toLowerCase()} companies`,
+    location: url.searchParams.get("location") || "United States",
+    industries: industries.length ? industries : [niche],
+    minScore: Number(url.searchParams.get("minScore") || 80),
+    queueLimit: Number(url.searchParams.get("queueLimit") || 5),
+    size: Number(url.searchParams.get("size") || 15),
+    rationale: ["Approved from Slack."],
+    source: "slack-command",
+  };
+}
+
+export async function GET(request: Request) {
+  if (!isSlackActionAuthorized(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const url = new URL(request.url);
+  const result = await approveAgentPlan(planFromUrl(url));
+
+  const destination = new URL("/?view=queue", url.origin);
+  destination.searchParams.set("slackAction", `plan_approved_${result.queued}_queued`);
+  return NextResponse.redirect(destination);
+}

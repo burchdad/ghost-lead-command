@@ -1,4 +1,5 @@
 import type { Lead, OutreachQueueItem } from "@prisma/client";
+import type { AgentPlan } from "@/lib/autopilot";
 
 function clean(value: string | undefined) {
   return value?.trim() || "";
@@ -23,10 +24,24 @@ function actionToken() {
   return clean(process.env.SLACK_ACTION_TOKEN) || clean(process.env.LEAD_COMMAND_ACCESS_KEY);
 }
 
-function actionUrl(itemId: string, action: "approve" | "redo" | "discard") {
+function actionUrl(itemId: string, action: "approve" | "redo" | "discard" | "suppress") {
   const url = new URL(`/api/slack/actions/outreach/${itemId}/${action}`, appBaseUrl());
   const token = actionToken();
   if (token) url.searchParams.set("token", token);
+  return url.toString();
+}
+
+function planActionUrl(action: "approve" | "deny", plan: AgentPlan) {
+  const url = new URL(`/api/slack/actions/plan/${action}`, appBaseUrl());
+  const token = actionToken();
+  if (token) url.searchParams.set("token", token);
+  url.searchParams.set("niche", plan.niche);
+  url.searchParams.set("query", plan.query);
+  url.searchParams.set("location", plan.location);
+  url.searchParams.set("minScore", String(plan.minScore));
+  url.searchParams.set("queueLimit", String(plan.queueLimit));
+  url.searchParams.set("size", String(plan.size));
+  plan.industries.forEach((industry) => url.searchParams.append("industries", industry));
   return url.toString();
 }
 
@@ -50,6 +65,19 @@ export function isSlackActionAuthorized(request: Request) {
   const url = new URL(request.url);
   const token = url.searchParams.get("token") || request.headers.get("x-slack-action-token") || "";
   return token === expected;
+}
+
+export function isSlackCommandAuthorized(form: URLSearchParams, request: Request) {
+  const expected =
+    clean(process.env.SLACK_COMMAND_TOKEN) ||
+    clean(process.env.SLACK_VERIFICATION_TOKEN) ||
+    actionToken();
+  if (!expected) return false;
+
+  const formToken = form.get("token") || "";
+  const headerToken = request.headers.get("x-slack-action-token") || "";
+  const queryToken = new URL(request.url).searchParams.get("token") || "";
+  return [formToken, headerToken, queryToken].includes(expected);
 }
 
 export async function notifySlackOutreachApproval(
@@ -120,6 +148,12 @@ export async function notifySlackOutreachApproval(
             },
             {
               type: "button",
+              text: { type: "plain_text", text: "Suppress", emoji: false },
+              style: "danger",
+              url: actionUrl(item.id, "suppress"),
+            },
+            {
+              type: "button",
               text: { type: "plain_text", text: "Open Queue", emoji: false },
               url: queueUrl,
             },
@@ -133,6 +167,137 @@ export async function notifySlackOutreachApproval(
     configured: true,
     sent: response.ok,
     message: response.ok ? "Slack approval notification sent." : `Slack webhook returned ${response.status}.`,
+  };
+}
+
+export async function notifySlackAgentPlan(plan: AgentPlan) {
+  const webhookUrl = clean(process.env.SLACK_WEBHOOK_URL);
+  if (!webhookUrl) {
+    return { configured: false, sent: false, message: "Missing SLACK_WEBHOOK_URL." };
+  }
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: `Lead Command plan: ${plan.niche}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "Lead Command operator plan", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${plan.niche}*\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | queue ${plan.queueLimit} approvals`,
+          },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: plan.rationale.map((item) => `- ${item}`).join("\n") },
+        },
+        {
+          type: "context",
+          elements: [
+            {
+              type: "mrkdwn",
+              text: "Approve starts PDL sourcing, dedupe, scoring, draft generation, and Slack approval cards.",
+            },
+          ],
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Approve Plan", emoji: false },
+              style: "primary",
+              url: planActionUrl("approve", plan),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Different Plan", emoji: false },
+              url: planActionUrl("deny", plan),
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  return {
+    configured: true,
+    sent: response.ok,
+    message: response.ok ? "Slack agent plan sent." : `Slack webhook returned ${response.status}.`,
+  };
+}
+
+export async function notifySlackDailyDigest(input: {
+  leadsSourced: number;
+  outreachQueued: number;
+  sentOrApproved: number;
+  replies: number;
+  hotReplies: number;
+  pendingApprovals: number;
+  recentEvents: { title: string; detail: string; status: string; lead: string | null }[];
+}) {
+  const webhookUrl = clean(process.env.SLACK_WEBHOOK_URL);
+  if (!webhookUrl) {
+    return { configured: false, sent: false, message: "Missing SLACK_WEBHOOK_URL." };
+  }
+
+  const queueUrl = new URL("/?view=queue", appBaseUrl()).toString();
+  const recentEvents = input.recentEvents.length
+    ? input.recentEvents
+        .slice(0, 5)
+        .map((event) => `- ${event.title}: ${event.lead ? `${event.lead} - ` : ""}${event.detail}`)
+        .join("\n")
+    : "- No major events recorded in the last 24 hours.";
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: "Lead Command daily ops digest",
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "Lead Command daily digest", emoji: false },
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*New leads*\n${input.leadsSourced}` },
+            { type: "mrkdwn", text: `*Queued drafts*\n${input.outreachQueued}` },
+            { type: "mrkdwn", text: `*Approved/sent*\n${input.sentOrApproved}` },
+            { type: "mrkdwn", text: `*Replies*\n${input.replies}` },
+            { type: "mrkdwn", text: `*Hot replies*\n${input.hotReplies}` },
+            { type: "mrkdwn", text: `*Pending approvals*\n${input.pendingApprovals}` },
+          ],
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Recent activity*\n${recentEvents}` },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Queue", emoji: false },
+              url: queueUrl,
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  return {
+    configured: true,
+    sent: response.ok,
+    message: response.ok ? "Slack digest sent." : `Slack webhook returned ${response.status}.`,
   };
 }
 

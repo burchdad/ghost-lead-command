@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { sendAgentPlan } from "@/lib/autopilot";
+import { sendDailyDigest } from "@/lib/autopilot";
 
 function cronAuthorized(request: Request) {
   const secret = (process.env.CRON_SECRET || "").trim();
@@ -12,12 +12,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const url = new URL(request.url);
-  const exclude = [
-    ...url.searchParams.getAll("exclude"),
-    ...(url.searchParams.get("excludeCsv") || "").split(","),
-  ].map((item) => item.trim()).filter(Boolean);
-  const result = await sendAgentPlan({ exclude, source: "daily" });
+  const result = await sendDailyDigest();
   return NextResponse.json(result);
 }
 
@@ -26,8 +21,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await request.json().catch(() => ({}));
-  const exclude = Array.isArray(body.exclude) ? body.exclude.map(String) : [];
-  const result = await sendAgentPlan({ exclude, source: "daily" });
+  const result = await sendDailyDigest();
   return NextResponse.json(result);
 }

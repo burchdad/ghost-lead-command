@@ -8,10 +8,13 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const exclude = url.searchParams.getAll("exclude").filter(Boolean);
-  await sendAgentPlan({ exclude, source: "reroll" });
+  const niche = url.searchParams.get("niche") || "";
+  await sendAgentPlan({
+    exclude: niche ? [niche] : [],
+    source: "reroll",
+  });
 
   const destination = new URL("/?view=readiness", url.origin);
-  destination.searchParams.set("slackAction", "niche_denied_new_option_sent");
+  destination.searchParams.set("slackAction", "plan_rerolled");
   return NextResponse.redirect(destination);
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runLeadCommandAgent } from "@/lib/agent";
+import { approveAgentPlan } from "@/lib/autopilot";
 import { isSlackActionAuthorized } from "@/lib/slack";
 
 export async function GET(request: Request) {
@@ -9,14 +9,17 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const industries = url.searchParams.getAll("industries");
-  const result = await runLeadCommandAgent({
-    provider: "pdl",
-    query: url.searchParams.get("query") || undefined,
-    location: url.searchParams.get("location") || undefined,
-    industries: industries.length ? industries : undefined,
+  const niche = url.searchParams.get("niche") || "Recommended niche";
+  const result = await approveAgentPlan({
+    niche,
+    query: url.searchParams.get("query") || `owners and operators of ${niche.toLowerCase()} companies`,
+    location: url.searchParams.get("location") || "United States",
+    industries: industries.length ? industries : [niche],
     minScore: Number(url.searchParams.get("minScore") || 80),
     queueLimit: Number(url.searchParams.get("queueLimit") || 5),
     size: Number(url.searchParams.get("size") || 15),
+    rationale: ["Approved from Slack niche recommendation."],
+    source: "daily",
   });
 
   const destination = new URL("/?view=queue", url.origin);

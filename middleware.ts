@@ -23,7 +23,9 @@ function isAllowedPath(pathname: string) {
     pathname === "/access" ||
     pathname === "/api/access" ||
     pathname === "/api/access/logout" ||
+    pathname === "/api/agent/digest" ||
     pathname === "/api/agent/recommend" ||
+    pathname === "/api/slack/command" ||
     pathname.startsWith("/api/slack/actions/") ||
     PUBLIC_FILE.test(pathname)
   );
