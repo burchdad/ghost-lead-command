@@ -1136,11 +1136,16 @@ export default function Home() {
     const calls = leads.filter((lead) => lead.stage === "Call Booked").length;
     return { pipeline, won, hot, calls };
   }, [leads]);
+  const dataMode = operationStatus.toLowerCase().includes("database connected")
+    ? "live"
+    : operationStatus.toLowerCase().includes("fallback")
+      ? "demo"
+      : "connecting";
 
   const readinessItems = [
     {
       label: "Database",
-      ok: operationStatus.toLowerCase().includes("database connected") || leads.length > 0,
+      ok: dataMode === "live",
       detail: operationStatus,
     },
     {
@@ -1305,9 +1310,7 @@ export default function Home() {
 
           <div className="space-y-6 px-5 py-6 md:px-8">
             {active !== "queue" && (
-              <div className="rounded-md border border-[#83d0c2]/25 bg-[#83d0c2]/8 px-4 py-3 text-sm text-[#cfe7e0]">
-                {operationStatus}
-              </div>
+              <StatusBanner mode={dataMode} message={operationStatus} />
             )}
 
             {active === "dashboard" && (
@@ -2181,6 +2184,38 @@ function MetricCard({
       </div>
       <p className="font-mono text-3xl font-semibold text-white">{value}</p>
       <p className="mt-2 text-sm text-[#8fa09a]">{detail}</p>
+    </div>
+  );
+}
+
+function StatusBanner({ mode, message }: { mode: "live" | "demo" | "connecting"; message: string }) {
+  const tone = {
+    live: {
+      label: "Live data",
+      className: "border-[#83d0c2]/30 bg-[#83d0c2]/8 text-[#cfe7e0]",
+      dot: "bg-[#d8ff5f]",
+    },
+    demo: {
+      label: "Demo fallback",
+      className: "border-[#d8ff5f]/30 bg-[#d8ff5f]/10 text-[#f0ffd0]",
+      dot: "bg-[#d8ff5f]",
+    },
+    connecting: {
+      label: "Connecting",
+      className: "border-white/15 bg-white/[0.04] text-[#d6dfdc]",
+      dot: "bg-[#83d0c2]",
+    },
+  }[mode];
+
+  return (
+    <div className={`rounded-md border px-4 py-3 text-sm ${tone.className}`}>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="inline-flex items-center gap-2 rounded-sm bg-[#101417]/80 px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em]">
+          <span className={`size-2 rounded-full ${tone.dot}`} />
+          {tone.label}
+        </span>
+        <span className="leading-5">{message}</span>
+      </div>
     </div>
   );
 }
