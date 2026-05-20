@@ -1126,6 +1126,11 @@ export default function Home() {
     if (response.ok) {
       const delivery = payload.delivery;
       const state = delivery?.dryRun ? "queued in dry-run" : delivery?.status || "approved";
+      if (payload.item) {
+        setQueueItems((current) =>
+          current.map((item) => (item.id === payload.item.id ? payload.item : item)),
+        );
+      }
       setOperationStatus(`Approved queue item and ${state}.`);
       addAutomationEvent({
         title: "Approval processed",

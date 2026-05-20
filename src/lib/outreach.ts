@@ -34,17 +34,29 @@ function preferredSmsProvider(): SmsProvider {
   return clean(process.env.SMS_PROVIDER).toLowerCase() === "twilio" ? "twilio" : "telnyx";
 }
 
+function sendgridFromEmail() {
+  return clean(process.env.SENDGRID_FROM_EMAIL) || clean(process.env.SENDGRID_FROM);
+}
+
+function telnyxFromNumber() {
+  return clean(process.env.TELNYX_FROM_NUMBER) || clean(process.env.TELNYX_PHONE_NUMBER);
+}
+
+function twilioFromNumber() {
+  return clean(process.env.TWILIO_FROM_NUMBER) || clean(process.env.TWILIO_PHONE_NUMBER);
+}
+
 export function getOutreachStatus() {
   const sendgridConfigured = Boolean(
-    clean(process.env.SENDGRID_API_KEY) && clean(process.env.SENDGRID_FROM_EMAIL),
+    clean(process.env.SENDGRID_API_KEY) && sendgridFromEmail(),
   );
   const telnyxConfigured = Boolean(
-    clean(process.env.TELNYX_API_KEY) && clean(process.env.TELNYX_FROM_NUMBER),
+    clean(process.env.TELNYX_API_KEY) && telnyxFromNumber(),
   );
   const twilioConfigured = Boolean(
     clean(process.env.TWILIO_ACCOUNT_SID) &&
       clean(process.env.TWILIO_AUTH_TOKEN) &&
-      clean(process.env.TWILIO_FROM_NUMBER),
+      twilioFromNumber(),
   );
 
   return {
@@ -58,7 +70,7 @@ export function getOutreachStatus() {
 
 export async function sendEmail(input: SendEmailInput): Promise<DeliveryResult> {
   const status = getOutreachStatus();
-  const fromEmail = clean(process.env.SENDGRID_FROM_EMAIL);
+  const fromEmail = sendgridFromEmail();
 
   if (status.mode !== "live" || !status.sendgridConfigured) {
     return {
@@ -66,7 +78,9 @@ export async function sendEmail(input: SendEmailInput): Promise<DeliveryResult> 
       provider: "sendgrid",
       channel: "email",
       dryRun: true,
-      message: "Email queued in dry-run mode. Add SendGrid env vars and set OUTREACH_SEND_MODE=live to send.",
+      message: status.sendgridConfigured
+        ? "Email queued in dry-run mode. Set OUTREACH_SEND_MODE=live when you are ready to send."
+        : "Email queued in dry-run mode. Add SendGrid env vars before live sending.",
     };
   }
 
@@ -121,12 +135,14 @@ async function sendTelnyxSms(input: SendSmsInput): Promise<DeliveryResult> {
       provider: "telnyx",
       channel: "sms",
       dryRun: true,
-      message: "SMS queued in dry-run mode. Add Telnyx env vars and set OUTREACH_SEND_MODE=live to send.",
+      message: status.telnyxConfigured
+        ? "SMS queued in dry-run mode. Set OUTREACH_SEND_MODE=live when you are ready to send."
+        : "SMS queued in dry-run mode. Add Telnyx env vars before live sending.",
     };
   }
 
   const payload: Record<string, string> = {
-    from: clean(process.env.TELNYX_FROM_NUMBER),
+    from: telnyxFromNumber(),
     to: input.to,
     text: input.text,
   };
@@ -171,14 +187,16 @@ async function sendTwilioSms(input: SendSmsInput): Promise<DeliveryResult> {
       provider: "twilio",
       channel: "sms",
       dryRun: true,
-      message: "SMS queued in dry-run mode. Add Twilio env vars and set OUTREACH_SEND_MODE=live to send.",
+      message: status.twilioConfigured
+        ? "SMS queued in dry-run mode. Set OUTREACH_SEND_MODE=live when you are ready to send."
+        : "SMS queued in dry-run mode. Add Twilio env vars before live sending.",
     };
   }
 
   const accountSid = clean(process.env.TWILIO_ACCOUNT_SID);
   const token = clean(process.env.TWILIO_AUTH_TOKEN);
   const params = new URLSearchParams({
-    From: clean(process.env.TWILIO_FROM_NUMBER),
+    From: twilioFromNumber(),
     To: input.to,
     Body: input.text,
   });
