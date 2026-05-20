@@ -434,6 +434,9 @@ export default function Home() {
   const [replyDraft, setReplyDraft] = useState("Can you send pricing and a few times this week?");
   const [suppressionValue, setSuppressionValue] = useState("");
   const [generatedOutreach, setGeneratedOutreach] = useState("");
+  const [smsDraft, setSmsDraft] = useState("");
+  const [emailDraft, setEmailDraft] = useState("");
+  const [emailSubjectDraft, setEmailSubjectDraft] = useState("");
   const [replyText, setReplyText] = useState("Sounds interesting. Can you send pricing and maybe book something this week?");
   const [replyClassification, setReplyClassification] = useState("");
   const [proposalSummary, setProposalSummary] = useState("");
@@ -450,6 +453,10 @@ export default function Home() {
     setEditScore(String(lead.score));
     setEditValue(String(lead.value));
     setEditNextAction(lead.next);
+    const copy = buildOutreachCopy(lead);
+    setSmsDraft(copy.sms);
+    setEmailDraft(copy.email);
+    setEmailSubjectDraft(copy.subject);
   }
 
   useEffect(() => {
@@ -1194,9 +1201,10 @@ export default function Home() {
   ];
 
   const outreachCopy = buildOutreachCopy(selectedLead);
-  const smsOpener = outreachCopy.sms;
-  const emailFollowup = outreachCopy.email;
-  const outreachSubject = outreachCopy.subject;
+  const smsOpener = smsDraft || outreachCopy.sms;
+  const emailFollowup = emailDraft || outreachCopy.email;
+  const outreachSubject = emailSubjectDraft || outreachCopy.subject;
+  const outreachAngle = isFreshSourcedLead(selectedLead) ? "Fresh lead" : "Revival";
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -1765,6 +1773,9 @@ export default function Home() {
                     <ProviderPill label="Fallback" value="Twilio" active={outreachStatus.twilioConfigured} />
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="inline-flex items-center rounded-md bg-[#d8ff5f]/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#d8ff5f]">
+                      {outreachAngle}
+                    </span>
                     <button
                       type="button"
                       onClick={() => generateOutreach("outreach")}
@@ -1795,13 +1806,17 @@ export default function Home() {
                     </button>
                   </div>
                   <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                    <CopyBlock
+                    <EditableCopyBlock
                       title="SMS opener"
-                      text={smsOpener}
+                      value={smsOpener}
+                      onChange={setSmsDraft}
                     />
-                    <CopyBlock
+                    <EditableCopyBlock
                       title="Email follow-up"
-                      text={emailFollowup}
+                      value={emailFollowup}
+                      onChange={setEmailDraft}
+                      subject={outreachSubject}
+                      onSubjectChange={setEmailSubjectDraft}
                     />
                   </div>
                   {generatedOutreach && (
@@ -2489,6 +2504,44 @@ function CopyBlock({ title, text }: { title: string; text: string }) {
         <MessageSquareText size={17} className="text-[#83d0c2]" />
       </div>
       <p className="whitespace-pre-line text-sm leading-6 text-[#d6dfdc]">{text}</p>
+    </div>
+  );
+}
+
+function EditableCopyBlock({
+  title,
+  value,
+  onChange,
+  subject,
+  onSubjectChange,
+}: {
+  title: string;
+  value: string;
+  onChange: (value: string) => void;
+  subject?: string;
+  onSubjectChange?: (value: string) => void;
+}) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="font-semibold">{title}</h3>
+        <MessageSquareText size={17} className="text-[#83d0c2]" />
+      </div>
+      {onSubjectChange ? (
+        <label className="mb-3 grid gap-2 text-xs uppercase tracking-[0.12em] text-[#8fa09a]">
+          Subject
+          <input
+            value={subject || ""}
+            onChange={(event) => onSubjectChange(event.target.value)}
+            className="rounded-md border border-white/10 bg-[#101417] px-3 py-2 text-sm normal-case tracking-normal text-white outline-none focus:border-[#83d0c2]"
+          />
+        </label>
+      ) : null}
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="min-h-44 w-full resize-y rounded-md border border-white/10 bg-[#101417] p-3 text-sm leading-6 text-[#d6dfdc] outline-none focus:border-[#83d0c2]"
+      />
     </div>
   );
 }
