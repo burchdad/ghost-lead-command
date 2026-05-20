@@ -440,6 +440,7 @@ export default function Home() {
   const [importPreview, setImportPreview] = useState<ImportPreview[]>([]);
   const [operationStatus, setOperationStatus] = useState("Connecting to Lead Command data...");
   const [actionToast, setActionToast] = useState<ActionToast | null>(null);
+  const [agentBusy, setAgentBusy] = useState(false);
   const [outreachStatus, setOutreachStatus] = useState<OutreachStatus>({
     mode: "dry-run",
     smsProvider: "telnyx",
@@ -1015,6 +1016,54 @@ export default function Home() {
     setSourceResults(payload.qualified || payload.result?.leads || []);
     setSourceStatus(`Campaign found ${payload.qualifiedCount || 0} leads above threshold.`);
     await refreshOpsData();
+  }
+
+  async function runAiOperator() {
+    if (agentBusy) return;
+    setAgentBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: "AI operator running",
+      detail: "Sourcing leads, scoring fit, writing first-touch email, and sending approval cards to Slack.",
+    });
+    setOperationStatus("AI operator is sourcing fresh leads and preparing approval-ready outreach.");
+
+    const response = await fetch("/api/agent/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: sourceProvider,
+        query: sourceQuery,
+        location: sourceLocation,
+        industries: sourceIndustry.split(",").map((item) => item.trim()).filter(Boolean),
+        size: Math.min(15, Math.max(5, Number(sourceLimit || 10))),
+        minScore: Number(sourceMinScore || 80),
+        queueLimit: 5,
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "AI operator blocked",
+        detail: payload.detail || payload.error || "The operator could not complete this run.",
+      });
+      setOperationStatus(payload.detail || payload.error || "AI operator run failed.");
+      setAgentBusy(false);
+      return;
+    }
+
+    setActionToast({
+      phase: "success",
+      title: "AI operator finished",
+      detail: payload.message || `Queued ${payload.queued || 0} approval-ready touches.`,
+    });
+    setOperationStatus(payload.message || "AI operator run finished.");
+    await refreshOpsData();
+    await refreshLeads();
+    setActive("queue");
+    setAgentBusy(false);
   }
 
   async function ensureSelectedLeadRecord() {
@@ -1675,6 +1724,15 @@ export default function Home() {
                 </h2>
               </div>
               <div className="flex gap-2">
+                <button
+                  type="button"
+                  title="Run AI operator"
+                  onClick={runAiOperator}
+                  disabled={agentBusy}
+                  className="grid size-11 place-items-center rounded-md bg-[#83d0c2] text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {agentBusy ? <LoaderCircle className="animate-spin" size={20} /> : <Rocket size={20} />}
+                </button>
                 <button
                   type="button"
                   title="Lock command center"
