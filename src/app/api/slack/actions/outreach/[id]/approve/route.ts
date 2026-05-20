@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { approveOutreachQueueItem } from "@/lib/approval";
 import { isSlackActionAuthorized } from "@/lib/slack";
 
 export async function GET(
@@ -11,13 +12,13 @@ export async function GET(
 
   const { id } = await params;
   const url = new URL(request.url);
-  const response = await fetch(new URL(`/api/outreach/queue/${id}/approve`, url.origin), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source: "slack" }),
-  });
+  const result = await approveOutreachQueueItem(id);
 
   const destination = new URL("/?view=queue", url.origin);
-  destination.searchParams.set("slackAction", response.ok ? "approved" : "approval_failed");
+  const delivery = result.ok ? result.body.delivery : null;
+  destination.searchParams.set(
+    "slackAction",
+    result.ok ? `approved_${delivery?.dryRun ? "queued" : delivery?.status || "sent"}` : "approval_failed",
+  );
   return NextResponse.redirect(destination);
 }
