@@ -4,7 +4,7 @@ import { createAutomationEvent } from "@/lib/automation";
 import { getPrisma } from "@/lib/prisma";
 import { searchFreshLeads, type SourceLead, type SourceProvider } from "@/lib/sourcing";
 import { findSuppressionMatch } from "@/lib/suppression";
-import { notifySlackOutreachApproval } from "@/lib/slack";
+import { notifySlackNicheRecommendation, notifySlackOutreachApproval } from "@/lib/slack";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 type AgentRunInput = {
@@ -17,6 +17,84 @@ type AgentRunInput = {
   minScore?: number;
   queueLimit?: number;
 };
+
+type NicheRecommendation = {
+  niche: string;
+  query: string;
+  location: string;
+  industries: string[];
+  minScore: number;
+  queueLimit: number;
+  rationale: string[];
+};
+
+const nichePlaybook: NicheRecommendation[] = [
+  {
+    niche: "Roofing",
+    query: "owners and operators of roofing companies",
+    location: "United States",
+    industries: ["Roofing", "Construction"],
+    minScore: 82,
+    queueLimit: 5,
+    rationale: [
+      "High-ticket jobs make one recovered estimate request meaningful.",
+      "Missed calls, old forms, and slow follow-up are easy pains to diagnose.",
+      "The offer maps cleanly to an AI follow-up and booked-estimate workflow.",
+    ],
+  },
+  {
+    niche: "HVAC",
+    query: "owners and general managers of HVAC companies",
+    location: "United States",
+    industries: ["HVAC", "Home Services"],
+    minScore: 82,
+    queueLimit: 5,
+    rationale: [
+      "Seasonal demand creates urgency without manufacturing pressure.",
+      "Missed estimate requests and service calls are visible revenue leaks.",
+      "Owners understand speed-to-lead and appointment booking value quickly.",
+    ],
+  },
+  {
+    niche: "Dental",
+    query: "owners and practice managers of dental practices",
+    location: "United States",
+    industries: ["Dental", "Healthcare"],
+    minScore: 80,
+    queueLimit: 5,
+    rationale: [
+      "Patient acquisition economics support automation retainers.",
+      "No-show, recall, and unscheduled treatment follow-up are concrete pains.",
+      "Email-first outreach is safer while SMS compliance is pending.",
+    ],
+  },
+  {
+    niche: "Med Spa",
+    query: "owners and operators of med spas",
+    location: "United States",
+    industries: ["Med Spa", "Wellness"],
+    minScore: 80,
+    queueLimit: 5,
+    rationale: [
+      "Consultation follow-up and old inquiry revival are easy to demonstrate.",
+      "Margins can support setup plus monthly optimization.",
+      "The demo path is visual: inquiry capture, reply classification, booked consults.",
+    ],
+  },
+  {
+    niche: "Auto Detail",
+    query: "owners of auto detail and ceramic coating shops",
+    location: "United States",
+    industries: ["Auto Detail", "Automotive"],
+    minScore: 78,
+    queueLimit: 5,
+    rationale: [
+      "Shops often lose leads in DMs, missed calls, and quote follow-up.",
+      "The offer is simple: recover quote requests and book paid details.",
+      "A smaller-ticket niche gives fast feedback on copy and workflow.",
+    ],
+  },
+];
 
 function clean(value: string | undefined) {
   return value?.trim() || "";
@@ -251,4 +329,27 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         ? `AI operator queued ${queued.length} approval-ready emails.`
         : sourceResult.message || "AI operator did not find new qualified leads to queue.",
   };
+}
+
+export function recommendNiche(input: { exclude?: string[] } = {}) {
+  const excluded = new Set((input.exclude || []).map((item) => item.toLowerCase()));
+  const dayIndex = Math.floor(Date.now() / 86_400_000);
+  const candidates = nichePlaybook.filter((niche) => !excluded.has(niche.niche.toLowerCase()));
+  const pool = candidates.length ? candidates : nichePlaybook;
+  return pool[dayIndex % pool.length];
+}
+
+export async function sendDailyNicheRecommendation(input: { exclude?: string[] } = {}) {
+  const recommendation = recommendNiche(input);
+  const slack = await notifySlackNicheRecommendation(recommendation);
+
+  await createAutomationEvent({
+    title: "Daily niche recommendation",
+    detail: `Recommended ${recommendation.niche} for today's AI operator scan.`,
+    status: slack.sent ? "done" : "blocked",
+    type: "agent",
+    payload: { recommendation, slack },
+  });
+
+  return { recommendation, slack };
 }

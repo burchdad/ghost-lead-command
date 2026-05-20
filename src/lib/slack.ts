@@ -30,6 +30,20 @@ function actionUrl(itemId: string, action: "approve" | "redo" | "discard") {
   return url.toString();
 }
 
+function nicheActionUrl(action: "approve" | "deny", params: Record<string, string | number | string[]>) {
+  const url = new URL(`/api/slack/actions/niche/${action}`, appBaseUrl());
+  const token = actionToken();
+  if (token) url.searchParams.set("token", token);
+  Object.entries(params).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => url.searchParams.append(key, item));
+    } else {
+      url.searchParams.set(key, String(value));
+    }
+  });
+  return url.toString();
+}
+
 export function isSlackActionAuthorized(request: Request) {
   const expected = actionToken();
   if (!expected) return false;
@@ -119,5 +133,85 @@ export async function notifySlackOutreachApproval(
     configured: true,
     sent: response.ok,
     message: response.ok ? "Slack approval notification sent." : `Slack webhook returned ${response.status}.`,
+  };
+}
+
+export async function notifySlackNicheRecommendation(input: {
+  niche: string;
+  query: string;
+  location: string;
+  industries: string[];
+  minScore: number;
+  queueLimit: number;
+  rationale: string[];
+}) {
+  const webhookUrl = clean(process.env.SLACK_WEBHOOK_URL);
+  if (!webhookUrl) {
+    return { configured: false, sent: false, message: "Missing SLACK_WEBHOOK_URL." };
+  }
+
+  const approveUrl = nicheActionUrl("approve", {
+    niche: input.niche,
+    query: input.query,
+    location: input.location,
+    minScore: input.minScore,
+    queueLimit: input.queueLimit,
+    industries: input.industries,
+  });
+  const denyUrl = nicheActionUrl("deny", {
+    exclude: input.niche,
+    location: input.location,
+    minScore: input.minScore,
+    queueLimit: input.queueLimit,
+  });
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: `Daily niche recommendation: ${input.niche}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "Daily Lead Command recommendation", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Recommended niche:* ${input.niche}\n*Query:* ${input.query}\n*Market:* ${input.location}\n*Guardrails:* score ${input.minScore}+ | queue up to ${input.queueLimit} approvals`,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: input.rationale.map((item) => `- ${item}`).join("\n"),
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Approve Scan", emoji: false },
+              style: "primary",
+              url: approveUrl,
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Different Niche", emoji: false },
+              url: denyUrl,
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  return {
+    configured: true,
+    sent: response.ok,
+    message: response.ok ? "Slack niche recommendation sent." : `Slack webhook returned ${response.status}.`,
   };
 }
