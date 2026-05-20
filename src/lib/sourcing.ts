@@ -343,8 +343,12 @@ function scoreLead({
 
 function isSuppressedSourceLead(lead: SourceLead) {
   if (!lead.email && !lead.phone) return true;
+  if (!lead.companyName || lead.companyName === "Unknown Company") return true;
+  if (!lead.name || lead.name === "Unknown Contact") return true;
+  if (!lead.title || lead.title === "Decision maker") return true;
   if (isInstitutionalCompany(lead.companyName)) return true;
   if (isVendorCompany(lead.companyName) || lead.buyerFit === "Vendor risk") return true;
+  if (lead.buyerFit === "Unclear") return true;
   if (lead.score < 60) return true;
   return false;
 }

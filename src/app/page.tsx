@@ -422,9 +422,11 @@ export default function Home() {
   const [sourceLocation, setSourceLocation] = useState("United States");
   const [sourceIndustry, setSourceIndustry] = useState("Dental, HVAC, Roofing, Med Spa");
   const [sourceLimit, setSourceLimit] = useState("25");
+  const [sourceMinScore, setSourceMinScore] = useState("75");
   const [sourceResults, setSourceResults] = useState<SourceLead[]>([]);
   const [sourceStatus, setSourceStatus] = useState("Ready to find fresh contacts.");
   const [sourceScrollToken, setSourceScrollToken] = useState<string | null>(null);
+  const [forceDemoMode, setForceDemoMode] = useState(false);
   const [sourceCampaigns, setSourceCampaigns] = useState<SourceCampaign[]>([]);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [replyItems, setReplyItems] = useState<ReplyItem[]>([]);
@@ -445,6 +447,7 @@ export default function Home() {
   const [replyClassification, setReplyClassification] = useState("");
   const [proposalSummary, setProposalSummary] = useState("");
   const [callPrep, setCallPrep] = useState("");
+  const [sequenceMode, setSequenceMode] = useState<"fresh" | "revival" | "booked">("fresh");
   const [editScore, setEditScore] = useState(String(seedLeads[0].score));
   const [editValue, setEditValue] = useState(String(seedLeads[0].value));
   const [editNextAction, setEditNextAction] = useState(seedLeads[0].next);
@@ -572,7 +575,11 @@ export default function Home() {
     };
   }, []);
 
-  async function refreshLeads() {
+  async function refreshLeads(ignoreDemoGuard = false) {
+    if (forceDemoMode && !ignoreDemoGuard) {
+      setOperationStatus("Demo operating mode active. Live lead refresh is paused.");
+      return;
+    }
     const response = await fetch("/api/leads");
     if (!response.ok) {
       const detail = await readErrorDetail(response, "Unable to refresh live leads.");
@@ -590,6 +597,10 @@ export default function Home() {
   }
 
   async function updateLead(id: string | undefined, updates: Partial<Lead>) {
+    if (forceDemoMode) {
+      setOperationStatus("Demo mode is active. Disable demo mode before changing live lead stages.");
+      return;
+    }
     if (!id) return;
     const response = await fetch(`/api/leads/${encodeURIComponent(id)}`, {
       method: "PATCH",
@@ -708,6 +719,10 @@ export default function Home() {
   }
 
   async function sendOutreach(channel: "sms" | "email", body: string) {
+    if (forceDemoMode) {
+      setOperationStatus("Demo mode is active. Disable demo mode before sending or queueing live outreach.");
+      return;
+    }
     if (!selectedLead.id || !body.trim()) return;
     const response = await fetch("/api/outreach/send", {
       method: "POST",
@@ -763,10 +778,15 @@ export default function Home() {
     }
 
     const payload = await response.json();
-    setSourceResults((current) => (scrollToken ? [...current, ...(payload.leads || [])] : payload.leads || []));
+    const minScore = Number(sourceMinScore || 75);
+    const incoming = ((payload.leads || []) as SourceLead[]).filter(
+      (lead) => isQualitySourceLead(lead) && lead.score >= minScore,
+    );
+    setSourceResults((current) => (scrollToken ? [...current, ...incoming] : incoming));
     setSourceScrollToken(payload.scrollToken || null);
-    const foundCount = payload.leads?.length || 0;
-    const foundMessage = `${foundCount} fresh contacts found${payload.dryRun ? " in mock mode" : ""}${
+    const foundCount = incoming.length;
+    const rejectedCount = Math.max(0, (payload.leads?.length || 0) - incoming.length);
+    const foundMessage = `${foundCount} qualified contacts found${rejectedCount ? `, ${rejectedCount} filtered out` : ""}${payload.dryRun ? " in mock mode" : ""}${
       payload.scrollToken ? ". More available." : "."
     }`;
     setSourceStatus(
@@ -780,11 +800,18 @@ export default function Home() {
       return;
     }
 
+    const minScore = Number(sourceMinScore || 75);
+    const qualifiedResults = sourceResults.filter((lead) => isQualitySourceLead(lead) && lead.score >= minScore);
+    if (!qualifiedResults.length) {
+      setSourceStatus("No contacts passed quality guardrails. Lower the score threshold or refine the search.");
+      return;
+    }
+
     const response = await fetch("/api/import/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        records: sourceResults.map((lead) => ({
+        records: qualifiedResults.map((lead) => ({
           name: lead.name,
           companyName: lead.companyName,
           email: lead.email,
@@ -808,7 +835,7 @@ export default function Home() {
 
     const payload = await response.json();
     setSourceStatus(
-      `Imported ${payload.count || 0} fresh leads into the pipeline. Skipped ${payload.skipped || 0} duplicates.`,
+      `Imported ${payload.count || 0} qualified leads. Skipped ${sourceResults.length - qualifiedResults.length} low-quality records and ${payload.skipped || 0} duplicates.`,
     );
     setOperationStatus(
       `Fresh sourcing added ${payload.count || 0} pipeline leads and skipped ${payload.skipped || 0} duplicates.`,
@@ -817,7 +844,11 @@ export default function Home() {
     await refreshOpsData();
   }
 
-  async function refreshOpsData() {
+  async function refreshOpsData(ignoreDemoGuard = false) {
+    if (forceDemoMode && !ignoreDemoGuard) {
+      setOperationStatus("Demo operating mode active. Live ops refresh is paused.");
+      return;
+    }
     const campaignsResponse = await fetch("/api/source/campaigns");
     const queueResponse = await fetch("/api/outreach/queue");
     const repliesResponse = await fetch("/api/replies");
@@ -849,7 +880,7 @@ export default function Home() {
         industries,
         titles: ["Owner", "Founder", "CEO", "Marketing Director", "Operations Manager"],
         dailyLimit: Number(sourceLimit || 25),
-        scoreThreshold: 70,
+        scoreThreshold: Number(sourceMinScore || 75),
         status: "active",
       }),
     });
@@ -877,6 +908,7 @@ export default function Home() {
   }
 
   async function ensureSelectedLeadRecord() {
+    if (forceDemoMode) return selectedLead;
     if (selectedLead.id) return selectedLead;
 
     const response = await fetch("/api/leads", {
@@ -909,6 +941,14 @@ export default function Home() {
   }
 
   async function queueSelectedLead(channel: "email" | "sms" = "email") {
+    if (forceDemoMode) {
+      setActionToast({
+        phase: "error",
+        title: "Demo mode active",
+        detail: "Disable demo mode before adding live outreach to the approval queue.",
+      });
+      return;
+    }
     setActionToast({
       phase: "loading",
       title: "Adding to approval queue",
@@ -1053,6 +1093,18 @@ export default function Home() {
   }
 
   async function syncSelectedLeadToCrm() {
+    if (forceDemoMode) {
+      setOperationStatus("Demo mode is active. Disable demo mode before syncing to GhostCRM.");
+      return;
+    }
+    if (!integrations.ghostcrm?.configured) {
+      setOperationStatus("GhostCRM sync is not fully configured. Finish endpoint, API key, and organization settings first.");
+      return;
+    }
+    if (!["Replied", "Call Booked", "Proposal Sent", "Won"].includes(selectedLead.stage)) {
+      setOperationStatus("GhostCRM sync held back. Qualify the lead before pushing it into CRM.");
+      return;
+    }
     if (!selectedLead.id) return;
     const response = await fetch("/api/crm/sync", {
       method: "POST",
@@ -1187,18 +1239,29 @@ export default function Home() {
     () => [...leads].sort((a, b) => b.score - a.score || b.value - a.value)[0] || seedLeads[0],
     [leads],
   );
-  const dataMode = operationStatus.toLowerCase().includes("database connected")
+  const dataMode = forceDemoMode
+    ? "demo"
+    : operationStatus.toLowerCase().includes("database connected")
     ? "live"
     : operationStatus.toLowerCase().includes("fallback")
       ? "demo"
       : "connecting";
+  const liveDataReady = dataMode === "live" && !forceDemoMode;
   const nextBestAction = buildNextBestAction(nextBestLead, dataMode === "demo");
+  const sourceGuardrails = [
+    `Score ${Number(sourceMinScore || 75)}+`,
+    "Business email or phone",
+    "Decision-maker role",
+    "No agencies, associations, schools, or obvious vendors",
+  ];
+  const sequenceSteps = buildOutreachSequence(selectedLead, sequenceMode);
+  const automationLanes = buildAutomationLanes(integrations, outreachStatus);
 
   const readinessItems = [
     {
       label: "Database",
-      ok: dataMode === "live",
-      detail: operationStatus,
+      ok: liveDataReady,
+      detail: forceDemoMode ? "Manual demo mode is active. Live writes are paused." : operationStatus,
     },
     {
       label: "People Data Labs",
@@ -1230,8 +1293,20 @@ export default function Home() {
     },
     {
       label: "GhostCRM sync",
-      ok: Boolean(integrations.ghostcrm?.configured),
-      detail: integrations.ghostcrm?.configured ? "GhostCRM endpoint configured." : "GhostCRM sync is not fully configured.",
+      ok: Boolean(integrations.ghostcrm?.configured && integrations.ghostcrm?.organizationId === "configured"),
+      detail: integrations.ghostcrm?.configured
+        ? `Endpoint configured. Organization ${integrations.ghostcrm?.organizationId || "missing"}. Qualified leads only.`
+        : "GhostCRM sync is not fully configured.",
+    },
+    {
+      label: "Calendar and Zoom",
+      ok: false,
+      detail: "Next integration lane: create calendar events with meeting links after booked replies.",
+    },
+    {
+      label: "Slack alerts",
+      ok: false,
+      detail: "Next integration lane: notify when hot replies, bookings, failed sends, and CRM syncs happen.",
     },
     {
       label: "Approval queue",
@@ -1429,6 +1504,44 @@ export default function Home() {
               <StatusBanner mode={dataMode} message={operationStatus} />
             )}
 
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-[#101417] px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-white">
+                  {liveDataReady ? "Live operating mode" : "Protected operating mode"}
+                </p>
+                <p className="mt-1 text-xs text-[#9fb0a8]">
+                  {liveDataReady
+                    ? "Database writes, approvals, CRM sync, and imports are enabled."
+                    : "Live write actions are guarded while demo mode or database issues are active."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForceDemoMode((current) => !current)}
+                  className={`rounded-md px-3 py-2 text-xs font-semibold ${
+                    forceDemoMode
+                      ? "bg-[#d8ff5f] text-[#101417]"
+                      : "bg-white/[0.08] text-[#d6dfdc]"
+                  }`}
+                >
+                  {forceDemoMode ? "Demo Mode On" : "Use Demo Mode"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForceDemoMode(false);
+                    setOperationStatus("Retrying live connection...");
+                    void refreshLeads(true);
+                    void refreshOpsData(true);
+                  }}
+                  className="rounded-md bg-white/[0.08] px-3 py-2 text-xs font-semibold text-[#d6dfdc]"
+                >
+                  Retry Connection
+                </button>
+              </div>
+            </div>
+
             {active === "dashboard" && (
               <>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1544,7 +1657,7 @@ export default function Home() {
                       />
                     </label>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-3">
                       <label className="grid gap-2 text-sm text-[#aebbb7]">
                         Location
                         <input
@@ -1558,6 +1671,15 @@ export default function Home() {
                         <input
                           value={sourceLimit}
                           onChange={(event) => setSourceLimit(event.target.value)}
+                          className="rounded-md border border-white/10 bg-[#101417] px-3 py-2 text-white outline-none focus:border-[#83d0c2]"
+                          inputMode="numeric"
+                        />
+                      </label>
+                      <label className="grid gap-2 text-sm text-[#aebbb7]">
+                        Min score
+                        <input
+                          value={sourceMinScore}
+                          onChange={(event) => setSourceMinScore(event.target.value)}
                           className="rounded-md border border-white/10 bg-[#101417] px-3 py-2 text-white outline-none focus:border-[#83d0c2]"
                           inputMode="numeric"
                         />
@@ -1578,6 +1700,13 @@ export default function Home() {
                       <p className="mt-2">
                         Use PDL to find broad contact volume, then send the best company websites through the Ghost Lead Agent for scoring, AI opportunity, and outreach context.
                       </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {sourceGuardrails.map((guardrail) => (
+                          <span key={guardrail} className="rounded-sm bg-white/[0.06] px-2 py-1 text-xs text-[#d6dfdc]">
+                            {guardrail}
+                          </span>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -1599,6 +1728,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={importSourceResults}
+                        disabled={!liveDataReady}
                         className="rounded-md bg-white/[0.08] px-4 py-2 text-sm font-semibold text-[#d6dfdc] transition hover:bg-white/12"
                       >
                         Import Results
@@ -1922,6 +2052,46 @@ export default function Home() {
                       onSubjectChange={setEmailSubjectDraft}
                     />
                   </div>
+                  <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-semibold">Three-Touch Sequence</h3>
+                        <p className="mt-1 text-sm text-[#9fb0a8]">
+                          Approval-ready touch plan before the lead becomes a booked call.
+                        </p>
+                      </div>
+                      <div className="flex rounded-md border border-white/10 bg-black/20 p-1">
+                        {(["fresh", "revival", "booked"] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setSequenceMode(mode)}
+                            className={`rounded-sm px-3 py-2 text-xs font-semibold capitalize ${
+                              sequenceMode === mode ? "bg-white text-[#101417]" : "text-[#aebbb7]"
+                            }`}
+                          >
+                            {mode}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                      {sequenceSteps.map((step) => (
+                        <div key={step.day} className="rounded-md border border-white/10 bg-white/[0.04] p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="rounded-sm bg-[#d8ff5f]/15 px-2 py-1 text-xs font-semibold text-[#d8ff5f]">
+                              {step.day}
+                            </span>
+                            <span className="text-xs uppercase tracking-[0.12em] text-[#83d0c2]">
+                              {step.channel}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-sm font-semibold text-white">{step.goal}</p>
+                          <p className="mt-2 whitespace-pre-line text-xs leading-5 text-[#b6c4bf]">{step.copy}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   {generatedOutreach && (
                     <div className="mt-4">
                       <CopyBlock title="AI generated copy" text={generatedOutreach} />
@@ -2166,6 +2336,24 @@ export default function Home() {
                     <p className="rounded-md bg-white/[0.04] p-3">Use suppression rules for existing customers, competitors, and bad-fit domains.</p>
                   </div>
                 </Panel>
+
+                <Panel title="Automation Lanes" icon={Rocket}>
+                  <div className="grid gap-3">
+                    {automationLanes.map((lane) => (
+                      <div key={lane.title} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <h3 className="font-semibold">{lane.title}</h3>
+                            <p className="mt-1 text-sm text-[#aebbb7]">{lane.detail}</p>
+                          </div>
+                          <span className={`rounded-sm px-2 py-1 text-xs font-semibold ${lane.ready ? "bg-[#d8ff5f] text-[#101417]" : "bg-[#283239] text-[#d6dfdc]"}`}>
+                            {lane.ready ? "ready" : lane.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
               </div>
             )}
 
@@ -2217,6 +2405,22 @@ export default function Home() {
                     <OfferLine title="AI response desk" price="$1,000/mo" detail="Classify replies, route hot leads, prep calls." />
                     <OfferLine title="Agent demo pack" price="$1,500" detail="Website audit, missed-call bot, and intake assistant." />
                     <OfferLine title="Upside share" price="12%" detail="Optional percentage of recovered revenue." />
+                  </div>
+                  <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">
+                    <h3 className="font-semibold">Next Money-Path Agents</h3>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      {[
+                        ["Booking Agent", "Turns booked replies into calendar holds, Zoom links, reminders, and prep notes."],
+                        ["Slack Ops Agent", "Posts hot replies, booking alerts, failed sends, and proposal-ready updates."],
+                        ["Retention Agent", "After close, tracks install milestones, client check-ins, and expansion offers."],
+                        ["Rev Share Tracker", "Connects won/recovered revenue back to campaign source and offer path."],
+                      ].map(([title, detail]) => (
+                        <div key={title} className="rounded-md bg-white/[0.04] p-3">
+                          <p className="font-semibold text-white">{title}</p>
+                          <p className="mt-1 text-xs leading-5 text-[#aebbb7]">{detail}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   {proposalSummary && (
                     <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">
@@ -2609,6 +2813,120 @@ function CopyBlock({ title, text }: { title: string; text: string }) {
       <p className="whitespace-pre-line text-sm leading-6 text-[#d6dfdc]">{text}</p>
     </div>
   );
+}
+
+function isQualitySourceLead(lead: SourceLead) {
+  const hasContact = Boolean(lead.email || lead.phone);
+  const fit = lead.buyerFit.toLowerCase();
+  const company = lead.companyName.toLowerCase();
+  const badCompany = ["association", "university", "school", "marketing", "agency", "consulting", "media"].some((term) =>
+    company.includes(term),
+  );
+  return hasContact && lead.score >= 70 && !fit.includes("risk") && !badCompany;
+}
+
+function buildOutreachSequence(lead: Lead, mode: "fresh" | "revival" | "booked") {
+  const firstName = lead.name.split(" ")[0] || "there";
+  const niche = lead.niche.toLowerCase();
+  if (mode === "booked") {
+    return [
+      {
+        day: "Now",
+        channel: "Email",
+        goal: "Confirm the call",
+        copy: `${firstName}, confirming the call. I will bring a simple workflow map for where ${lead.company} can recover missed leads and speed up follow-up.`,
+      },
+      {
+        day: "T-2h",
+        channel: "SMS",
+        goal: "Reduce no-show risk",
+        copy: `Quick reminder for our call today. I will keep it tight: current lead flow, missed revenue, and the fastest automation install.`,
+      },
+      {
+        day: "After",
+        channel: "Email",
+        goal: "Send proposal path",
+        copy: `Good talking. Here is the simple path: install the follow-up workflow, classify replies, book the interested ones, then optimize weekly.`,
+      },
+    ];
+  }
+  if (mode === "revival") {
+    return [
+      {
+        day: "Day 0",
+        channel: "SMS",
+        goal: "Reopen old demand",
+        copy: `Hey ${firstName}, are you still trying to convert the older ${niche} leads sitting in ${lead.company}'s pipeline?`,
+      },
+      {
+        day: "Day 2",
+        channel: "Email",
+        goal: "Show ROI angle",
+        copy: `I built a dead-lead workflow that writes follow-up, classifies replies, and books interested contacts. Worth seeing against your old list?`,
+      },
+      {
+        day: "Day 5",
+        channel: "SMS",
+        goal: "Book the audit",
+        copy: `Want me to show the 15-minute version? If there is no recovered revenue path, we skip it.`,
+      },
+    ];
+  }
+  return [
+    {
+      day: "Day 0",
+      channel: "Email",
+      goal: "Open with missed lead flow",
+      copy: `${firstName}, quick idea for ${lead.company}: catch missed estimate requests, old form fills, and unworked calls with AI follow-up.`,
+    },
+    {
+      day: "Day 2",
+      channel: "SMS",
+      goal: "Human nudge",
+      copy: `Worth a quick look if I showed how this would work against your current ${niche} lead flow?`,
+    },
+    {
+      day: "Day 6",
+      channel: "Email",
+      goal: "Offer proof/demo",
+      copy: `I can show the actual board: source, approve, send, classify replies, and push booked calls into the sales path.`,
+    },
+  ];
+}
+
+function buildAutomationLanes(integrations: IntegrationPayload, outreachStatus: OutreachStatus) {
+  return [
+    {
+      title: "Booking to Calendar",
+      status: "planned",
+      ready: false,
+      detail: "When a reply is classified as booked, create a calendar event, attach call prep, and move the lead to Call Booked.",
+    },
+    {
+      title: "Zoom Link Generation",
+      status: "planned",
+      ready: false,
+      detail: "Generate or attach a meeting link during booking confirmation so every call has one source of truth.",
+    },
+    {
+      title: "Slack Revenue Alerts",
+      status: "planned",
+      ready: false,
+      detail: "Notify the operator when a hot reply, booked call, approval failure, or won proposal happens.",
+    },
+    {
+      title: "GhostCRM Qualified Sync",
+      status: integrations.ghostcrm?.configured ? "guarded" : "needs env",
+      ready: Boolean(integrations.ghostcrm?.configured),
+      detail: "Only push qualified, replied, booked, proposal, or won records into GhostCRM.",
+    },
+    {
+      title: "Provider Failover",
+      status: outreachStatus.telnyxConfigured || outreachStatus.twilioConfigured ? "partial" : "needs env",
+      ready: outreachStatus.telnyxConfigured && outreachStatus.twilioConfigured,
+      detail: "Use Telnyx first, then Twilio fallback for SMS after approval.",
+    },
+  ];
 }
 
 function EditableCopyBlock({
