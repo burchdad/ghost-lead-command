@@ -437,6 +437,10 @@ export default function Home() {
   const [smsDraft, setSmsDraft] = useState("");
   const [emailDraft, setEmailDraft] = useState("");
   const [emailSubjectDraft, setEmailSubjectDraft] = useState("");
+  const [approvalItem, setApprovalItem] = useState<QueueItem | null>(null);
+  const [approvalSubject, setApprovalSubject] = useState("");
+  const [approvalBody, setApprovalBody] = useState("");
+  const [approvalBusy, setApprovalBusy] = useState(false);
   const [replyText, setReplyText] = useState("Sounds interesting. Can you send pricing and maybe book something this week?");
   const [replyClassification, setReplyClassification] = useState("");
   const [proposalSummary, setProposalSummary] = useState("");
@@ -954,13 +958,49 @@ export default function Home() {
     }
   }
 
-  async function approveQueueItem(id: string) {
-    const response = await fetch(`/api/outreach/queue/${encodeURIComponent(id)}/approve`, {
+  function openApprovalReview(item: QueueItem) {
+    setApprovalItem(item);
+    setApprovalSubject(item.subject || "");
+    setApprovalBody(item.body);
+  }
+
+  async function approveQueueItem() {
+    if (!approvalItem) return;
+    setApprovalBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: outreachStatus.mode === "dry-run" ? "Approving dry-run" : "Sending outreach",
+      detail: `${approvalItem.lead?.company || approvalItem.lead?.companyName || "Queued outreach"} is being processed.`,
+    });
+    const response = await fetch(`/api/outreach/queue/${encodeURIComponent(approvalItem.id)}/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        subject: approvalSubject,
+        body: approvalBody,
+      }),
     });
-    setOperationStatus(response.ok ? "Approved queue item." : "Approval failed.");
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok) {
+      const delivery = payload.delivery;
+      const state = delivery?.dryRun ? "queued in dry-run" : delivery?.status || "approved";
+      setOperationStatus(`Approved queue item and ${state}.`);
+      setActionToast({
+        phase: "success",
+        title: delivery?.dryRun ? "Approved and queued" : "Approved",
+        detail: delivery?.message || "Timeline updated for this lead.",
+      });
+      setApprovalItem(null);
+      window.setTimeout(() => setActionToast(null), 2400);
+    } else {
+      setOperationStatus("Approval failed.");
+      setActionToast({
+        phase: "error",
+        title: "Approval blocked",
+        detail: payload.error || "The queue item could not be approved.",
+      });
+    }
+    setApprovalBusy(false);
     await refreshOpsData();
     await refreshLeads();
   }
@@ -1316,6 +1356,69 @@ export default function Home() {
                 <div>
                   <p className="font-semibold text-white">{actionToast.title}</p>
                   <p className="mt-1 leading-5 text-[#aebbb7]">{actionToast.detail}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {approvalItem && (
+            <div className="fixed inset-0 z-40 grid place-items-center bg-black/70 px-4 py-6">
+              <div className="w-full max-w-2xl rounded-md border border-white/10 bg-[#111815] p-5 text-[#d6dfdc] shadow-2xl shadow-black/50">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.14em] text-[#83d0c2]">
+                      Final approval
+                    </p>
+                    <h2 className="mt-2 text-xl font-semibold text-white">
+                      {approvalItem.lead?.company || approvalItem.lead?.companyName || "Queued outreach"}
+                    </h2>
+                    <p className="mt-1 text-sm text-[#9fb0a8]">
+                      {approvalItem.channel}:{approvalItem.provider} - {outreachStatus.mode === "dry-run" ? "dry-run queue" : "live send"}
+                    </p>
+                  </div>
+                  <span className="rounded-md bg-[#d8ff5f]/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#d8ff5f]">
+                    {outreachStatus.mode === "dry-run" ? "Safe approval" : "Live send"}
+                  </span>
+                </div>
+
+                {approvalItem.channel === "email" && (
+                  <label className="mt-5 grid gap-2 text-xs uppercase tracking-[0.12em] text-[#8fa09a]">
+                    Subject
+                    <input
+                      value={approvalSubject}
+                      onChange={(event) => setApprovalSubject(event.target.value)}
+                      className="rounded-md border border-white/10 bg-[#101417] px-3 py-2 text-sm normal-case tracking-normal text-white outline-none focus:border-[#83d0c2]"
+                    />
+                  </label>
+                )}
+
+                <label className="mt-4 grid gap-2 text-xs uppercase tracking-[0.12em] text-[#8fa09a]">
+                  Message
+                  <textarea
+                    value={approvalBody}
+                    onChange={(event) => setApprovalBody(event.target.value)}
+                    className="min-h-52 resize-y rounded-md border border-white/10 bg-[#101417] p-3 text-sm leading-6 text-[#d6dfdc] outline-none focus:border-[#83d0c2]"
+                  />
+                </label>
+
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setApprovalItem(null)}
+                    disabled={approvalBusy}
+                    className="rounded-md bg-white/[0.08] px-4 py-2 text-sm font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={approveQueueItem}
+                    disabled={approvalBusy || !approvalBody.trim()}
+                    className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-4 py-2 text-sm font-semibold text-[#101417] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {approvalBusy && <LoaderCircle className="animate-spin" size={16} />}
+                    {outreachStatus.mode === "dry-run" ? "Approve Dry-Run" : "Approve & Send"}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1884,10 +1987,10 @@ export default function Home() {
                               <div className="flex shrink-0 gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => approveQueueItem(item.id)}
+                                  onClick={() => openApprovalReview(item)}
                                   className="rounded-md bg-[#d8ff5f] px-3 py-2 text-xs font-semibold text-[#101417]"
                                 >
-                                  Approve
+                                  Review
                                 </button>
                                 <button
                                   type="button"
