@@ -5,11 +5,54 @@ function clean(value: string | undefined) {
 }
 
 export function getGhostCrmStatus() {
+  const syncUrl = clean(process.env.GHOSTCRM_SYNC_URL);
+  const apiKey = clean(process.env.GHOSTCRM_API_KEY);
+  const organizationId = clean(process.env.GHOSTCRM_ORGANIZATION_ID);
+
   return {
-    configured: Boolean(clean(process.env.GHOSTCRM_SYNC_URL) && clean(process.env.GHOSTCRM_API_KEY)),
-    syncUrl: clean(process.env.GHOSTCRM_SYNC_URL) ? "configured" : "missing",
-    organizationId: clean(process.env.GHOSTCRM_ORGANIZATION_ID) ? "configured" : "missing",
+    configured: Boolean(syncUrl && apiKey),
+    syncUrl: syncUrl ? "configured" : "missing",
+    apiKey: apiKey ? "configured" : "missing",
+    organizationId: organizationId ? "configured" : "api-key-default",
   };
+}
+
+export async function getGhostCrmHealth() {
+  const status = getGhostCrmStatus();
+  const syncUrl = clean(process.env.GHOSTCRM_SYNC_URL);
+
+  if (!status.configured || !syncUrl) {
+    return {
+      ...status,
+      reachable: false,
+      detail: "Missing GhostCRM sync URL or API key.",
+    };
+  }
+
+  try {
+    const healthUrl = deriveHealthUrl(syncUrl);
+    const response = await fetch(healthUrl, { cache: "no-store" });
+
+    return {
+      ...status,
+      reachable: response.ok,
+      detail: response.ok ? "Reachable" : `Health returned ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      ...status,
+      reachable: false,
+      detail: error instanceof Error ? error.message : "Health check failed",
+    };
+  }
+}
+
+function deriveHealthUrl(syncUrl: string) {
+  const url = new URL(syncUrl);
+  url.pathname = "/health";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
 
 export function mapLeadToGhostCrm(lead: Lead & { contact?: { email?: string | null; phone?: string | null } | null }) {

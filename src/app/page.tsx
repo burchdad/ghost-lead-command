@@ -1259,7 +1259,11 @@ export default function Home() {
       return;
     }
     if (!integrations.ghostcrm?.configured) {
-      setOperationStatus("GhostCRM sync is not fully configured. Finish endpoint, API key, and organization settings first.");
+      setOperationStatus("GhostCRM sync is not fully configured. Finish the endpoint and API key first.");
+      return;
+    }
+    if (integrations.ghostcrm?.reachable === false) {
+      setOperationStatus(`GhostCRM sync is not reachable yet. ${integrations.ghostcrm.detail || "Check the GhostCRM backend."}`);
       return;
     }
     if (!["Replied", "Call Booked", "Proposal Sent", "Won"].includes(selectedLead.stage)) {
@@ -1555,10 +1559,10 @@ export default function Home() {
     },
     {
       label: "GhostCRM sync",
-      ok: Boolean(integrations.ghostcrm?.configured && integrations.ghostcrm?.organizationId === "configured"),
+      ok: Boolean(integrations.ghostcrm?.configured && integrations.ghostcrm?.reachable !== false),
       detail: integrations.ghostcrm?.configured
-        ? `Endpoint configured. Organization ${integrations.ghostcrm?.organizationId || "missing"}. Qualified leads only.`
-        : "GhostCRM sync is not fully configured.",
+        ? `Endpoint and API key configured. Organization ${integrations.ghostcrm?.organizationId || "api-key-default"}. ${integrations.ghostcrm?.detail || "Qualified leads only."}`
+        : "GhostCRM sync needs endpoint and API key configuration.",
     },
     {
       label: "Calendar and Zoom",

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getGhostCrmStatus } from "@/lib/ghostcrm";
+import { getGhostCrmHealth } from "@/lib/ghostcrm";
 import { getOutreachStatus, getTwilioReadiness } from "@/lib/outreach";
 import { getSourcingStatus } from "@/lib/sourcing";
 
@@ -37,7 +37,7 @@ export async function GET() {
     sendgrid: { configured: outreach.sendgridConfigured, mode: outreach.mode },
     telnyx: { configured: outreach.telnyxConfigured, preferred: outreach.smsProvider === "telnyx" },
     twilio: getTwilioReadiness(),
-    ghostcrm: getGhostCrmStatus(),
+    ghostcrm: await getGhostCrmHealth(),
     calendar: {
       configured: Boolean(process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.OUTLOOK_CLIENT_ID),
       provider: process.env.GOOGLE_CALENDAR_CLIENT_ID ? "google" : process.env.OUTLOOK_CLIENT_ID ? "outlook" : "missing",
