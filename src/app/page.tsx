@@ -191,7 +191,35 @@ type AutomationEvent = {
   title: string;
   detail: string;
   status: "done" | "blocked" | "planned";
+  type?: string;
   createdAt: string;
+};
+
+type BookingTask = {
+  id: string;
+  status: string;
+  meetingTitle: string;
+  meetingLink?: string | null;
+  calendarProvider?: string | null;
+  ownerEmail?: string | null;
+  durationMinutes: number;
+  scheduledFor?: string | null;
+  prepNotes: string;
+  createdAt: string;
+  lead?: Lead | null;
+};
+
+type SequenceQueueStep = {
+  id: string;
+  stepNumber: number;
+  dayOffset: number;
+  channel: string;
+  provider?: string | null;
+  subject?: string | null;
+  body: string;
+  status: string;
+  createdAt: string;
+  lead?: Lead | null;
 };
 
 const seedLeads: Lead[] = [
@@ -465,6 +493,8 @@ export default function Home() {
       createdAt: "",
     },
   ]);
+  const [bookingTasks, setBookingTasks] = useState<BookingTask[]>([]);
+  const [sequenceQueue, setSequenceQueue] = useState<SequenceQueueStep[]>([]);
   const [editScore, setEditScore] = useState(String(seedLeads[0].score));
   const [editValue, setEditValue] = useState(String(seedLeads[0].value));
   const [editNextAction, setEditNextAction] = useState(seedLeads[0].next);
@@ -484,14 +514,26 @@ export default function Home() {
   }
 
   function addAutomationEvent(event: Omit<AutomationEvent, "id" | "createdAt">) {
+    const createdAt = new Date().toISOString();
     setAutomationEvents((current) => [
       {
         ...event,
         id: `${Date.now()}-${event.title}`,
-        createdAt: new Date().toISOString(),
+        createdAt,
       },
       ...current,
     ].slice(0, 12));
+    void fetch("/api/automation/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: event.title,
+        detail: event.detail,
+        status: event.status,
+        type: event.type || "ui",
+        leadId: selectedLead.id,
+      }),
+    }).catch(() => undefined);
   }
 
   useEffect(() => {
@@ -509,6 +551,9 @@ export default function Home() {
         const repliesResponse = await fetch("/api/replies");
         const suppressionResponse = await fetch("/api/suppression");
         const analyticsResponse = await fetch("/api/analytics");
+        const eventsResponse = await fetch("/api/automation/events");
+        const bookingResponse = await fetch("/api/automation/booking");
+        const sequenceResponse = await fetch("/api/automation/sequence");
 
         if (!cancelled && leadsResponse.ok) {
           const payload = await leadsResponse.json();
@@ -583,6 +628,21 @@ export default function Home() {
 
         if (!cancelled && analyticsResponse.ok) {
           setAnalytics(await analyticsResponse.json());
+        }
+
+        if (!cancelled && eventsResponse.ok) {
+          const payload = await eventsResponse.json();
+          if (payload.events?.length) setAutomationEvents(payload.events);
+        }
+
+        if (!cancelled && bookingResponse.ok) {
+          const payload = await bookingResponse.json();
+          setBookingTasks(payload.tasks || []);
+        }
+
+        if (!cancelled && sequenceResponse.ok) {
+          const payload = await sequenceResponse.json();
+          setSequenceQueue(payload.steps || []);
         }
 
         if (!cancelled && integrationsResponse.ok) {
@@ -883,6 +943,9 @@ export default function Home() {
     const suppressionResponse = await fetch("/api/suppression");
     const analyticsResponse = await fetch("/api/analytics");
     const integrationsResponse = await fetch("/api/health/integrations");
+    const eventsResponse = await fetch("/api/automation/events");
+    const bookingResponse = await fetch("/api/automation/booking");
+    const sequenceResponse = await fetch("/api/automation/sequence");
 
     if (campaignsResponse.ok) setSourceCampaigns((await campaignsResponse.json()).campaigns || []);
     if (queueResponse.ok) setQueueItems((await queueResponse.json()).items || []);
@@ -890,6 +953,12 @@ export default function Home() {
     if (suppressionResponse.ok) setSuppressionItems((await suppressionResponse.json()).records || []);
     if (analyticsResponse.ok) setAnalytics(await analyticsResponse.json());
     if (integrationsResponse.ok) setIntegrations(await integrationsResponse.json());
+    if (eventsResponse.ok) {
+      const payload = await eventsResponse.json();
+      if (payload.events?.length) setAutomationEvents(payload.events);
+    }
+    if (bookingResponse.ok) setBookingTasks(((await bookingResponse.json()).tasks || []));
+    if (sequenceResponse.ok) setSequenceQueue(((await sequenceResponse.json()).steps || []));
   }
 
   async function saveSourceCampaign() {
@@ -1288,8 +1357,66 @@ export default function Home() {
       title: "Slack booking alert blocked",
       detail: "Slack webhook/channel config is not connected yet.",
       status: "blocked",
+      type: "slack",
     });
+    if (lead.id && !forceDemoMode) {
+      const response = await fetch("/api/automation/booking", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId: lead.id,
+          meetingTitle: `Discovery call: ${lead.company}`,
+          prepNotes: prep.map((item) => item.detail).join("\n"),
+        }),
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        setBookingTasks((current) => [payload.task, ...current].slice(0, 12));
+      }
+    }
     setOperationStatus(`Booking Agent prepared call workflow for ${lead.company}.`);
+  }
+
+  async function draftSequenceQueue() {
+    if (!selectedLead.id || forceDemoMode) {
+      addAutomationEvent({
+        title: "Sequence draft blocked",
+        detail: forceDemoMode ? "Disable demo mode before saving live sequence steps." : "Save the lead before drafting sequence steps.",
+        status: "blocked",
+        type: "sequence",
+      });
+      return;
+    }
+    const steps = sequenceSteps.map((step, index) => ({
+      stepNumber: index + 1,
+      dayOffset: parseSequenceDay(step.day),
+      channel: step.channel,
+      provider: step.channel.toLowerCase() === "sms" ? outreachStatus.smsProvider : "sendgrid",
+      subject: step.channel.toLowerCase() === "email" ? `${selectedLead.company} follow-up` : undefined,
+      body: step.copy,
+    }));
+    const response = await fetch("/api/automation/sequence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ leadId: selectedLead.id, steps }),
+    });
+    if (response.ok) {
+      const payload = await response.json();
+      setSequenceQueue((current) => [...(payload.steps || []), ...current].slice(0, 20));
+      addAutomationEvent({
+        title: "Sequence drafted",
+        detail: `${steps.length} approval-ready touches saved for ${selectedLead.company}.`,
+        status: "done",
+        type: "sequence",
+      });
+    } else {
+      addAutomationEvent({
+        title: "Sequence draft failed",
+        detail: "The sequence could not be saved. Check schema/database readiness.",
+        status: "blocked",
+        type: "sequence",
+      });
+    }
   }
 
   async function createProposalFromLead() {
@@ -2191,6 +2318,13 @@ export default function Home() {
                         </div>
                       ))}
                     </div>
+                    <button
+                      type="button"
+                      onClick={draftSequenceQueue}
+                      className="mt-4 rounded-md bg-[#83d0c2] px-4 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white"
+                    >
+                      Save Sequence Steps
+                    </button>
                   </div>
                   {generatedOutreach && (
                     <div className="mt-4">
@@ -2488,6 +2622,25 @@ export default function Home() {
                       ))}
                     </div>
                   </div>
+                  <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">
+                    <h3 className="font-semibold">Booking Tasks</h3>
+                    <div className="mt-3 space-y-2">
+                      {bookingTasks.slice(0, 4).map((task) => (
+                        <div key={task.id} className="rounded-md bg-white/[0.04] p-3 text-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-white">{task.meetingTitle}</p>
+                              <p className="mt-1 text-[#9fb0a8]">{task.ownerEmail || "owner missing"} - {task.durationMinutes} min</p>
+                            </div>
+                            <span className="rounded-sm bg-[#283239] px-2 py-1 text-xs text-[#d6dfdc]">{task.status}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {!bookingTasks.length && (
+                        <p className="text-sm text-[#9fb0a8]">Booking tasks will appear after the Booking Agent runs.</p>
+                      )}
+                    </div>
+                  </div>
                   <div className="mt-5 grid gap-3">
                     {(callPrep
                       ? callPrep.split("\n").filter(Boolean)
@@ -2571,6 +2724,28 @@ export default function Home() {
                     <p className="mt-2 font-mono text-2xl text-[#d8ff5f]">
                       {replyClassification || "waiting"}
                     </p>
+                  </div>
+                </Panel>
+                <Panel title="Sequence Queue" icon={ClipboardList}>
+                  <div className="space-y-2">
+                    {sequenceQueue.slice(0, 6).map((step) => (
+                      <div key={step.id} className="rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-white">
+                              Step {step.stepNumber}: {step.channel}
+                            </p>
+                            <p className="mt-1 line-clamp-2 text-[#aebbb7]">{step.body}</p>
+                          </div>
+                          <span className="rounded-sm bg-[#283239] px-2 py-1 text-xs text-[#d6dfdc]">{step.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {!sequenceQueue.length && (
+                      <p className="rounded-md border border-dashed border-white/15 bg-white/[0.03] p-6 text-sm text-[#9fb0a8]">
+                        Saved outreach sequence steps will appear here before they are approved or scheduled.
+                      </p>
+                    )}
                   </div>
                 </Panel>
               </div>
@@ -3112,6 +3287,13 @@ function buildBookingPayload(lead: Lead, integrations: IntegrationPayload) {
     { label: "Duration", value: `${integrations.calendar?.defaultDuration || "30"} minutes` },
     { label: "Owner", value: integrations.calendar?.owner === "configured" ? "Booking owner configured" : "Blocked: BOOKING_OWNER_EMAIL missing" },
   ];
+}
+
+function parseSequenceDay(day: string) {
+  const lower = day.toLowerCase();
+  if (lower.includes("t-") || lower.includes("now")) return 0;
+  const match = lower.match(/\d+/);
+  return match ? Number(match[0]) : 0;
 }
 
 function EditableCopyBlock({

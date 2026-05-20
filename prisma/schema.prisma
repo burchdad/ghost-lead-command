@@ -25,6 +25,9 @@ model Workspace {
   proposals   Proposal[]
   agents      AgentTemplate[]
   prompts     PromptTemplate[]
+  automationEvents AutomationEvent[]
+  bookingTasks BookingTask[]
+  sequenceSteps SequenceStep[]
 }
 
 model Company {
@@ -87,6 +90,9 @@ model Lead {
   interactions Interaction[]
   outreachQueue OutreachQueueItem[]
   replies      Reply[]
+  automationEvents AutomationEvent[]
+  bookingTasks BookingTask[]
+  sequenceSteps SequenceStep[]
 
   @@index([workspaceId])
   @@index([stage])
@@ -291,4 +297,69 @@ model PromptTemplate {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+}
+
+model AutomationEvent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  leadId      String?
+  title       String
+  detail      String
+  status      String
+  type        String   @default("system")
+  payload     Json?
+  createdAt   DateTime @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([leadId])
+  @@index([status])
+  @@index([type])
+}
+
+model BookingTask {
+  id          String   @id @default(cuid())
+  workspaceId String
+  leadId      String?
+  ownerEmail  String?
+  status      String   @default("blocked")
+  meetingTitle String
+  meetingLink String?
+  calendarProvider String?
+  durationMinutes Int @default(30)
+  scheduledFor DateTime?
+  prepNotes   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([leadId])
+  @@index([status])
+}
+
+model SequenceStep {
+  id          String   @id @default(cuid())
+  workspaceId String
+  leadId      String?
+  stepNumber  Int
+  dayOffset   Int
+  channel     String
+  provider    String?
+  subject     String?
+  body        String
+  status      String   @default("draft")
+  scheduledFor DateTime?
+  approvedAt  DateTime?
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([leadId])
+  @@index([status])
 }
