@@ -1572,39 +1572,41 @@ export default function Home() {
               <div className="grid gap-6 2xl:grid-cols-[1fr_420px]">
                 <Panel title="Lead Pipeline" icon={Layers3}>
                   <div className="grid gap-4 xl:grid-cols-6">
-                    {stages.map((stage) => (
-                      <div key={stage} className="rounded-md border border-white/10 bg-white/[0.03] p-3">
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">{stage}</h3>
-                          <span className="font-mono text-xs text-[#9fb0a8]">
-                            {leads.filter((lead) => lead.stage === stage).length}
-                          </span>
+                    {stages.map((stage) => {
+                      const stageLeads = leads.filter((lead) => lead.stage === stage);
+                      const stageValue = stageLeads.reduce((sum, lead) => sum + lead.value, 0);
+                      return (
+                        <div key={stage} className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+                          <div className="mb-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <h3 className="text-sm font-semibold">{stage}</h3>
+                              <span className="font-mono text-xs text-[#d8ff5f]">{stageLeads.length}</span>
+                            </div>
+                            <p className="mt-1 font-mono text-xs text-[#9fb0a8]">{money(stageValue)}</p>
+                          </div>
+                          <div className="space-y-3">
+                            {stageLeads.length ? (
+                              stageLeads.map((lead) => (
+                                <PipelineCard
+                                  key={lead.id || lead.company}
+                                  lead={lead}
+                                  selected={selectedLead.id === lead.id || selectedLead.company === lead.company}
+                                  onSelect={() => selectLead(lead)}
+                                  onAction={() => {
+                                    selectLead(lead);
+                                    setActive(lead.stage === "Call Booked" || lead.stage === "Proposal Sent" ? "proposal" : "outreach");
+                                  }}
+                                />
+                              ))
+                            ) : (
+                              <div className="rounded-md border border-dashed border-white/10 bg-[#101417] p-4 text-xs leading-5 text-[#7f8b86]">
+                                No leads here yet.
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="space-y-3">
-                          {leads
-                            .filter((lead) => lead.stage === stage)
-                            .map((lead) => (
-                              <button
-                                key={lead.id || lead.company}
-                                type="button"
-                                onClick={() => selectLead(lead)}
-                                className={`w-full rounded-md border p-3 text-left transition ${
-                                  selectedLead.id === lead.id
-                                    ? "border-[#d8ff5f] bg-[#d8ff5f]/10"
-                                    : "border-white/10 bg-[#151a1e] hover:border-[#83d0c2]"
-                                }`}
-                              >
-                                <p className="font-medium">{lead.company}</p>
-                                <p className="mt-1 text-xs text-[#9fb0a8]">{lead.niche}</p>
-                                <div className="mt-3 flex items-center justify-between text-xs">
-                                  <span className="font-mono text-[#d8ff5f]">{lead.score}</span>
-                                  <span>{money(lead.value)}</span>
-                                </div>
-                              </button>
-                            ))}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </Panel>
                 <LeadDetailPanel
@@ -2325,6 +2327,51 @@ function LeadBrief({ lead }: { lead: Lead }) {
         </p>
       ) : null}
       <p className="mt-4 text-sm text-[#d6dfdc]">{lead.next}</p>
+    </div>
+  );
+}
+
+function PipelineCard({
+  lead,
+  selected,
+  onSelect,
+  onAction,
+}: {
+  lead: Lead;
+  selected: boolean;
+  onSelect: () => void;
+  onAction: () => void;
+}) {
+  const action = lead.stage === "Call Booked" || lead.stage === "Proposal Sent" ? "Prep" : "Work";
+  const fit = lead.next.match(/Buyer fit: ([^.]+)/)?.[1];
+  return (
+    <div
+      className={`rounded-md border p-3 transition ${
+        selected ? "border-[#d8ff5f] bg-[#d8ff5f]/10" : "border-white/10 bg-[#151a1e] hover:border-[#83d0c2]"
+      }`}
+    >
+      <button type="button" onClick={onSelect} className="w-full text-left">
+        <div className="flex items-start justify-between gap-2">
+          <p className="font-medium leading-5">{lead.company}</p>
+          <span className="font-mono text-sm text-[#d8ff5f]">{lead.score}</span>
+        </div>
+        <p className="mt-1 text-xs text-[#9fb0a8]">{lead.name}</p>
+        <div className="mt-3 flex flex-wrap gap-1 text-[11px]">
+          <span className="rounded-sm bg-[#101417] px-2 py-1 text-[#b7c8c1]">{lead.niche}</span>
+          {fit ? <span className="rounded-sm bg-[#d8ff5f]/15 px-2 py-1 text-[#d8ff5f]">{fit}</span> : null}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+          <span className="font-mono text-[#d6dfdc]">{money(lead.value)}</span>
+          <span className="text-[#8fa09a]">{lead.lastTouch}</span>
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={onAction}
+        className="mt-3 w-full rounded-sm bg-white/[0.07] px-2 py-2 text-xs font-semibold text-[#d6dfdc] transition hover:bg-[#d8ff5f] hover:text-[#101417]"
+      >
+        {action}
+      </button>
     </div>
   );
 }
