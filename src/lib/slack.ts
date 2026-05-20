@@ -1,5 +1,6 @@
 import type { Lead, OutreachQueueItem } from "@prisma/client";
 import type { AgentPlan } from "@/lib/autopilot";
+import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 
 function clean(value: string | undefined) {
   return value?.trim() || "";
@@ -92,8 +93,9 @@ export async function notifySlackOutreachApproval(
   const title = lead?.companyName || "Lead Command outreach";
   const score = typeof lead?.score === "number" ? String(lead.score) : "n/a";
   const value = typeof lead?.value === "number" ? `$${lead.value.toLocaleString()}` : "n/a";
-  const subject = item.subject || `Quick idea for ${title}`;
-  const preview = item.body.length > 420 ? `${item.body.slice(0, 417)}...` : item.body;
+  const subject = sanitizeSubject(item.subject || `Quick idea for ${title}`);
+  const body = sanitizeCustomerMessage(item.body, { channel: item.channel });
+  const preview = body.length > 420 ? `${body.slice(0, 417)}...` : body;
   const queueUrl = new URL("/?view=queue", appBaseUrl()).toString();
 
   const response = await fetch(webhookUrl, {

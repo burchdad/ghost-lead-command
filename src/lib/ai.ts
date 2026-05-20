@@ -1,3 +1,5 @@
+import { customerSignature, outreachBrandName, outreachSenderName, sanitizeCustomerMessage } from "@/lib/message-sanitizer";
+
 type GenerateArgs = {
   kind: "outreach" | "call-prep" | "proposal" | "classifier";
   lead?: {
@@ -23,7 +25,7 @@ export async function generateSalesText(args: GenerateArgs) {
     return {
       provider: "fallback",
       model: "local-template",
-      text: buildFallback(args),
+      text: sanitizeGeneratedText(args, buildFallback(args)),
     };
   }
 
@@ -44,7 +46,7 @@ export async function generateSalesText(args: GenerateArgs) {
     return {
       provider: "fallback",
       model: "local-template",
-      text: buildFallback(args),
+      text: sanitizeGeneratedText(args, buildFallback(args)),
       warning: `OpenAI request failed with status ${response.status}.`,
     };
   }
@@ -53,13 +55,13 @@ export async function generateSalesText(args: GenerateArgs) {
   return {
     provider: "openai",
     model,
-    text:
+    text: sanitizeGeneratedText(args,
       payload.output_text ||
       payload.output?.flatMap((item: { content?: { text?: string }[] }) => item.content || [])
         .map((item: { text?: string }) => item.text)
         .filter(Boolean)
         .join("\n") ||
-      buildFallback(args),
+      buildFallback(args)),
   };
 }
 
@@ -71,11 +73,19 @@ function buildPrompt({ kind, lead, input }: GenerateArgs) {
     "Every outbound message should diagnose before pitching, avoid hype, avoid fake familiarity, avoid guarantees, avoid pressure, and make one specific ask.",
     "Favor short consultative questions over claims. Make the buyer feel understood, not cornered.",
     "Keep compliance in mind: no deceptive claims, no pressure language, and no misleading urgency.",
+    `Customer-facing email signatures must be exactly:\n${customerSignature()}`,
+    `Never include placeholders like [Your Name], internal tool names, OpenAI, AI operator, queue metadata, or ${outreachBrandName()} command-center status lines in customer-facing copy.`,
+    `If you mention the sender, use ${outreachSenderName()} from ${outreachBrandName()}.`,
     `Task: ${kind}`,
     `Lead: ${JSON.stringify(lead || {})}`,
     `Context: ${input || ""}`,
     "Return only the usable output. No markdown preamble.",
   ].join("\n");
+}
+
+function sanitizeGeneratedText(args: GenerateArgs, text: string) {
+  if (args.kind !== "outreach") return text;
+  return sanitizeCustomerMessage(text, { channel: "email" });
 }
 
 function buildFallback({ kind, lead, input }: GenerateArgs) {

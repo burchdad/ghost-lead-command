@@ -1,4 +1,5 @@
 import { sendEmail, sendSms } from "@/lib/outreach";
+import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
 import { findSuppressionMatch } from "@/lib/suppression";
 
@@ -47,8 +48,8 @@ export async function approveOutreachQueueItem(
     };
   }
 
-  const message = String(input.body || item.body);
-  const subject = input.subject ? String(input.subject) : item.subject || `Quick idea for ${item.lead.companyName}`;
+  const message = sanitizeCustomerMessage(String(input.body || item.body), { channel: item.channel });
+  const subject = sanitizeSubject(input.subject ? String(input.subject) : item.subject || `Quick idea for ${item.lead.companyName}`);
   const delivery =
     item.channel === "sms"
       ? await sendSms({ to: item.lead.contact?.phone || "", text: message })

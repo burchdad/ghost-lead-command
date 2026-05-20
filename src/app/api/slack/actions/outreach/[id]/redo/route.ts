@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateSalesText } from "@/lib/ai";
+import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
 import { isSlackActionAuthorized, notifySlackOutreachApproval } from "@/lib/slack";
 
@@ -50,15 +51,17 @@ export async function GET(
 
   const text = generated.text.trim();
   const subjectMatch = text.match(/^Subject:\s*(.+)$/im);
-  const subject = subjectMatch?.[1]?.trim() || item.subject;
-  const body = text.replace(/^Subject:\s*.+$/im, "").trim() || item.body;
+  const subject = sanitizeSubject(subjectMatch?.[1]?.trim() || item.subject);
+  const body = sanitizeCustomerMessage(text.replace(/^Subject:\s*.+$/im, "").trim() || item.body, {
+    channel: item.channel,
+  });
 
   const updated = await prisma.outreachQueueItem.update({
     where: { id },
     data: {
       subject,
       body,
-      reason: `Rewritten from Slack${generated.provider ? ` via ${generated.provider}` : ""}.`,
+      reason: "Rewritten from Slack.",
     },
     include: { lead: true },
   });

@@ -1,3 +1,5 @@
+import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
+
 type SmsProvider = "telnyx" | "twilio";
 type DeliveryStatus = "queued" | "sent" | "failed";
 
@@ -86,6 +88,8 @@ export function getOutreachStatus() {
 export async function sendEmail(input: SendEmailInput): Promise<DeliveryResult> {
   const status = getOutreachStatus();
   const fromEmail = sendgridFromEmail();
+  const subject = sanitizeSubject(input.subject);
+  const text = sanitizeCustomerMessage(input.text, { channel: "email" });
 
   if (status.mode !== "live" || !status.sendgridConfigured) {
     return {
@@ -111,8 +115,8 @@ export async function sendEmail(input: SendEmailInput): Promise<DeliveryResult> 
         email: fromEmail,
         name: clean(process.env.SENDGRID_FROM_NAME) || "Ghost AI Solutions",
       },
-      subject: input.subject,
-      content: [{ type: "text/plain", value: input.text }],
+      subject,
+      content: [{ type: "text/plain", value: text }],
     }),
   });
 
@@ -143,6 +147,7 @@ export async function sendSms(input: SendSmsInput): Promise<DeliveryResult> {
 
 async function sendTelnyxSms(input: SendSmsInput): Promise<DeliveryResult> {
   const status = getOutreachStatus();
+  const text = sanitizeCustomerMessage(input.text, { channel: "sms" });
 
   if (status.mode !== "live" || !status.telnyxConfigured) {
     return {
@@ -159,7 +164,7 @@ async function sendTelnyxSms(input: SendSmsInput): Promise<DeliveryResult> {
   const payload: Record<string, string> = {
     from: telnyxFromNumber(),
     to: input.to,
-    text: input.text,
+    text,
   };
   const messagingProfileId = clean(process.env.TELNYX_MESSAGING_PROFILE_ID);
   if (messagingProfileId) payload.messaging_profile_id = messagingProfileId;
@@ -195,6 +200,7 @@ async function sendTelnyxSms(input: SendSmsInput): Promise<DeliveryResult> {
 
 async function sendTwilioSms(input: SendSmsInput): Promise<DeliveryResult> {
   const status = getOutreachStatus();
+  const text = sanitizeCustomerMessage(input.text, { channel: "sms" });
 
   if (status.mode !== "live" || !status.twilioConfigured) {
     return {
@@ -213,7 +219,7 @@ async function sendTwilioSms(input: SendSmsInput): Promise<DeliveryResult> {
   const params = new URLSearchParams({
     From: twilioFromNumber(),
     To: input.to,
-    Body: input.text,
+    Body: text,
   });
 
   const response = await fetch(

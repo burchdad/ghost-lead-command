@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { generateSalesText } from "@/lib/ai";
 import { createAutomationEvent } from "@/lib/automation";
+import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
 import { searchFreshLeads, type SourceLead, type SourceProvider } from "@/lib/sourcing";
 import { findSuppressionMatch } from "@/lib/suppression";
@@ -112,8 +113,10 @@ function normalizeDomain(value: string) {
 function parseGeneratedOutreach(text: string, companyName: string) {
   const trimmed = text.trim();
   const subjectMatch = trimmed.match(/^Subject:\s*(.+)$/im);
-  const subject = subjectMatch?.[1]?.trim() || `Quick idea for ${companyName}`;
-  const body = trimmed.replace(/^Subject:\s*.+$/im, "").trim() || trimmed;
+  const subject = sanitizeSubject(subjectMatch?.[1]?.trim() || `Quick idea for ${companyName}`);
+  const body = sanitizeCustomerMessage(trimmed.replace(/^Subject:\s*.+$/im, "").trim() || trimmed, {
+    channel: "email",
+  });
   return { subject, body };
 }
 
@@ -293,7 +296,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         subject: copy.subject,
         body: copy.body,
         status: "pending",
-        reason: `Queued by AI operator via ${generated.provider}.`,
+        reason: sanitizeInternalReason(`Queued by AI operator via ${generated.provider}.`),
       },
       include: { lead: true },
     });

@@ -390,6 +390,15 @@ function money(value: number) {
   }).format(value);
 }
 
+function publicQueueReason(item: QueueItem) {
+  const reason = item.reason?.trim();
+  if (!reason) return "";
+  if (/ai operator|openai|lead command approval workflow|prepared for operator approval/i.test(reason)) {
+    return item.status === "pending" ? "Waiting for operator approval." : "";
+  }
+  return reason;
+}
+
 function mapApiLead(lead: {
   id: string;
   name: string;
@@ -2504,7 +2513,9 @@ export default function Home() {
                               </div>
                               {item.subject && <p className="mt-2 text-sm text-[#eef5f1]">{item.subject}</p>}
                               <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#b6c4bf]">{item.body}</p>
-                              {item.reason && <p className="mt-2 text-xs text-[#9fb0a8]">{item.reason}</p>}
+                              {publicQueueReason(item) && (
+                                <p className="mt-2 text-xs text-[#9fb0a8]">{publicQueueReason(item)}</p>
+                              )}
                             </div>
                             {item.status === "pending" ? (
                               <div className="flex shrink-0 gap-2">

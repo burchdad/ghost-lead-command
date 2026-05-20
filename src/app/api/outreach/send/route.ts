@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { sendEmail, sendSms } from "@/lib/outreach";
 import { getPrisma } from "@/lib/prisma";
 
@@ -9,7 +10,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const channel = String(body.channel || "sms") as Channel;
   const leadId = String(body.leadId || "");
-  const messageBody = String(body.body || "").trim();
+  const messageBody = sanitizeCustomerMessage(String(body.body || ""), { channel });
 
   if (!leadId || !messageBody) {
     return NextResponse.json({ error: "leadId and body are required" }, { status: 400 });
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
     : channel === "email"
       ? await sendEmail({
           to: lead.contact?.email || "",
-          subject: String(body.subject || `Quick idea for ${lead.companyName}`),
+          subject: sanitizeSubject(String(body.subject || `Quick idea for ${lead.companyName}`)),
           text: messageBody,
         })
       : await sendSms({

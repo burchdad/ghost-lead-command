@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 import { findSuppressionMatch } from "@/lib/suppression";
@@ -14,7 +15,14 @@ export async function GET() {
       include: { lead: true },
     });
 
-    return NextResponse.json({ items });
+    const safeItems = items.map((item) => ({
+      ...item,
+      subject: item.subject ? sanitizeSubject(item.subject) : item.subject,
+      body: sanitizeCustomerMessage(item.body, { channel: item.channel }),
+      reason: sanitizeInternalReason(item.reason),
+    }));
+
+    return NextResponse.json({ items: safeItems });
   } catch (error) {
     return NextResponse.json(
       { error: "Outreach queue unavailable", detail: error instanceof Error ? error.message : "Unknown error" },
@@ -28,6 +36,10 @@ export async function POST(request: Request) {
   const workspace = await getDefaultWorkspace();
   const body = await request.json();
   const leadId = body.leadId ? String(body.leadId) : null;
+  const channel = String(body.channel || "email");
+  const subject = body.subject ? sanitizeSubject(String(body.subject)) : null;
+  const message = sanitizeCustomerMessage(String(body.body || ""), { channel });
+  const reason = sanitizeInternalReason(body.reason ? String(body.reason) : null);
   const lead = leadId
     ? await prisma.lead.findUnique({ where: { id: leadId }, include: { contact: true, company: true } })
     : null;
@@ -53,7 +65,7 @@ export async function POST(request: Request) {
       where: {
         workspaceId: workspace.id,
         leadId,
-        channel: String(body.channel || "email"),
+        channel,
         status: "pending",
       },
       include: { lead: true },
@@ -64,10 +76,10 @@ export async function POST(request: Request) {
       const updated = await prisma.outreachQueueItem.update({
         where: { id: existing.id },
         data: {
-          provider: String(body.provider || (body.channel === "sms" ? "telnyx" : "sendgrid")),
-          subject: body.subject ? String(body.subject) : null,
-          body: String(body.body || existing.body),
-          reason: body.reason ? String(body.reason) : existing.reason,
+          provider: String(body.provider || (channel === "sms" ? "telnyx" : "sendgrid")),
+          subject,
+          body: message || existing.body,
+          reason: reason || sanitizeInternalReason(existing.reason),
           scheduledFor: body.scheduledFor ? new Date(String(body.scheduledFor)) : existing.scheduledFor,
         },
         include: { lead: true },
@@ -81,12 +93,12 @@ export async function POST(request: Request) {
     data: {
       workspaceId: workspace.id,
       leadId,
-      channel: String(body.channel || "email"),
-      provider: String(body.provider || (body.channel === "sms" ? "telnyx" : "sendgrid")),
-      subject: body.subject ? String(body.subject) : null,
-      body: String(body.body || ""),
+      channel,
+      provider: String(body.provider || (channel === "sms" ? "telnyx" : "sendgrid")),
+      subject,
+      body: message,
       status: "pending",
-      reason: body.reason ? String(body.reason) : null,
+      reason,
       scheduledFor: body.scheduledFor ? new Date(String(body.scheduledFor)) : null,
     },
     include: { lead: true },
