@@ -48,11 +48,16 @@ export async function getGhostCrmHealth() {
 }
 
 function deriveHealthUrl(syncUrl: string) {
-  const url = new URL(syncUrl);
+  const url = new URL(normalizeUrl(syncUrl));
   url.pathname = "/health";
   url.search = "";
   url.hash = "";
   return url.toString();
+}
+
+function normalizeUrl(url: string) {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `https://${url}`;
 }
 
 export function mapLeadToGhostCrm(lead: Lead & { contact?: { email?: string | null; phone?: string | null } | null }) {
@@ -96,7 +101,20 @@ export async function pushLeadToGhostCrm(
     };
   }
 
-  const response = await fetch(url, {
+  let syncUrl: string;
+  try {
+    syncUrl = normalizeUrl(url);
+    new URL(syncUrl);
+  } catch {
+    return {
+      status: "failed" as const,
+      provider: "ghostcrm",
+      dryRun: false,
+      message: "GhostCRM sync URL is invalid. Use the full public Railway URL ending in /api/lead-command/sync.",
+    };
+  }
+
+  const response = await fetch(syncUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
