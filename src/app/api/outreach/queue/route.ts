@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 import { findSuppressionMatch } from "@/lib/suppression";
+import { notifySlackOutreachApproval } from "@/lib/slack";
 
 export async function GET() {
   try {
@@ -71,7 +72,8 @@ export async function POST(request: Request) {
         },
         include: { lead: true },
       });
-      return NextResponse.json({ item: updated, duplicate: true, refreshed: true }, { status: 200 });
+      const slack = await notifySlackOutreachApproval(updated);
+      return NextResponse.json({ item: updated, duplicate: true, refreshed: true, slack }, { status: 200 });
     }
   }
 
@@ -90,5 +92,7 @@ export async function POST(request: Request) {
     include: { lead: true },
   });
 
-  return NextResponse.json({ item }, { status: 201 });
+  const slack = await notifySlackOutreachApproval(item);
+
+  return NextResponse.json({ item, slack }, { status: 201 });
 }

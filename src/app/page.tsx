@@ -538,6 +538,18 @@ export default function Home() {
   }
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedView = params.get("view");
+    const slackAction = params.get("slackAction");
+    if (requestedView && nav.some((item) => item.id === requestedView)) {
+      setActive(requestedView);
+    }
+    if (slackAction) {
+      setOperationStatus(`Slack action processed: ${slackAction.replace(/_/g, " ")}.`);
+    }
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadLiveData() {
