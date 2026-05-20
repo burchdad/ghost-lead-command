@@ -46,6 +46,21 @@ function twilioFromNumber() {
   return clean(process.env.TWILIO_FROM_NUMBER) || clean(process.env.TWILIO_PHONE_NUMBER);
 }
 
+export function getTwilioReadiness() {
+  const status = getOutreachStatus();
+  return {
+    configured: status.twilioConfigured,
+    preferred: status.smsProvider === "twilio",
+    fromNumber: twilioFromNumber() ? "configured" : "missing",
+    accountSid: clean(process.env.TWILIO_ACCOUNT_SID) ? "configured" : "missing",
+    authToken: clean(process.env.TWILIO_AUTH_TOKEN) ? "configured" : "missing",
+    testTo: clean(process.env.TWILIO_TEST_TO) || clean(process.env.OWNER_PHONE_NUMBER) ? "configured" : "missing",
+    a2pStatus: clean(process.env.TWILIO_A2P_STATUS) || "pending",
+    voiceWebhook: "configured",
+    messagingWebhook: "configured",
+  };
+}
+
 export function getOutreachStatus() {
   const sendgridConfigured = Boolean(
     clean(process.env.SENDGRID_API_KEY) && sendgridFromEmail(),

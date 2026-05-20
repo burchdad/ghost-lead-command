@@ -479,6 +479,7 @@ export default function Home() {
   const [approvalSubject, setApprovalSubject] = useState("");
   const [approvalBody, setApprovalBody] = useState("");
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const [twilioTestBusy, setTwilioTestBusy] = useState(false);
   const [replyText, setReplyText] = useState("Sounds interesting. Can you send pricing and maybe book something this week?");
   const [replyClassification, setReplyClassification] = useState("");
   const [proposalSummary, setProposalSummary] = useState("");
@@ -1172,6 +1173,40 @@ export default function Home() {
     await refreshOpsData();
   }
 
+  async function sendTwilioTest() {
+    setTwilioTestBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: "Testing Twilio",
+      detail: "Sending a guarded owner test through the Twilio provider.",
+    });
+
+    const response = await fetch("/api/twilio/test", { method: "POST" });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok) {
+      const delivery = payload.delivery;
+      setActionToast({
+        phase: "success",
+        title: delivery?.dryRun ? "Dry-run queued" : "Twilio test sent",
+        detail: delivery?.message || `Provider status: ${delivery?.status || "received"}.`,
+      });
+      setOperationStatus(
+        delivery?.dryRun
+          ? "Twilio owner test queued in dry-run mode."
+          : "Twilio owner test sent. Check the test phone and message logs.",
+      );
+      await refreshOpsData();
+      window.setTimeout(() => setActionToast(null), 2600);
+    } else {
+      setActionToast({
+        phase: "error",
+        title: "Twilio test blocked",
+        detail: payload.error || payload.detail || "The owner test could not run.",
+      });
+    }
+    setTwilioTestBusy(false);
+  }
+
   async function logout() {
     await fetch("/api/access/logout", { method: "POST" });
     window.location.replace("/access");
@@ -1551,6 +1586,11 @@ export default function Home() {
   const emailFollowup = emailDraft || outreachCopy.email;
   const outreachSubject = emailSubjectDraft || outreachCopy.subject;
   const outreachAngle = isFreshSourcedLead(selectedLead) ? "Fresh lead" : "Revival";
+  const twilioHealth = integrations.twilio || {};
+  const twilioReady =
+    Boolean(twilioHealth.configured) &&
+    Boolean(twilioHealth.messagingWebhook === "configured") &&
+    Boolean(twilioHealth.voiceWebhook === "configured");
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -2573,6 +2613,62 @@ export default function Home() {
                     <p className="rounded-md bg-white/[0.04] p-3">Import only records with an email or mobile and a clear decision-maker title.</p>
                     <p className="rounded-md bg-white/[0.04] p-3">Keep outreach in approval mode until the first real replies are classified cleanly.</p>
                     <p className="rounded-md bg-white/[0.04] p-3">Use suppression rules for existing customers, competitors, and bad-fit domains.</p>
+                  </div>
+                </Panel>
+
+                <Panel title="Twilio Launch Control" icon={MessageSquareText}>
+                  <div className="space-y-4">
+                    <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <h3 className="font-semibold">SMS and voice readiness</h3>
+                          <p className="mt-1 text-sm text-[#aebbb7]">
+                            A2P is {String(twilioHealth.a2pStatus || "pending")}. Keep dry-run on until Twilio approves the campaign.
+                          </p>
+                        </div>
+                        <span className={`rounded-sm px-2 py-1 text-xs font-semibold ${twilioReady ? "bg-[#d8ff5f] text-[#101417]" : "bg-[#283239] text-[#d6dfdc]"}`}>
+                          {twilioReady ? "wired" : "needs env"}
+                        </span>
+                      </div>
+                      <div className="mt-4 grid gap-2 text-xs sm:grid-cols-2">
+                        {[
+                          ["Mode", outreachStatus.mode],
+                          ["Provider", outreachStatus.smsProvider],
+                          ["From number", String(twilioHealth.fromNumber || "missing")],
+                          ["Owner test", String(twilioHealth.testTo || "missing")],
+                          ["A2P", String(twilioHealth.a2pStatus || "pending")],
+                          ["Preferred", String(twilioHealth.preferred || false)],
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-sm bg-[#101417] p-3">
+                            <p className="uppercase tracking-[0.12em] text-[#8fa09a]">{label}</p>
+                            <p className="mt-1 font-semibold text-white">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-md border border-white/10 bg-[#101417] p-4">
+                      <h3 className="font-semibold">Webhook map</h3>
+                      <div className="mt-3 space-y-2 text-xs text-[#b6c4bf]">
+                        <p><span className="text-[#83d0c2]">SMS inbound:</span> /api/twilio/messaging</p>
+                        <p><span className="text-[#83d0c2]">SMS status:</span> /api/twilio/messaging/status</p>
+                        <p><span className="text-[#83d0c2]">Voice inbound:</span> /api/twilio/voice</p>
+                        <p><span className="text-[#83d0c2]">Voice status:</span> /api/twilio/voice/status</p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={sendTwilioTest}
+                      disabled={twilioTestBusy || twilioHealth.testTo !== "configured"}
+                      className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-4 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {twilioTestBusy && <LoaderCircle className="animate-spin" size={16} />}
+                      Send Owner Test
+                    </button>
+                    {twilioHealth.testTo !== "configured" ? (
+                      <p className="text-sm text-[#9fb0a8]">Add TWILIO_TEST_TO or OWNER_PHONE_NUMBER to enable the owner test.</p>
+                    ) : null}
                   </div>
                 </Panel>
 
