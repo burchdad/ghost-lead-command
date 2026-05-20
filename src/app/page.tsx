@@ -1136,11 +1136,16 @@ export default function Home() {
     const calls = leads.filter((lead) => lead.stage === "Call Booked").length;
     return { pipeline, won, hot, calls };
   }, [leads]);
+  const nextBestLead = useMemo(
+    () => [...leads].sort((a, b) => b.score - a.score || b.value - a.value)[0] || seedLeads[0],
+    [leads],
+  );
   const dataMode = operationStatus.toLowerCase().includes("database connected")
     ? "live"
     : operationStatus.toLowerCase().includes("fallback")
       ? "demo"
       : "connecting";
+  const nextBestAction = buildNextBestAction(nextBestLead, dataMode === "demo");
 
   const readinessItems = [
     {
@@ -1356,23 +1361,23 @@ export default function Home() {
                   <Panel title="Next Best Action" icon={Brain}>
                     <div className="rounded-md bg-[#eef6e8] p-5 text-[#111815]">
                       <p className="text-sm font-semibold uppercase tracking-[0.12em] text-[#3d635b]">
-                        Highest leverage move
+                        {nextBestAction.label}
                       </p>
                       <h3 className="mt-3 text-2xl font-semibold">
-                        Send Maya a dead-lead ROI proof and book the audit.
+                        {nextBestAction.title}
                       </h3>
                       <p className="mt-3 text-sm text-[#43514d]">
-                        She replied from a revival list, has high intent, and the med spa niche can buy a same-week SMS follow-up install.
+                        {nextBestAction.detail}
                       </p>
                       <button
                         type="button"
                         onClick={() => {
-                          selectLead(leads[0]);
-                          setActive("outreach");
+                          selectLead(nextBestLead);
+                          setActive(nextBestLead.stage === "Call Booked" ? "proposal" : "outreach");
                         }}
                         className="mt-5 inline-flex items-center gap-2 rounded-md bg-[#111815] px-4 py-3 text-sm font-semibold text-white"
                       >
-                        Open outreach <ArrowRight size={16} />
+                        {nextBestLead.stage === "Call Booked" ? "Open call prep" : "Open outreach"} <ArrowRight size={16} />
                       </button>
                     </div>
                   </Panel>
@@ -1514,7 +1519,7 @@ export default function Home() {
                               </span>
                             </div>
                             <p className="mt-1 text-xs text-[#9fb0a8]">
-                              Limit {campaign.dailyLimit} · threshold {campaign.scoreThreshold}
+                              Limit {campaign.dailyLimit} - threshold {campaign.scoreThreshold}
                             </p>
                           </button>
                         ))}
@@ -1535,7 +1540,7 @@ export default function Home() {
                               </p>
                               <h3 className="mt-1 font-semibold">{lead.companyName}</h3>
                               <p className="mt-1 text-sm text-[#aebbb7]">
-                                {lead.name} · {lead.title}
+                                {lead.name} - {lead.title}
                               </p>
                             </div>
                             <div className="text-left sm:text-right">
@@ -2218,6 +2223,36 @@ function StatusBanner({ mode, message }: { mode: "live" | "demo" | "connecting";
       </div>
     </div>
   );
+}
+
+function buildNextBestAction(lead: Lead, demoMode: boolean) {
+  const prefix = demoMode ? "Demo next move" : "Highest leverage move";
+  if (lead.stage === "Call Booked") {
+    return {
+      label: prefix,
+      title: `Prep the call for ${lead.company}.`,
+      detail: `${lead.name} is booked. Bring the demo path, pricing angle, and close question before this turns into a loose follow-up.`,
+    };
+  }
+  if (lead.stage === "Replied") {
+    return {
+      label: prefix,
+      title: `Turn ${lead.company}'s reply into a booked audit.`,
+      detail: `${lead.name} already engaged. Send the next concrete step, offer two times, and keep the ask simple.`,
+    };
+  }
+  if (lead.stage === "Proposal Sent") {
+    return {
+      label: prefix,
+      title: `Close the proposal loop with ${lead.company}.`,
+      detail: `Use the value angle, restate the pilot path, and ask for approval to start the install.`,
+    };
+  }
+  return {
+    label: prefix,
+    title: `Queue the first-touch opener for ${lead.company}.`,
+    detail: `${lead.name} is the highest-scored lead in view. Review fit, then queue the source-aware outreach draft.`,
+  };
 }
 
 function Panel({
