@@ -174,6 +174,8 @@ type AnalyticsPayload = {
     hotRate: number;
   };
   sourceBreakdown: Record<string, number>;
+  nicheAttribution?: Record<string, { leads: number; queued: number; replies: number; booked: number; pipeline: number }>;
+  funnel?: Record<string, number>;
   queueByStatus: Record<string, number>;
   repliesByClass: Record<string, number>;
 };
@@ -2651,6 +2653,17 @@ export default function Home() {
                       ))}
                     </div>
                   </div>
+                  <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">
+                    <h3 className="font-semibold">Lead-to-cash funnel</h3>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                      {Object.entries(analytics?.funnel || {}).map(([stage, count]) => (
+                        <div key={stage} className="rounded-md bg-white/[0.04] p-3">
+                          <p className="text-xs uppercase tracking-[0.12em] text-[#83d0c2]">{stage}</p>
+                          <p className="mt-2 font-mono text-xl text-white">{count}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </Panel>
 
                 <Panel title="Integration Health" icon={Gauge}>
@@ -2668,6 +2681,25 @@ export default function Home() {
                         <p className="mt-2 text-sm text-[#aebbb7]">
                           {Object.entries(status).map(([key, value]) => `${key}: ${value}`).join(" · ")}
                         </p>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+
+                <Panel title="Niche Attribution" icon={Target}>
+                  <div className="space-y-3">
+                    {Object.entries(analytics?.nicheAttribution || {}).map(([niche, row]) => (
+                      <div key={niche} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="font-semibold">{niche}</h3>
+                          <span className="font-mono text-[#d8ff5f]">{money(row.pipeline)}</span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-4 gap-2 text-xs text-[#aebbb7]">
+                          <span>{row.leads} leads</span>
+                          <span>{row.queued} queued</span>
+                          <span>{row.replies} replies</span>
+                          <span>{row.booked} booked</span>
+                        </div>
                       </div>
                     ))}
                   </div>

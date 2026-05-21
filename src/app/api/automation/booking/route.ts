@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createAutomationEvent, createSlackOpsEvent, getBookingReadiness } from "@/lib/automation";
+import { createBookingTaskForLead, createSlackOpsEvent, getBookingReadiness } from "@/lib/automation";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -25,30 +25,33 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const prisma = getPrisma() as any;
-    const workspace = await getDefaultWorkspace();
     const body = await request.json();
     const leadId = body.leadId ? String(body.leadId) : null;
     const lead = leadId ? await prisma.lead.findUnique({ where: { id: leadId } }) : null;
-    const readiness = getBookingReadiness();
-    const blocked = !readiness.calendarConfigured || !readiness.ownerEmail || (!readiness.meetingLink && !readiness.zoomConfigured);
-    const meetingTitle = String(body.meetingTitle || `Discovery call${lead ? `: ${lead.companyName}` : ""}`);
-    const prepNotes = String(body.prepNotes || lead?.nextAction || "Confirm pain, demo workflow, and agree on next step.");
+    const booking = leadId
+      ? await createBookingTaskForLead({
+          leadId,
+          replyBody: body.prepNotes ? String(body.prepNotes) : lead?.nextAction,
+          classification: "booked",
+        })
+      : null;
 
-    const task = await prisma.bookingTask.create({
-      data: {
-        workspaceId: workspace.id,
-        leadId,
-        ownerEmail: readiness.ownerEmail || null,
-        status: blocked ? "blocked" : "ready",
-        meetingTitle,
-        meetingLink: readiness.meetingLink || null,
-        calendarProvider: readiness.calendarProvider || null,
-        durationMinutes: readiness.defaultDuration,
-        scheduledFor: body.scheduledFor ? new Date(String(body.scheduledFor)) : null,
-        prepNotes,
-      },
-      include: { lead: true },
-    });
+    if (!booking) {
+      return NextResponse.json({ error: "Lead not found for booking task" }, { status: 404 });
+    }
+
+    const { task, readiness, blocked } = booking;
+
+    if (body.scheduledFor || body.meetingTitle || body.prepNotes) {
+      await prisma.bookingTask.update({
+        where: { id: task.id },
+        data: {
+          meetingTitle: body.meetingTitle ? String(body.meetingTitle) : task.meetingTitle,
+          scheduledFor: body.scheduledFor ? new Date(String(body.scheduledFor)) : task.scheduledFor,
+          prepNotes: body.prepNotes ? String(body.prepNotes) : task.prepNotes,
+        },
+      });
+    }
 
     if (lead) {
       await prisma.lead.update({
@@ -62,17 +65,6 @@ export async function POST(request: Request) {
         },
       });
     }
-
-    await createAutomationEvent({
-      leadId,
-      title: "Booking task created",
-      detail: blocked
-        ? "Booking task saved, but calendar or meeting-link config is missing."
-        : "Booking task ready for calendar scheduling.",
-      status: blocked ? "blocked" : "done",
-      type: "booking",
-      payload: { taskId: task.id, readiness },
-    });
 
     const slack = await createSlackOpsEvent({
       leadId,

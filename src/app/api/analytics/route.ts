@@ -20,6 +20,29 @@ export async function GET() {
       acc[lead.source] = (acc[lead.source] || 0) + 1;
       return acc;
     }, {});
+    const nicheAttribution = leads.reduce<Record<string, { leads: number; queued: number; replies: number; booked: number; pipeline: number }>>(
+      (acc, lead) => {
+        const key = lead.niche || "Unknown";
+        acc[key] ||= { leads: 0, queued: 0, replies: 0, booked: 0, pipeline: 0 };
+        acc[key].leads += 1;
+        acc[key].queued += queue.filter((item) => item.leadId === lead.id).length;
+        acc[key].replies += replies.filter((reply) => reply.leadId === lead.id).length;
+        acc[key].booked += lead.stage === "Call Booked" ? 1 : 0;
+        acc[key].pipeline += lead.value || 0;
+        return acc;
+      },
+      {},
+    );
+    const funnel = {
+      sourced: leads.length,
+      queued: queue.length,
+      approved: queue.filter((item) => ["queued", "sent"].includes(item.status)).length,
+      replied: replies.length,
+      hot: replies.filter((reply) => ["hot", "booked", "objection"].includes(reply.classification)).length,
+      booked: leads.filter((lead) => lead.stage === "Call Booked").length,
+      proposal: leads.filter((lead) => lead.stage === "Proposal Sent").length,
+      won: leads.filter((lead) => lead.stage === "Won").length,
+    };
     const replyRate = sent ? replies.length / sent : 0;
     const hotRate = sent ? hotReplies / sent : 0;
 
@@ -36,6 +59,8 @@ export async function GET() {
         hotRate,
       },
       sourceBreakdown,
+      nicheAttribution,
+      funnel,
       queueByStatus: queue.reduce<Record<string, number>>((acc, item) => {
         acc[item.status] = (acc[item.status] || 0) + 1;
         return acc;

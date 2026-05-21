@@ -1,3 +1,4 @@
+import { createFollowUpSequenceForLead } from "@/lib/automation";
 import { sendEmail, sendSms } from "@/lib/outreach";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
@@ -84,5 +85,15 @@ export async function approveOutreachQueueItem(
     data: { lastTouch: "Just now", stage: item.lead.stage === "Imported" ? "Contacted" : item.lead.stage },
   });
 
-  return { ok: true as const, status: 200, body: { item: updated, delivery } };
+  const sequence =
+    delivery.status === "failed"
+      ? []
+      : await createFollowUpSequenceForLead({
+          leadId: item.lead.id,
+          provider: delivery.provider,
+          seedSubject: subject,
+          seedBody: message,
+        });
+
+  return { ok: true as const, status: 200, body: { item: updated, delivery, sequence } };
 }

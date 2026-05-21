@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { createBookingTaskForLead } from "@/lib/automation";
 import { addSuppressionRecord } from "@/lib/suppression";
 import { getPrisma } from "@/lib/prisma";
+import { notifySlackReplyAlert } from "@/lib/slack";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 function classify(body: string) {
@@ -128,6 +130,22 @@ export async function POST(request: Request) {
       })
       : null;
 
+    const booking =
+      updatedLead && ["hot", "booked"].includes(classification)
+        ? await createBookingTaskForLead({ leadId, replyBody, classification })
+        : null;
+
+    const slack = updatedLead
+      ? await notifySlackReplyAlert({
+          leadId,
+          companyName: updatedLead.companyName,
+          contactName: updatedLead.name,
+          classification,
+          body: replyBody,
+          nextAction: updatedLead.nextAction,
+        })
+      : null;
+
     if (classification === "stop" && body.from) {
       await addSuppressionRecord({
         type: String(body.from).includes("@") ? "email" : "phone",
@@ -137,7 +155,7 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json({ reply, lead: updatedLead, route }, { status: 201 });
+    return NextResponse.json({ reply, lead: updatedLead, route, booking, slack }, { status: 201 });
   }
 
   if (classification === "stop" && body.from) {

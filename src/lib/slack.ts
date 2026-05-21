@@ -384,3 +384,78 @@ export async function notifySlackNicheRecommendation(input: {
     message: response.ok ? "Slack niche recommendation sent." : `Slack webhook returned ${response.status}.`,
   };
 }
+
+export async function notifySlackReplyAlert(input: {
+  leadId?: string | null;
+  companyName: string;
+  contactName?: string | null;
+  classification: string;
+  body: string;
+  nextAction?: string | null;
+}) {
+  const webhookUrl = clean(process.env.SLACK_WEBHOOK_URL);
+  if (!webhookUrl) {
+    return { configured: false, sent: false, message: "Missing SLACK_WEBHOOK_URL." };
+  }
+
+  const inboxUrl = new URL("/?view=inbox", appBaseUrl()).toString();
+  const proposalUrl = new URL("/?view=proposal", appBaseUrl()).toString();
+  const preview = input.body.length > 520 ? `${input.body.slice(0, 517)}...` : input.body;
+  const hot = ["hot", "booked", "objection"].includes(input.classification);
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: `Lead reply: ${input.companyName}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: hot ? "Hot reply captured" : "Reply captured", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${input.companyName}*\n${input.contactName || "Contact"} | *${input.classification}*`,
+          },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `\`\`\`${preview}\`\`\`` },
+        },
+        {
+          type: "context",
+          elements: [
+            {
+              type: "mrkdwn",
+              text: input.nextAction || "Lead Command updated the lead stage and next action.",
+            },
+          ],
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Inbox", emoji: false },
+              style: "primary",
+              url: inboxUrl,
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Prep Proposal", emoji: false },
+              url: proposalUrl,
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  return {
+    configured: true,
+    sent: response.ok,
+    message: response.ok ? "Slack reply alert sent." : `Slack webhook returned ${response.status}.`,
+  };
+}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAutomationEvent } from "@/lib/automation";
+import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -40,8 +41,10 @@ export async function POST(request: Request) {
             dayOffset: Number(step.dayOffset || 0),
             channel: String(step.channel || "email").toLowerCase(),
             provider: step.provider ? String(step.provider) : null,
-            subject: step.subject ? String(step.subject) : null,
-            body: String(step.body || ""),
+            subject: step.subject ? sanitizeSubject(String(step.subject)) : null,
+            body: sanitizeCustomerMessage(String(step.body || ""), {
+              channel: String(step.channel || "email").toLowerCase(),
+            }),
             status: "draft",
             scheduledFor: step.scheduledFor ? new Date(String(step.scheduledFor)) : null,
           },
