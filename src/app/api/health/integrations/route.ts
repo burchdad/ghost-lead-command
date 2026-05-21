@@ -35,7 +35,14 @@ export async function GET() {
   return NextResponse.json({
     pdl: { configured: sourcing.pdlConfigured },
     ghostLeadAgent,
-    sendgrid: { configured: outreach.sendgridConfigured, mode: outreach.mode },
+    sendgrid: {
+      configured: outreach.sendgridConfigured,
+      mode: outreach.mode,
+      inbound: {
+        route: "/api/sendgrid/inbound",
+        secret: process.env.SENDGRID_INBOUND_SECRET || process.env.CRON_SECRET ? "configured" : "missing",
+      },
+    },
     telnyx: { configured: outreach.telnyxConfigured, preferred: outreach.smsProvider === "telnyx" },
     twilio: getTwilioReadiness(),
     ghostcrm: await getGhostCrmHealth(),

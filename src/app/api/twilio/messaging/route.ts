@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAutomationEvent } from "@/lib/automation";
+import { recordInboundReply } from "@/lib/replies";
 import { escapeXml, readTwilioForm } from "@/lib/twiml";
 
 export const runtime = "nodejs";
@@ -24,6 +25,14 @@ export async function POST(request: Request) {
     status: "done",
     type: "twilio",
     payload,
+  }).catch(() => undefined);
+
+  await recordInboundReply({
+    channel: "sms",
+    from,
+    body,
+    source: "twilio",
+    metadata: payload,
   }).catch(() => undefined);
 
   const autoReply = process.env.TWILIO_MESSAGING_AUTO_REPLY || "";
