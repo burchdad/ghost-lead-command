@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getGhostCrmHealth } from "@/lib/ghostcrm";
+import { getOperatorCaps } from "@/lib/operator-policy";
 import { getOutreachStatus, getTwilioReadiness } from "@/lib/outreach";
 import { getSourcingStatus } from "@/lib/sourcing";
 
@@ -51,6 +52,10 @@ export async function GET() {
     slack: {
       configured: Boolean(process.env.SLACK_WEBHOOK_URL || process.env.SLACK_BOT_TOKEN),
       channel: process.env.SLACK_OPS_CHANNEL ? "configured" : "missing",
+    },
+    operator: {
+      configured: true,
+      ...getOperatorCaps(),
     },
   });
 }

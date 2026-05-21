@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { generateSalesText } from "@/lib/ai";
 import { createAutomationEvent } from "@/lib/automation";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
+import { evaluateSourceLead, prepareOperatorRun } from "@/lib/operator-policy";
 import { getPrisma } from "@/lib/prisma";
 import { searchFreshLeads, type SourceLead, type SourceProvider } from "@/lib/sourcing";
 import { findSuppressionMatch } from "@/lib/suppression";
@@ -235,16 +236,50 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const provider = input.provider || "pdl";
-  const minScore = Number(input.minScore || process.env.AGENT_MIN_LEAD_SCORE || 80);
-  const queueLimit = Math.min(10, Math.max(1, Number(input.queueLimit || process.env.AGENT_QUEUE_LIMIT || 5)));
-  const size = Math.min(50, Math.max(queueLimit, Number(input.size || process.env.AGENT_SOURCE_BATCH_SIZE || 15)));
+  const requestedMinScore = Number(input.minScore || process.env.AGENT_MIN_LEAD_SCORE || 80);
+  const requestedQueueLimit = Math.min(10, Math.max(1, Number(input.queueLimit || process.env.AGENT_QUEUE_LIMIT || 5)));
+  const requestedSize = Math.min(
+    50,
+    Math.max(requestedQueueLimit, Number(input.size || process.env.AGENT_SOURCE_BATCH_SIZE || 15)),
+  );
+  const policy = await prepareOperatorRun({
+    workspaceId: workspace.id,
+    requestedSize,
+    requestedQueueLimit,
+    requestedMinScore,
+  });
+
+  if (policy.mode === "blocked") {
+    await createAutomationEvent({
+      title: "AI operator blocked by guardrails",
+      detail: policy.blockedReasons.join(" "),
+      status: "blocked",
+      type: "agent",
+      payload: { provider, policy },
+    });
+
+    return {
+      provider,
+      found: 0,
+      qualified: 0,
+      queued: 0,
+      skipped: { guardrails: policy.blockedReasons.length },
+      items: [],
+      guardrails: policy,
+      message: `AI operator paused: ${policy.blockedReasons.join(" ")}`,
+    };
+  }
+
+  const minScore = policy.effective.minScore;
+  const queueLimit = policy.effective.queueLimit;
+  const size = policy.effective.size;
 
   await createAutomationEvent({
     title: "AI operator started",
-    detail: `Sourcing ${size} leads from ${provider}, minimum score ${minScore}, queue limit ${queueLimit}.`,
+    detail: `Sourcing ${size} leads from ${provider}, minimum score ${minScore}, queue limit ${queueLimit}. Guardrails active.`,
     status: "running",
     type: "agent",
-    payload: { provider, minScore, queueLimit, size },
+    payload: { provider, minScore, queueLimit, size, policy },
   });
 
   const sourceResult = await searchFreshLeads({
@@ -256,13 +291,24 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     size,
   });
 
-  const qualified = (sourceResult.leads as SourceLead[]).filter((lead) => lead.score >= minScore).slice(0, queueLimit);
-  const queued = [];
   const skipped: Record<string, number> = {};
 
   function skip(reason: string) {
     skipped[reason] = (skipped[reason] || 0) + 1;
   }
+
+  const qualified = [];
+  for (const lead of sourceResult.leads as SourceLead[]) {
+    const evaluation = evaluateSourceLead(lead, policy);
+    if (!evaluation.ok) {
+      skip(evaluation.reason);
+      continue;
+    }
+    qualified.push(lead);
+    if (qualified.length >= queueLimit) break;
+  }
+
+  const queued = [];
 
   for (const sourceLead of qualified) {
     const imported = await importSourceLead(sourceLead, workspace.id);
@@ -317,6 +363,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       qualified: qualified.length,
       queued: queued.length,
       skipped,
+      guardrails: policy,
     },
   });
 
@@ -326,6 +373,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     qualified: qualified.length,
     queued: queued.length,
     skipped,
+    guardrails: policy,
     items: queued.map((entry) => entry.item),
     message:
       queued.length > 0

@@ -1,6 +1,7 @@
 import type { Lead, OutreachQueueItem } from "@prisma/client";
 import type { AgentPlan } from "@/lib/autopilot";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
+import { getOperatorCaps } from "@/lib/operator-policy";
 
 function clean(value: string | undefined) {
   return value?.trim() || "";
@@ -178,6 +179,7 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
     return { configured: false, sent: false, message: "Missing SLACK_WEBHOOK_URL." };
   }
 
+  const caps = getOperatorCaps();
   const response = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -192,7 +194,7 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${plan.niche}*\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | queue ${plan.queueLimit} approvals`,
+            text: `*${plan.niche}*\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | queue ${plan.queueLimit} approvals\n*Guardrails:* daily source ${caps.dailySourceLimit} | daily queue ${caps.dailyQueueLimit} | pending max ${caps.maxPendingApprovals}`,
           },
         },
         {

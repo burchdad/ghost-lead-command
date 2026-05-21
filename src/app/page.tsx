@@ -178,7 +178,7 @@ type AnalyticsPayload = {
   repliesByClass: Record<string, number>;
 };
 
-type IntegrationPayload = Record<string, Record<string, string | boolean>>;
+type IntegrationPayload = Record<string, Record<string, string | number | boolean>>;
 
 type ActionToast = {
   phase: "loading" | "success" | "error";
@@ -1647,6 +1647,13 @@ export default function Home() {
       detail: integrations.slack?.configured
         ? `Slack configured. Ops channel ${integrations.slack.channel || "missing"}.`
         : "Next integration lane: notify when hot replies, bookings, failed sends, and CRM syncs happen.",
+    },
+    {
+      label: "Operator guardrails",
+      ok: Boolean(integrations.operator?.configured),
+      detail: integrations.operator?.configured
+        ? `Daily source cap ${integrations.operator.dailySourceLimit}, queue cap ${integrations.operator.dailyQueueLimit}, pending cap ${integrations.operator.maxPendingApprovals}.`
+        : "Autonomous runs need daily caps before unattended sourcing.",
     },
     {
       label: "Approval queue",
