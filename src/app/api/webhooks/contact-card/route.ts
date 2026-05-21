@@ -4,14 +4,16 @@ import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 function isAuthorized(request: Request) {
-  const expectedSecret = process.env.CONTACT_CARD_WEBHOOK_SECRET;
+  const expectedSecret = process.env.CONTACT_CARD_WEBHOOK_SECRET?.trim();
 
   if (!expectedSecret) {
     return true;
   }
 
   const authorization = request.headers.get("authorization") || "";
-  return authorization === `Bearer ${expectedSecret}`;
+  const providedSecret = authorization.replace(/^Bearer\s+/i, "").trim();
+
+  return providedSecret === expectedSecret;
 }
 
 function asString(value: unknown, fallback = "") {
