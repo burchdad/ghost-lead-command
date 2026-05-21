@@ -1,5 +1,8 @@
 import { getPrisma } from "@/lib/prisma";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
+import { getOperatorQueueCapacity } from "@/lib/operator-policy";
+import { notifySlackOutreachApproval } from "@/lib/slack";
+import { findSuppressionMatch } from "@/lib/suppression";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export function getBookingReadiness() {
@@ -223,4 +226,129 @@ export async function createFollowUpSequenceForLead(input: {
   });
 
   return created;
+}
+
+function isDue(step: { createdAt: Date; dayOffset: number; scheduledFor: Date | null }, now: Date) {
+  if (step.scheduledFor) return step.scheduledFor <= now;
+  const dueAt = new Date(step.createdAt);
+  dueAt.setDate(dueAt.getDate() + step.dayOffset);
+  return dueAt <= now;
+}
+
+export async function runDueSequenceSteps(input: { limit?: number } = {}) {
+  const prisma = getPrisma() as any;
+  const workspace = await getDefaultWorkspace();
+  const now = new Date();
+  const requestedLimit = Number.isFinite(input.limit) && Number(input.limit) > 0 ? Number(input.limit) : 5;
+  const queuePolicy = await getOperatorQueueCapacity(workspace.id);
+  const limit = Math.min(requestedLimit, queuePolicy.capacity);
+
+  if (limit <= 0) {
+    await createAutomationEvent({
+      title: "Sequence runner paused",
+      detail: queuePolicy.blockedReasons.join(" ") || "No sequence queue capacity remains.",
+      status: "blocked",
+      type: "sequence",
+      payload: { queuePolicy },
+    });
+    return { queued: 0, skipped: 0, blocked: true, queuePolicy, items: [] };
+  }
+
+  const candidates = await prisma.sequenceStep.findMany({
+    where: { workspaceId: workspace.id, status: { in: ["draft", "active"] } },
+    orderBy: [{ scheduledFor: "asc" }, { createdAt: "asc" }],
+    take: Math.max(limit * 4, 10),
+    include: { lead: { include: { contact: true, company: true } } },
+  });
+
+  const due = candidates.filter((step: { createdAt: Date; dayOffset: number; scheduledFor: Date | null }) =>
+    isDue(step, now),
+  );
+  const items = [];
+  let skipped = 0;
+
+  for (const step of due) {
+    if (items.length >= limit) break;
+
+    const lead = step.lead;
+    if (!lead) {
+      skipped += 1;
+      await prisma.sequenceStep.update({ where: { id: step.id }, data: { status: "skipped" } });
+      continue;
+    }
+
+    const [recentReply, suppression, existingQueueItem] = await Promise.all([
+      prisma.reply.findFirst({
+        where: { workspaceId: workspace.id, leadId: lead.id, createdAt: { gte: step.createdAt } },
+        orderBy: { createdAt: "desc" },
+      }),
+      findSuppressionMatch({
+        email: lead.contact?.email,
+        phone: lead.contact?.phone,
+        domain: lead.company?.website,
+        companyName: lead.companyName,
+      }),
+      prisma.outreachQueueItem.findFirst({
+        where: {
+          workspaceId: workspace.id,
+          leadId: lead.id,
+          channel: step.channel,
+          status: { in: ["pending", "queued", "sent"] },
+          subject: step.subject,
+        },
+      }),
+    ]);
+
+    if (recentReply || suppression || existingQueueItem || ["Call Booked", "Proposal Sent", "Won"].includes(lead.stage)) {
+      skipped += 1;
+      await prisma.sequenceStep.update({
+        where: { id: step.id },
+        data: { status: recentReply ? "paused" : "skipped" },
+      });
+      await createAutomationEvent({
+        leadId: lead.id,
+        title: recentReply ? "Follow-up paused" : "Follow-up skipped",
+        detail: recentReply
+          ? `${lead.companyName} replied after this step was drafted.`
+          : `${lead.companyName} follow-up was not queued because it is no longer eligible.`,
+        status: recentReply ? "blocked" : "done",
+        type: "sequence",
+        payload: { sequenceStepId: step.id, suppression, existingQueueItemId: existingQueueItem?.id || null },
+      });
+      continue;
+    }
+
+    const item = await prisma.outreachQueueItem.create({
+      data: {
+        workspaceId: workspace.id,
+        leadId: lead.id,
+        channel: step.channel,
+        provider: step.provider || (step.channel === "sms" ? "telnyx" : "sendgrid"),
+        subject: step.subject ? sanitizeSubject(step.subject) : null,
+        body: sanitizeCustomerMessage(step.body, { channel: step.channel }),
+        status: "pending",
+        reason: `Queued from follow-up sequence step ${step.stepNumber}.`,
+        scheduledFor: now,
+      },
+      include: { lead: true },
+    });
+
+    await prisma.sequenceStep.update({
+      where: { id: step.id },
+      data: { status: "queued", scheduledFor: step.scheduledFor || now },
+    });
+
+    const slack = await notifySlackOutreachApproval(item);
+    await createAutomationEvent({
+      leadId: lead.id,
+      title: "Follow-up queued for approval",
+      detail: `${lead.companyName} sequence step ${step.stepNumber} is waiting for operator approval.`,
+      status: "done",
+      type: "sequence",
+      payload: { sequenceStepId: step.id, queueItemId: item.id, slack },
+    });
+    items.push(item);
+  }
+
+  return { queued: items.length, skipped, blocked: false, queuePolicy, items };
 }

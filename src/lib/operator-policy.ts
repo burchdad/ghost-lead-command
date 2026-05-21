@@ -110,6 +110,37 @@ export async function prepareOperatorRun(input: PrepareRunInput): Promise<Operat
   };
 }
 
+export async function getOperatorQueueCapacity(workspaceId: string) {
+  const prisma = getPrisma();
+  const caps = getOperatorCaps();
+  const since = startOfToday();
+
+  const [queuedToday, pendingApprovals] = await Promise.all([
+    prisma.outreachQueueItem.count({
+      where: { workspaceId, createdAt: { gte: since } },
+    }),
+    prisma.outreachQueueItem.count({
+      where: { workspaceId, status: "pending" },
+    }),
+  ]);
+
+  const remainingQueue = Math.max(0, caps.dailyQueueLimit - queuedToday);
+  const pendingCapacity = Math.max(0, caps.maxPendingApprovals - pendingApprovals);
+  const capacity = Math.min(remainingQueue, pendingCapacity);
+  const blockedReasons: string[] = [];
+
+  if (remainingQueue <= 0) blockedReasons.push("Daily outreach queue cap reached.");
+  if (pendingCapacity <= 0) blockedReasons.push("Pending approval cap reached.");
+
+  return {
+    mode: blockedReasons.length ? ("blocked" as const) : ("ready" as const),
+    capacity,
+    caps,
+    usage: { queuedToday, pendingApprovals },
+    blockedReasons,
+  };
+}
+
 export function evaluateSourceLead(lead: SourceLead, policy: OperatorRunPolicy) {
   if (lead.score < policy.effective.minScore) return { ok: false as const, reason: "below-score-threshold" };
   if (!lead.companyName?.trim()) return { ok: false as const, reason: "missing-company" };
