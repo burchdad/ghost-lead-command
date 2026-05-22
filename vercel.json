@@ -13,6 +13,10 @@
     {
       "path": "/api/automation/sequence/run",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/automation/contact-card/run",
+      "schedule": "15 * * * *"
     }
   ]
 }

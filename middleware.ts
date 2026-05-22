@@ -25,6 +25,7 @@ function isAllowedPath(pathname: string) {
     pathname === "/api/access/logout" ||
     pathname === "/api/agent/digest" ||
     pathname === "/api/agent/recommend" ||
+    pathname === "/api/automation/contact-card/run" ||
     pathname === "/api/webhooks/contact-card" ||
     pathname === "/api/slack/command" ||
     pathname.startsWith("/api/slack/actions/") ||
