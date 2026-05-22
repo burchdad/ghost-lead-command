@@ -19,6 +19,8 @@ type LeadShape = {
   nextAction: string;
   note: string;
   leadType: string;
+  relationshipType: string;
+  eventTag: string;
 };
 
 function clean(value: unknown) {
@@ -56,7 +58,17 @@ function contactSyncEnabled() {
 }
 
 function autoSendFollowUps() {
-  return (process.env.QR_FOLLOWUP_AUTO_SEND || "true").toLowerCase() !== "false";
+  return (process.env.QR_FOLLOWUP_AUTO_SEND || "false").toLowerCase() === "true";
+}
+
+function relationshipType(value: unknown) {
+  const cleaned = clean(value);
+  return cleaned || "Networking Contact";
+}
+
+function eventTag(value: unknown) {
+  const cleaned = clean(value);
+  return cleaned || "QR contact exchange";
 }
 
 function getLeadShape(payload: ContactCardPayload): LeadShape {
@@ -75,6 +87,8 @@ function getLeadShape(payload: ContactCardPayload): LeadShape {
       nextAction: "Review intake and start the contact card build.",
       note: clean(buyer.notes),
       leadType: "product_intake",
+      relationshipType: "Product Buyer",
+      eventTag: "Contact card product funnel",
     };
   }
 
@@ -98,27 +112,33 @@ function getLeadShape(payload: ContactCardPayload): LeadShape {
       nextAction: "Confirm payment details and send the intake/start link.",
       note: "",
       leadType: "stripe_checkout_completed",
+      relationshipType: "Customer",
+      eventTag: "Stripe checkout",
     };
   }
 
   const lead = asObject(payload.lead);
   const leadType = clean(lead.leadType);
   const isContactExchange = leadType === "contact_exchange";
+  const relation = relationshipType(lead.relationshipType);
+  const event = eventTag(lead.eventTag);
   return {
     name: clean(lead.name) || "QR Contact",
     email: clean(lead.email),
     phone: clean(lead.phone),
     companyName: clean(lead.company || lead.businessName) || (isContactExchange ? "Networking Contact" : "QR Contact Card Lead"),
-    niche: isContactExchange ? "Networking Relationship" : "Business Growth Systems",
-    stage: isContactExchange ? "Relationship" : "New QR Lead",
+    niche: isContactExchange ? relation : "Business Growth Systems",
+    stage: isContactExchange ? relation : "New QR Lead",
     score: isContactExchange ? 62 : 78,
     value: isContactExchange ? 0 : 2500,
     source: clean(payload.source) || "qr_contact_card",
     nextAction: isContactExchange
-      ? "Review QR contact exchange, enrich the record, and keep the relationship warm."
+      ? `Review ${relation.toLowerCase()} from ${event}, enrich the record, and keep the relationship warm.`
       : "Review QR contact card lead brief and follow up.",
     note: clean(lead.goal || lead.note),
     leadType: leadType || "lead",
+    relationshipType: relation,
+    eventTag: event,
   };
 }
 
@@ -256,8 +276,8 @@ async function createInboundInteraction(leadId: string, contactId: string | null
       contactId,
       channel: "qr_contact_card",
       direction: "inbound",
-      body: shape.note || "Contact exchange submitted from QR card.",
-      classification: shape.leadType === "contact_exchange" ? "relationship" : "lead",
+      body: [shape.note || "Contact exchange submitted from QR card.", `Event: ${shape.eventTag}.`, `Relationship: ${shape.relationshipType}.`].join("\n"),
+      classification: shape.leadType === "contact_exchange" ? shape.relationshipType : "lead",
     },
   });
 }
@@ -270,8 +290,12 @@ async function scheduleContactExchangeFollowUps(workspaceId: string, leadId: str
   const recipientFirstName = firstName(shape.name);
   const created = [];
 
-  const emailBody = `${recipientFirstName}, it was good connecting through my QR card.\n\nI saved your info so we do not lose touch. If there is anything you are building, promoting, or trying to grow, send it over and I will point you in the right direction.\n\n- Stephen`;
-  const smsBody = `${recipientFirstName}, Stephen here. Good connecting through my QR card. I saved your info so we do not lose touch.`;
+  const eventLine =
+    shape.eventTag && shape.eventTag !== "QR contact exchange"
+      ? ` at ${shape.eventTag}`
+      : " through my QR card";
+  const emailBody = `${recipientFirstName}, it was good connecting${eventLine}.\n\nI saved your info so we do not lose touch. If there is anything you are building, promoting, or trying to grow, send it over and I will point you in the right direction.\n\n- Stephen`;
+  const smsBody = `${recipientFirstName}, Stephen here. Good connecting${eventLine}. I saved your info so we do not lose touch.`;
 
   const messages = [
     shape.email
@@ -314,7 +338,7 @@ async function scheduleContactExchangeFollowUps(workspaceId: string, leadId: str
           subject: message.subject,
           body: message.body,
           status: "pending",
-          reason: "QR contact exchange follow-up. Auto-send when due if QR_FOLLOWUP_AUTO_SEND is enabled.",
+          reason: "QR contact exchange follow-up. Review before send unless QR_FOLLOWUP_AUTO_SEND is enabled.",
           scheduledFor: dueAt,
         },
       }),
@@ -328,7 +352,13 @@ async function scheduleContactExchangeFollowUps(workspaceId: string, leadId: str
       detail: `${created.length} follow-up message(s) scheduled for ${dueAt.toISOString()}.`,
       status: "done",
       type: "contact_card_followup",
-      payload: { queueItemIds: created.map((item) => item.id), dueAt: dueAt.toISOString() },
+      payload: {
+        queueItemIds: created.map((item) => item.id),
+        dueAt: dueAt.toISOString(),
+        reviewBeforeSend: !autoSendFollowUps(),
+        eventTag: shape.eventTag,
+        relationshipType: shape.relationshipType,
+      },
     });
   }
 
@@ -346,7 +376,13 @@ async function createPendingAutomationEvents(leadId: string, shape: LeadShape, p
       detail: "QR contact exchange is ready for People Data Labs enrichment.",
       status: "pending",
       type: "contact_card_pdl_enrichment",
-      payload: { leadId, sourceDetail: clean(payload.sourceDetail), submittedAt: clean(payload.submittedAt) },
+      payload: {
+        leadId,
+        sourceDetail: clean(payload.sourceDetail),
+        submittedAt: clean(payload.submittedAt),
+        eventTag: shape.eventTag,
+        relationshipType: shape.relationshipType,
+      },
     }),
   );
 
@@ -357,7 +393,7 @@ async function createPendingAutomationEvents(leadId: string, shape: LeadShape, p
       detail: "QR contact exchange is ready to sync into personal contacts after enrichment.",
       status: "pending",
       type: "google_contacts_sync",
-      payload: { leadId, source: "qr_contact_card" },
+      payload: { leadId, source: "qr_contact_card", eventTag: shape.eventTag, relationshipType: shape.relationshipType },
     }),
   );
 
@@ -389,6 +425,8 @@ export async function createLeadFromContactCardPayload(payload: ContactCardPaylo
         contactId: contact.id,
         companyId: company.id,
         sourceDetail: clean(payload.sourceDetail),
+        eventTag: shape.eventTag,
+        relationshipType: shape.relationshipType,
       },
     },
   });
@@ -516,7 +554,7 @@ export async function enrichLeadWithPdl(leadId: string) {
 
 export async function syncLeadToGoogleContacts(leadId: string) {
   const prisma = getPrisma();
-  const accessToken = clean(process.env.GOOGLE_CONTACTS_ACCESS_TOKEN);
+  const accessToken = await getGoogleContactsAccessToken();
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
     include: { contact: true, company: true },
@@ -538,7 +576,7 @@ export async function syncLeadToGoogleContacts(leadId: string) {
     await createAutomationEvent({
       leadId,
       title: "Google contact sync blocked",
-      detail: "Enable GOOGLE_CONTACTS_SYNC_ENABLED and add GOOGLE_CONTACTS_ACCESS_TOKEN to create phone contacts.",
+      detail: "Enable GOOGLE_CONTACTS_SYNC_ENABLED and add Google Contacts OAuth credentials to create phone contacts.",
       status: "blocked",
       type: "google_contacts_sync",
       payload: { leadId, contact: contactPayload },
@@ -580,6 +618,31 @@ export async function syncLeadToGoogleContacts(leadId: string) {
     payload: { leadId, resourceName: result.resourceName || null },
   });
   return { status: "done", resourceName: result.resourceName || null };
+}
+
+async function getGoogleContactsAccessToken() {
+  const staticToken = clean(process.env.GOOGLE_CONTACTS_ACCESS_TOKEN);
+  if (staticToken) return staticToken;
+
+  const clientId = clean(process.env.GOOGLE_CONTACTS_CLIENT_ID);
+  const clientSecret = clean(process.env.GOOGLE_CONTACTS_CLIENT_SECRET);
+  const refreshToken = clean(process.env.GOOGLE_CONTACTS_REFRESH_TOKEN);
+  if (!clientId || !clientSecret || !refreshToken) return "";
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  if (!response.ok) return "";
+  const payload = (await response.json().catch(() => ({}))) as { access_token?: string };
+  return clean(payload.access_token);
 }
 
 export async function runContactCardAutomation(input: { limit?: number } = {}) {

@@ -4,6 +4,11 @@ import { getPrisma } from "@/lib/prisma";
 const allowedStages = new Set([
   "Imported",
   "Contacted",
+  "Networking Contact",
+  "Potential Client",
+  "Referral Partner",
+  "Vendor",
+  "Friend of Business",
   "Replied",
   "Call Booked",
   "Proposal Sent",

@@ -31,6 +31,11 @@ import { useEffect, useMemo, useState } from "react";
 type Stage =
   | "Imported"
   | "Contacted"
+  | "Networking Contact"
+  | "Potential Client"
+  | "Referral Partner"
+  | "Vendor"
+  | "Friend of Business"
   | "Replied"
   | "Call Booked"
   | "Proposal Sent"
@@ -301,6 +306,11 @@ Chris Wade,Wade HVAC,chris@example.com,555-3333,HVAC,old estimate list`;
 const stages: Stage[] = [
   "Imported",
   "Contacted",
+  "Networking Contact",
+  "Potential Client",
+  "Referral Partner",
+  "Vendor",
+  "Friend of Business",
   "Replied",
   "Call Booked",
   "Proposal Sent",
@@ -374,6 +384,7 @@ const nav = [
   { id: "dashboard", label: "Command", icon: Gauge },
   { id: "source", label: "Source", icon: Target },
   { id: "pipeline", label: "Pipeline", icon: Layers3 },
+  { id: "relationships", label: "QR Relationships", icon: Radar },
   { id: "revival", label: "Revival", icon: Flame },
   { id: "outreach", label: "Outreach", icon: Send },
   { id: "queue", label: "Queue", icon: ClipboardList },
@@ -1577,6 +1588,23 @@ export default function Home() {
     () => [...leads].sort((a, b) => b.score - a.score || b.value - a.value)[0] || seedLeads[0],
     [leads],
   );
+  const relationshipStages: Stage[] = [
+    "Networking Contact",
+    "Potential Client",
+    "Referral Partner",
+    "Vendor",
+    "Friend of Business",
+  ];
+  const qrRelationships = useMemo(
+    () =>
+      leads.filter(
+        (lead) =>
+          relationshipStages.includes(lead.stage) ||
+          lead.source === "qr_contact_card" ||
+          lead.next.toLowerCase().includes("qr contact exchange"),
+      ),
+    [leads],
+  );
   const dataMode = forceDemoMode
     ? "demo"
     : operationStatus.toLowerCase().includes("database connected")
@@ -2212,6 +2240,68 @@ export default function Home() {
                         </div>
                       );
                     })}
+                  </div>
+                </Panel>
+                <LeadDetailPanel
+                  lead={selectedLead}
+                  editScore={editScore}
+                  editValue={editValue}
+                  editNextAction={editNextAction}
+                  onScoreChange={setEditScore}
+                  onValueChange={setEditValue}
+                  onNextActionChange={setEditNextAction}
+                  onSave={saveLeadEdits}
+                  onStageChange={(stage) => updateLead(selectedLead.id, { stage })}
+                />
+              </div>
+            )}
+
+            {active === "relationships" && (
+              <div className="grid gap-6 2xl:grid-cols-[1fr_420px]">
+                <Panel title="QR Relationships" icon={Radar}>
+                  <div className="mb-4 grid gap-3 md:grid-cols-4">
+                    {relationshipStages.map((stage) => (
+                      <div key={stage} className="rounded-md border border-white/10 bg-white/[0.04] p-3">
+                        <p className="text-xs uppercase tracking-[0.12em] text-[#83d0c2]">{stage}</p>
+                        <p className="mt-2 font-mono text-2xl text-[#d8ff5f]">
+                          {qrRelationships.filter((lead) => lead.stage === stage).length}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-3">
+                    {qrRelationships.length ? (
+                      qrRelationships.map((lead) => (
+                        <div key={lead.id || lead.company} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.14em] text-[#83d0c2]">{lead.stage}</p>
+                              <h3 className="mt-1 font-semibold">{lead.name}</h3>
+                              <p className="mt-1 text-sm text-[#aebbb7]">{lead.company}</p>
+                            </div>
+                            <button
+                              className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-[#e6f5ef] transition hover:border-[#32d5ff]/60"
+                              onClick={() => {
+                                selectLead(lead);
+                                setActive("outreach");
+                              }}
+                            >
+                              Open
+                            </button>
+                          </div>
+                          <div className="mt-4 grid gap-2 text-xs text-[#b6c4bf] md:grid-cols-3">
+                            <span className="rounded-sm bg-[#101417] px-2 py-2">{lead.source}</span>
+                            <span className="rounded-sm bg-[#101417] px-2 py-2">{lead.lastTouch}</span>
+                            <span className="rounded-sm bg-[#101417] px-2 py-2">{lead.score} score</span>
+                          </div>
+                          <p className="mt-3 text-sm text-[#c4d3ce]">{lead.next}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-md border border-dashed border-white/15 bg-white/[0.03] p-8 text-center text-sm text-[#9fb0a8]">
+                        QR contact exchanges will appear here after someone sends their info from the card.
+                      </div>
+                    )}
                   </div>
                 </Panel>
                 <LeadDetailPanel
