@@ -1556,9 +1556,6 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           notes: editNextAction,
-          setupFee: 2500,
-          monthlyFee: 1000,
-          revSharePct: 12,
         }),
       },
     );

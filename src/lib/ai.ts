@@ -74,6 +74,7 @@ function buildPrompt({ kind, lead, input }: GenerateArgs) {
       "Use these sections exactly: Summary, Project Overview, Deliverables, Scope of Work, Estimated Cost, Additional Notes, Next Step.",
       "Do not write a generic menu. Tie every line to the buyer's likely lead-flow pain and the selected project.",
       "Keep pricing clear. Include setup fee, monthly response desk, optional attribution-based upside share, payment terms, and third-party cost disclaimer when provided in context.",
+      "Use the exact setup fee, monthly fee, upside share, payment terms, and disclaimer from context. Do not invent different pricing.",
       "Deliverables should be numbered and concrete. Scope of Work should read like a real implementation plan, not a sales brochure.",
       "No markdown tables. No fake claims. No guarantees.",
       `Lead: ${JSON.stringify(lead || {})}`,
