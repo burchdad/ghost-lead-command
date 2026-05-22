@@ -21,6 +21,7 @@ function isAllowedPath(pathname: string) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname === "/access" ||
+    pathname.startsWith("/proposals/") ||
     pathname === "/api/access" ||
     pathname === "/api/access/logout" ||
     pathname === "/api/agent/digest" ||

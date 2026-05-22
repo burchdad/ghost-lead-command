@@ -506,6 +506,7 @@ export default function Home() {
   const [replyText, setReplyText] = useState("Sounds interesting. Can you send pricing and maybe book something this week?");
   const [replyClassification, setReplyClassification] = useState("");
   const [proposalSummary, setProposalSummary] = useState("");
+  const [proposalShareUrl, setProposalShareUrl] = useState("");
   const [callPrep, setCallPrep] = useState("");
   const [sequenceMode, setSequenceMode] = useState<"fresh" | "revival" | "booked">("fresh");
   const [automationEvents, setAutomationEvents] = useState<AutomationEvent[]>([
@@ -1572,7 +1573,8 @@ export default function Home() {
       current.map((lead) => (lead.id === mapped.id ? mapped : lead)),
     );
     setProposalSummary(payload.proposal.summary);
-    setOperationStatus(`Created proposal for ${mapped.company}.`);
+    setProposalShareUrl(payload.proposalShareUrl || "");
+    setOperationStatus(`Created proposal and queued follow-up approval for ${mapped.company}.`);
   }
 
   const stats = useMemo(() => {
@@ -2989,6 +2991,16 @@ export default function Home() {
                   >
                     Sync to GhostCRM
                   </button>
+                  {proposalShareUrl && (
+                    <a
+                      href={proposalShareUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mb-4 ml-2 inline-flex rounded-md bg-white px-4 py-2 text-sm font-semibold text-[#101417] transition hover:bg-[#d8ff5f]"
+                    >
+                      Open Proposal
+                    </a>
+                  )}
                   <div className="space-y-4">
                     {projectOfferLines.map((line) => (
                       <OfferLine key={line.title} title={line.title} price={line.price} detail={line.detail} />
@@ -3678,19 +3690,23 @@ function buildProjectOfferLines(lead: Lead) {
   const value = Math.max(lead.value || 7500, 3500);
   const pilotValue = `$${value.toLocaleString()}`;
   const fresh = isFreshSourcedLead(lead);
-  const project = fresh ? "Lead capture recovery sprint" : "Dead-lead recovery sprint";
+  const hasBuyingSignal = lead.score >= 90 || ["replied", "call booked", "proposal sent"].includes(lead.stage.toLowerCase());
+  const setupFee = value >= 10000 || lead.score >= 95 ? 3500 : value >= 6500 ? 2500 : 1500;
+  const monthlyFee = hasBuyingSignal ? 1500 : 1000;
+  const revShare = value >= 10000 ? 10 : 12;
+  const project = fresh ? "Fresh lead capture sprint" : "Lead recovery sprint";
 
   return [
     {
       title: `${project}`,
-      price: "$2,500",
+      price: `$${setupFee.toLocaleString()}`,
       detail: fresh
         ? `Map how ${lead.company} handles missed calls, estimate requests, and slow follow-up for ${niche} buyers.`
         : `Import and segment ${lead.company}'s older ${niche} contacts, then restart the highest-intent conversations.`,
     },
     {
       title: "AI response desk",
-      price: "$1,000/mo",
+      price: `$${monthlyFee.toLocaleString()}/mo`,
       detail: "Classify replies, surface hot leads, prep calls, and keep the follow-up path improving after launch.",
     },
     {
@@ -3700,7 +3716,7 @@ function buildProjectOfferLines(lead: Lead) {
     },
     {
       title: "Upside share",
-      price: "12%",
+      price: `${revShare}%`,
       detail: `Optional recovered-revenue share when attribution is visible; current target opportunity is about ${pilotValue}.`,
     },
   ];
