@@ -15,6 +15,8 @@ export async function POST(
   const lead = await prisma.lead.findUnique({
     where: { id },
     include: {
+      contact: true,
+      company: true,
       opportunities: {
         orderBy: { updatedAt: "desc" },
         take: 1,
@@ -39,10 +41,19 @@ export async function POST(
       stage: lead.stage,
       score: lead.score,
       value: lead.value,
+      source: lead.source,
+      nextAction: lead.nextAction,
     },
     input: [
       body.notes ? `Operator notes: ${body.notes}` : "",
-      lead.interactions.map((interaction) => interaction.body).join("\n"),
+      lead.company?.website ? `Company website: ${lead.company.website}` : "",
+      lead.contact?.role ? `Contact role: ${lead.contact.role}` : "",
+      lead.opportunities[0]
+        ? `Opportunity: ${lead.opportunities[0].title}, stage ${lead.opportunities[0].stage}, value $${lead.opportunities[0].value}, probability ${lead.opportunities[0].probability}%`
+        : "",
+      lead.interactions
+        .map((interaction) => `${interaction.channel} ${interaction.direction}${interaction.classification ? ` (${interaction.classification})` : ""}: ${interaction.body}`)
+        .join("\n"),
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -53,7 +64,7 @@ export async function POST(
     data: {
       workspaceId: workspace.id,
       opportunityId: opportunity?.id || null,
-      title: `${lead.companyName} AI Revival Proposal`,
+      title: `${lead.companyName} Lead Recovery Proposal`,
       status: "draft",
       setupFee: Number(body.setupFee || 2500),
       monthlyFee: Number(body.monthlyFee || 1000),

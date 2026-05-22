@@ -38,7 +38,7 @@ export async function generateSalesText(args: GenerateArgs) {
     body: JSON.stringify({
       model,
       input: prompt,
-      max_output_tokens: 650,
+      max_output_tokens: args.kind === "proposal" ? 1200 : 650,
     }),
   });
 
@@ -66,6 +66,20 @@ export async function generateSalesText(args: GenerateArgs) {
 }
 
 function buildPrompt({ kind, lead, input }: GenerateArgs) {
+  if (kind === "proposal") {
+    return [
+      "You are writing a project-based proposal draft for an AI automation consulting sale.",
+      "Make it specific to the lead, their niche, source, stage, estimated value, and any conversation context.",
+      "Use these sections exactly: Situation, Project Objective, Recommended Build, Pilot Scope, Option A, Option B, Optional Upside Share, Decision Criteria, Next Step.",
+      "Do not write a generic menu. Tie every line to the buyer's likely lead-flow pain and the selected project.",
+      "Keep pricing clear. Prefer a 7-day pilot, setup fee, monthly response desk, and optional attribution-based upside share.",
+      "No markdown tables. No fake claims. No guarantees.",
+      `Lead: ${JSON.stringify(lead || {})}`,
+      `Context: ${input || ""}`,
+      "Return only the proposal draft.",
+    ].join("\n");
+  }
+
   return [
     "You are Ghost Lead Command, an AI consultant sales operator.",
     "Write concise, practical sales copy that helps close AI automation retainers.",
@@ -120,9 +134,30 @@ function buildFallback({ kind, lead, input }: GenerateArgs) {
 
   if (kind === "proposal") {
     return [
-      "Option 1: Revival Install - $2,500 setup. Import old leads, launch follow-up, classify replies, and book calls.",
-      "Option 2: Revival + AI Ops - $2,500 setup + $1,000/mo. Includes ongoing sequence optimization, call prep, proposal support, and reporting.",
-      "Optional: 12% of recovered revenue attributed to the campaign.",
+      `${company} Project Proposal`,
+      "",
+      `Situation: ${company} appears to have a ${niche.toLowerCase()} lead-flow problem worth tightening before more demand is purchased. Current stage is ${lead?.stage || "active"} with an estimated opportunity value of $${Number(lead?.value || 7500).toLocaleString()}.`,
+      "",
+      "Recommended Build: AI Lead Recovery Sprint",
+      `- Map where ${company} loses replies, calls, form fills, and follow-up ownership.`,
+      "- Launch an approved first-touch follow-up workflow for qualified contacts.",
+      "- Classify replies into hot, nurture, objection, booked, or do-not-contact.",
+      "- Route booked opportunities into calendar prep, proposal prep, and CRM sync.",
+      "",
+      "Option A: 7-Day Recovery Pilot",
+      "- Setup: $2,500",
+      "- Outcome: prove whether the workflow can create qualified replies and booked calls from one narrow segment.",
+      "- Includes: import/scoring, approval queue, reply classifier, booked-call board, and daily operator summary.",
+      "",
+      "Option B: Recovery Pilot + AI Response Desk",
+      "- Setup: $2,500",
+      "- Monthly: $1,000/mo",
+      "- Outcome: keep improving outreach, reply handling, call prep, proposal follow-up, and reporting after the pilot.",
+      "",
+      "Optional Upside Share",
+      "- 12% of recovered revenue attributed to the campaign, only where attribution is visible.",
+      "",
+      "Next Step: approve one narrow segment, run the pilot for 7 days, and review booked calls plus pipeline value before expanding.",
     ].join("\n");
   }
 

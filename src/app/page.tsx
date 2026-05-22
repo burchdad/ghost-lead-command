@@ -1697,6 +1697,7 @@ export default function Home() {
   const emailFollowup = emailDraft || outreachCopy.email;
   const outreachSubject = emailSubjectDraft || outreachCopy.subject;
   const outreachAngle = isFreshSourcedLead(selectedLead) ? "Fresh lead" : "Revival";
+  const projectOfferLines = buildProjectOfferLines(selectedLead);
   const twilioHealth = integrations.twilio || {};
   const twilioReady =
     Boolean(twilioHealth.configured) &&
@@ -2989,10 +2990,9 @@ export default function Home() {
                     Sync to GhostCRM
                   </button>
                   <div className="space-y-4">
-                    <OfferLine title="Revival install" price="$2,500" detail="Import, segment, and launch old-lead follow-up." />
-                    <OfferLine title="AI response desk" price="$1,000/mo" detail="Classify replies, route hot leads, prep calls." />
-                    <OfferLine title="Agent demo pack" price="$1,500" detail="Website audit, missed-call bot, and intake assistant." />
-                    <OfferLine title="Upside share" price="12%" detail="Optional percentage of recovered revenue." />
+                    {projectOfferLines.map((line) => (
+                      <OfferLine key={line.title} title={line.title} price={line.price} detail={line.detail} />
+                    ))}
                   </div>
                   <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">
                     <h3 className="font-semibold">Next Money-Path Agents</h3>
@@ -3671,6 +3671,39 @@ function buildOutreachCopy(lead: Lead) {
     sms: `Hey ${firstName}, quick one: are you still trying to convert the old ${niche} leads sitting in ${company}'s pipeline? I can show you an AI follow-up system that revives them and only takes 15 minutes to demo.`,
     email: `Subject: old leads hiding revenue\n\n${firstName}, I built a dead-lead revival workflow for businesses like ${company}. It pulls old inquiries, writes human follow-up, classifies replies, and books the interested ones.\n\nWorth a quick look this week?`,
   };
+}
+
+function buildProjectOfferLines(lead: Lead) {
+  const niche = lead.niche.toLowerCase();
+  const value = Math.max(lead.value || 7500, 3500);
+  const pilotValue = `$${value.toLocaleString()}`;
+  const fresh = isFreshSourcedLead(lead);
+  const project = fresh ? "Lead capture recovery sprint" : "Dead-lead recovery sprint";
+
+  return [
+    {
+      title: `${project}`,
+      price: "$2,500",
+      detail: fresh
+        ? `Map how ${lead.company} handles missed calls, estimate requests, and slow follow-up for ${niche} buyers.`
+        : `Import and segment ${lead.company}'s older ${niche} contacts, then restart the highest-intent conversations.`,
+    },
+    {
+      title: "AI response desk",
+      price: "$1,000/mo",
+      detail: "Classify replies, surface hot leads, prep calls, and keep the follow-up path improving after launch.",
+    },
+    {
+      title: "Booked-call demo pack",
+      price: "$1,500",
+      detail: `Build the proof path around ${lead.company}: lead intake, approval queue, reply routing, booking prep, and CRM sync.`,
+    },
+    {
+      title: "Upside share",
+      price: "12%",
+      detail: `Optional recovered-revenue share when attribution is visible; current target opportunity is about ${pilotValue}.`,
+    },
+  ];
 }
 
 function GeneratedCopy({ mode, lead }: { mode: string; lead: Lead }) {
