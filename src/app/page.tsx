@@ -276,6 +276,15 @@ type LearningLoop = {
   gaps: string[];
 };
 
+type SignalCollectorResult = {
+  commit: boolean;
+  runs: { playId: string; name: string; provider: string; found: number; qualified: number; message?: string | null }[];
+  qualified: SourceLead[];
+  imported: number;
+  queued: number;
+  skipped: Record<string, number>;
+};
+
 type BookingTask = {
   id: string;
   status: string;
@@ -627,6 +636,9 @@ export default function Home() {
   ]);
   const [agentControlRoom, setAgentControlRoom] = useState<AgentControlRoom | null>(null);
   const [learningLoop, setLearningLoop] = useState<LearningLoop | null>(null);
+  const [collectorBusy, setCollectorBusy] = useState(false);
+  const [tuningBusy, setTuningBusy] = useState(false);
+  const [signalCollectorResult, setSignalCollectorResult] = useState<SignalCollectorResult | null>(null);
   const [bookingTasks, setBookingTasks] = useState<BookingTask[]>([]);
   const [sequenceQueue, setSequenceQueue] = useState<SequenceQueueStep[]>([]);
   const [editScore, setEditScore] = useState(String(seedLeads[0].score));
@@ -1214,6 +1226,88 @@ export default function Home() {
     await refreshLeads();
     setActive("queue");
     setAgentBusy(false);
+  }
+
+  async function runSignalCollector(commit = false) {
+    if (collectorBusy) return;
+    setCollectorBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: commit ? "Signal collector importing" : "Signal collector previewing",
+      detail: "Running buying-signal plays across configured source providers.",
+    });
+
+    const response = await fetch("/api/agent/signal-collector", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        commit,
+        autoQueue: true,
+        autoSend: outreachStatus.mode === "live",
+        queueLimit: 8,
+        size: 20,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "Signal collector blocked",
+        detail: payload.detail || payload.error || "The signal collector could not run.",
+      });
+      setCollectorBusy(false);
+      return;
+    }
+
+    setSignalCollectorResult(payload);
+    setSourceResults(payload.qualified || []);
+    setActionToast({
+      phase: "success",
+      title: commit ? "Signals imported" : "Signal preview ready",
+      detail: commit
+        ? `Imported ${payload.imported || 0}, queued ${payload.queued || 0}.`
+        : `Qualified ${payload.qualified?.length || 0} signal leads.`,
+    });
+    setOperationStatus(
+      commit
+        ? `Signal collector imported ${payload.imported || 0} leads and queued ${payload.queued || 0} touches.`
+        : `Signal collector previewed ${payload.qualified?.length || 0} qualified leads.`,
+    );
+    await refreshOpsData();
+    if (commit) await refreshLeads();
+    setCollectorBusy(false);
+  }
+
+  async function runSelfTuningAgent() {
+    if (tuningBusy) return;
+    setTuningBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: "Self-tuning agent running",
+      detail: "Activating high-signal source campaigns based on current learning data.",
+    });
+
+    const response = await fetch("/api/agent/tune", { method: "POST" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "Self-tuning blocked",
+        detail: payload.detail || payload.error || "The tuning agent could not complete.",
+      });
+      setTuningBusy(false);
+      return;
+    }
+
+    setActionToast({
+      phase: "success",
+      title: "Self-tuning complete",
+      detail: payload.message || "Recommended source campaigns are active.",
+    });
+    setOperationStatus(payload.message || "Self-tuning agent updated source campaigns.");
+    await refreshOpsData();
+    setTuningBusy(false);
   }
 
   async function ensureSelectedLeadRecord() {
@@ -2300,6 +2394,60 @@ export default function Home() {
                       icon={DatabaseZap}
                     />
                   </div>
+
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => runSignalCollector(false)}
+                      disabled={collectorBusy}
+                      className="inline-flex items-center gap-2 rounded-md bg-white/[0.08] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.14] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {collectorBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Radar size={16} />}
+                      Preview signal plays
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runSignalCollector(true)}
+                      disabled={collectorBusy}
+                      className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-4 py-2 text-sm font-semibold text-[#101417] transition hover:bg-[#c8ef4f] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {collectorBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Target size={16} />}
+                      Import and queue signals
+                    </button>
+                    <button
+                      type="button"
+                      onClick={runSelfTuningAgent}
+                      disabled={tuningBusy}
+                      className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-4 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {tuningBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Brain size={16} />}
+                      Self-tune campaigns
+                    </button>
+                  </div>
+
+                  {signalCollectorResult ? (
+                    <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h3 className="font-semibold">Last Signal Collector Run</h3>
+                        <span className="rounded-sm bg-white/[0.08] px-2 py-1 text-xs text-[#aebbb7]">
+                          {signalCollectorResult.commit ? "import" : "preview"}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 md:grid-cols-3">
+                        {signalCollectorResult.runs.map((run) => (
+                          <div key={run.playId} className="rounded-sm bg-white/[0.04] p-3">
+                            <p className="text-sm font-semibold">{run.name}</p>
+                            <p className="mt-1 text-xs text-[#9fb0a8]">
+                              {run.provider} · found {run.found} · qualified {run.qualified}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-3 text-sm text-[#aebbb7]">
+                        Imported {signalCollectorResult.imported}, queued {signalCollectorResult.queued}.
+                      </p>
+                    </div>
+                  ) : null}
 
                   <div className="mt-5 grid gap-4 xl:grid-cols-3">
                     <div className="rounded-md border border-white/10 bg-[#101417] p-4">
