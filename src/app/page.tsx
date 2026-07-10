@@ -209,6 +209,39 @@ type AutomationEvent = {
   createdAt: string;
 };
 
+type AgentControlCard = {
+  id: string;
+  name: string;
+  role: string;
+  status: "running" | "ready" | "needs-work" | "blocked";
+  health: string;
+  detail: string;
+  lastEvent?: {
+    title: string;
+    detail: string;
+    status: string;
+    at: string;
+    age: string;
+  } | null;
+  nextRun?: string;
+  actionLabel?: string;
+  actionView?: string;
+  metrics: Record<string, string | number>;
+  blockers: string[];
+};
+
+type AgentControlRoom = {
+  summary: {
+    ready: number;
+    total: number;
+    blocked: number;
+    mode: string;
+    crmRoute: string;
+    recommendation: string;
+  };
+  agents: AgentControlCard[];
+};
+
 type BookingTask = {
   id: string;
   status: string;
@@ -238,6 +271,20 @@ function formatIntegrationStatus(status: Record<string, IntegrationPayloadValue>
   return Object.entries(status)
     .map(([key, value]) => `${key}: ${formatIntegrationValue(value)}`)
     .join(" · ");
+}
+
+function agentStatusClass(status: AgentControlCard["status"]) {
+  if (status === "ready") return "border-[#d8ff5f]/45 bg-[#d8ff5f]/10 text-[#d8ff5f]";
+  if (status === "needs-work") return "border-[#83d0c2]/40 bg-[#83d0c2]/10 text-[#83d0c2]";
+  if (status === "running") return "border-white/35 bg-white/10 text-white";
+  return "border-[#ff6b6b]/40 bg-[#ff6b6b]/10 text-[#ffb3b3]";
+}
+
+function agentDotClass(status: AgentControlCard["status"]) {
+  if (status === "ready") return "bg-[#d8ff5f]";
+  if (status === "needs-work") return "bg-[#83d0c2]";
+  if (status === "running") return "bg-white";
+  return "bg-[#ff6b6b]";
 }
 
 type SequenceQueueStep = {
@@ -406,6 +453,7 @@ const seedPrompts: PromptTemplate[] = [
 
 const nav = [
   { id: "dashboard", label: "Command", icon: Gauge },
+  { id: "agents", label: "Agents", icon: Bot },
   { id: "source", label: "Source", icon: Target },
   { id: "pipeline", label: "Pipeline", icon: Layers3 },
   { id: "relationships", label: "QR Relationships", icon: Radar },
@@ -543,6 +591,7 @@ export default function Home() {
       createdAt: "",
     },
   ]);
+  const [agentControlRoom, setAgentControlRoom] = useState<AgentControlRoom | null>(null);
   const [bookingTasks, setBookingTasks] = useState<BookingTask[]>([]);
   const [sequenceQueue, setSequenceQueue] = useState<SequenceQueueStep[]>([]);
   const [editScore, setEditScore] = useState(String(seedLeads[0].score));
@@ -616,6 +665,7 @@ export default function Home() {
         const eventsResponse = await fetch("/api/automation/events");
         const bookingResponse = await fetch("/api/automation/booking");
         const sequenceResponse = await fetch("/api/automation/sequence");
+        const agentControlResponse = await fetch("/api/agent/control-room");
 
         if (!cancelled && leadsResponse.ok) {
           const payload = await leadsResponse.json();
@@ -709,6 +759,10 @@ export default function Home() {
 
         if (!cancelled && integrationsResponse.ok) {
           setIntegrations(await integrationsResponse.json());
+        }
+
+        if (!cancelled && agentControlResponse.ok) {
+          setAgentControlRoom(await agentControlResponse.json());
         }
       } catch (error) {
         if (!cancelled) {
@@ -1011,6 +1065,7 @@ export default function Home() {
     const eventsResponse = await fetch("/api/automation/events");
     const bookingResponse = await fetch("/api/automation/booking");
     const sequenceResponse = await fetch("/api/automation/sequence");
+    const agentControlResponse = await fetch("/api/agent/control-room");
 
     if (campaignsResponse.ok) setSourceCampaigns((await campaignsResponse.json()).campaigns || []);
     if (queueResponse.ok) setQueueItems((await queueResponse.json()).items || []);
@@ -1024,6 +1079,7 @@ export default function Home() {
     }
     if (bookingResponse.ok) setBookingTasks(((await bookingResponse.json()).tasks || []));
     if (sequenceResponse.ok) setSequenceQueue(((await sequenceResponse.json()).steps || []));
+    if (agentControlResponse.ok) setAgentControlRoom(await agentControlResponse.json());
   }
 
   async function saveSourceCampaign() {
@@ -2050,6 +2106,131 @@ export default function Home() {
                 </div>
                 <AutomationEventLog events={automationEvents} />
               </>
+            )}
+
+            {active === "agents" && (
+              <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
+                <Panel title="Agent Control Room" icon={Bot}>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <MetricCard
+                      title="Agents Ready"
+                      value={`${agentControlRoom?.summary.ready || 0}/${agentControlRoom?.summary.total || 7}`}
+                      detail="Operational lanes online"
+                      icon={CheckCircle2}
+                    />
+                    <MetricCard
+                      title="Blocked"
+                      value={String(agentControlRoom?.summary.blocked || 0)}
+                      detail="Needs configuration or attention"
+                      icon={Gauge}
+                    />
+                    <MetricCard
+                      title="Send Mode"
+                      value={agentControlRoom?.summary.mode || outreachStatus.mode}
+                      detail="Current outreach posture"
+                      icon={Send}
+                    />
+                  </div>
+
+                  <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                    {(agentControlRoom?.agents || []).map((agent) => (
+                      <div key={agent.id} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className={`size-2 rounded-full ${agentDotClass(agent.status)}`} />
+                              <h3 className="font-semibold">{agent.name}</h3>
+                            </div>
+                            <p className="mt-2 text-sm leading-5 text-[#aebbb7]">{agent.role}</p>
+                          </div>
+                          <span className={`rounded-sm border px-2 py-1 text-xs font-semibold ${agentStatusClass(agent.status)}`}>
+                            {agent.status}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                          {Object.entries(agent.metrics).map(([label, value]) => (
+                            <div key={label} className="rounded-sm bg-[#101417] p-3">
+                              <p className="text-[10px] uppercase tracking-[0.12em] text-[#83d0c2]">{label}</p>
+                              <p className="mt-1 font-mono text-lg text-white">{value}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-4 rounded-md border border-white/10 bg-[#101417] p-3">
+                          <p className="text-sm font-semibold text-white">{agent.health}</p>
+                          <p className="mt-1 text-sm leading-5 text-[#aebbb7]">{agent.detail}</p>
+                          {agent.nextRun ? <p className="mt-2 text-xs text-[#7f8b86]">Next: {agent.nextRun}</p> : null}
+                          {agent.lastEvent ? (
+                            <p className="mt-2 text-xs text-[#7f8b86]">
+                              Last: {agent.lastEvent.title} · {agent.lastEvent.age}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        {agent.blockers.length ? (
+                          <div className="mt-3 space-y-2">
+                            {agent.blockers.map((blocker) => (
+                              <p key={blocker} className="rounded-sm bg-[#ff6b6b]/10 px-3 py-2 text-xs text-[#ffb3b3]">
+                                {blocker}
+                              </p>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {agent.id === "sourcing" ? (
+                            <button
+                              type="button"
+                              onClick={runAiOperator}
+                              disabled={agentBusy}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-[#c8ef4f] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {agentBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Rocket size={16} />}
+                              Run now
+                            </button>
+                          ) : null}
+                          {agent.actionView ? (
+                            <button
+                              type="button"
+                              onClick={() => setActive(agent.actionView || "dashboard")}
+                              className="inline-flex items-center gap-2 rounded-md bg-white/[0.08] px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.14]"
+                            >
+                              {agent.actionLabel || "Open lane"}
+                              <ArrowRight size={16} />
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+
+                <Panel title="Operating Model" icon={Radar}>
+                  <div className="space-y-3">
+                    <div className="rounded-md border border-white/10 bg-[#eef8e9] p-4 text-[#132322]">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#2a6f64]">Recommended route</p>
+                      <h3 className="mt-3 text-lg font-semibold">
+                        {agentControlRoom?.summary.recommendation ||
+                          "Keep GhostCRM as the lead-to-cash source of truth; sync relationship context to RelateOS."}
+                      </h3>
+                      <p className="mt-3 text-sm leading-6">
+                        GhostCRM should own leads, stages, outreach, replies, booking, proposals, and revenue attribution. RelateOS should receive the qualified relationship graph: warm contacts, referral paths, partner context, and long-term nurture notes.
+                      </p>
+                    </div>
+                    {[
+                      ["GhostCRM", "Primary lead-to-cash database: queue, inbox, booked calls, proposals, won revenue."],
+                      ["RelateOS", "Relationship intelligence layer: referrals, trust paths, partnership memory, warm-network follow-up."],
+                      ["Next build", "Add a qualified-only RelateOS sync lane so every hot reply, referral partner, and won client enriches the relationship graph."],
+                    ].map(([label, detail]) => (
+                      <div key={label} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                        <h3 className="font-semibold">{label}</h3>
+                        <p className="mt-2 text-sm leading-5 text-[#aebbb7]">{detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+              </div>
             )}
 
             {active === "source" && (
