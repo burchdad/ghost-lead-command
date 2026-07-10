@@ -108,14 +108,19 @@ type SourceLead = {
   niche: string;
   location: string;
   source: string;
+  website?: string;
+  sourceUrl?: string;
   score: number;
   confidence: string;
   buyerFit: string;
+  intentSignals?: string[];
+  signalSummary?: string;
 };
 
 type SourcingStatus = {
   pdlConfigured: boolean;
   ghostLeadAgentConfigured: boolean;
+  googleMapsConfigured: boolean;
   mockSourceEnabled: boolean;
   maxPreviewSize: number;
 };
@@ -123,7 +128,7 @@ type SourcingStatus = {
 type SourceCampaign = {
   id: string;
   name: string;
-  provider: "pdl" | "ghost-lead-agent";
+  provider: "pdl" | "ghost-lead-agent" | "google-maps";
   query: string;
   location?: string | null;
   industries?: string | null;
@@ -181,11 +186,13 @@ type AnalyticsPayload = {
   sourceBreakdown: Record<string, number>;
   nicheAttribution?: Record<string, { leads: number; queued: number; replies: number; booked: number; pipeline: number }>;
   funnel?: Record<string, number>;
+  suppressedOrFailed?: number;
   queueByStatus: Record<string, number>;
   repliesByClass: Record<string, number>;
 };
 
-type IntegrationPayload = Record<string, Record<string, string | number | boolean>>;
+type IntegrationPayloadValue = string | number | boolean | null | undefined | Record<string, string | number | boolean | null | undefined>;
+type IntegrationPayload = Record<string, Record<string, IntegrationPayloadValue>>;
 
 type ActionToast = {
   phase: "loading" | "success" | "error";
@@ -215,6 +222,23 @@ type BookingTask = {
   createdAt: string;
   lead?: Lead | null;
 };
+
+function formatIntegrationValue(value: IntegrationPayloadValue): string {
+  if (value == null) return "missing";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") return value || "missing";
+
+  return Object.entries(value)
+    .map(([nestedKey, nestedValue]) => `${nestedKey} ${formatIntegrationValue(nestedValue)}`)
+    .join(", ");
+}
+
+function formatIntegrationStatus(status: Record<string, IntegrationPayloadValue>) {
+  return Object.entries(status)
+    .map(([key, value]) => `${key}: ${formatIntegrationValue(value)}`)
+    .join(" · ");
+}
 
 type SequenceQueueStep = {
   id: string;
@@ -473,15 +497,16 @@ export default function Home() {
   const [sourcingStatus, setSourcingStatus] = useState<SourcingStatus>({
     pdlConfigured: false,
     ghostLeadAgentConfigured: false,
+    googleMapsConfigured: false,
     mockSourceEnabled: false,
     maxPreviewSize: 100,
   });
-  const [sourceProvider, setSourceProvider] = useState<"pdl" | "ghost-lead-agent">("pdl");
-  const [sourceQuery, setSourceQuery] = useState("owners of dental, HVAC, roofing, med spa businesses");
+  const [sourceProvider, setSourceProvider] = useState<"pdl" | "ghost-lead-agent" | "google-maps">("pdl");
+  const [sourceQuery, setSourceQuery] = useState("founders revenue leaders growth operators at companies that need more qualified sales calls");
   const [sourceLocation, setSourceLocation] = useState("United States");
-  const [sourceIndustry, setSourceIndustry] = useState("Dental, HVAC, Roofing, Med Spa");
-  const [sourceLimit, setSourceLimit] = useState("25");
-  const [sourceMinScore, setSourceMinScore] = useState("75");
+  const [sourceIndustry, setSourceIndustry] = useState("Software, SaaS, Marketing, Consulting, B2B Services");
+  const [sourceLimit, setSourceLimit] = useState("50");
+  const [sourceMinScore, setSourceMinScore] = useState("82");
   const [sourceResults, setSourceResults] = useState<SourceLead[]>([]);
   const [sourceStatus, setSourceStatus] = useState("Ready to find fresh contacts.");
   const [sourceScrollToken, setSourceScrollToken] = useState<string | null>(null);
@@ -891,7 +916,7 @@ export default function Home() {
         query: sourceQuery,
         location: sourceLocation,
         industries,
-        titles: ["Owner", "Founder", "CEO", "President", "General Manager", "Managing Partner"],
+        titles: ["Founder", "CEO", "Owner", "Head of Growth", "VP Sales", "Revenue Operations", "General Manager", "Managing Partner"],
         size: Number(sourceLimit || 25),
         scrollToken: scrollToken || undefined,
       }),
@@ -943,8 +968,11 @@ export default function Home() {
           phone: lead.phone,
           title: lead.title,
           location: lead.location,
+          website: lead.website,
           confidence: lead.confidence,
           buyerFit: lead.buyerFit,
+          intentSignals: lead.intentSignals || [],
+          signalSummary: lead.signalSummary || "",
           niche: lead.niche,
           source: lead.source,
           score: lead.score,
@@ -1012,7 +1040,7 @@ export default function Home() {
         query: sourceQuery,
         location: sourceLocation,
         industries,
-        titles: ["Owner", "Founder", "CEO", "Marketing Director", "Operations Manager"],
+        titles: ["Founder", "CEO", "Owner", "Head of Growth", "VP Sales", "Revenue Operations", "Marketing Director", "Operations Manager"],
         dailyLimit: Number(sourceLimit || 25),
         scoreThreshold: Number(sourceMinScore || 75),
         status: "active",
@@ -1062,6 +1090,7 @@ export default function Home() {
         size: Math.min(15, Math.max(5, Number(sourceLimit || 10))),
         minScore: Number(sourceMinScore || 80),
         queueLimit: 5,
+        autoSend: outreachStatus.mode === "live",
       }),
     });
 
@@ -1614,10 +1643,11 @@ export default function Home() {
   const liveDataReady = dataMode === "live" && !forceDemoMode;
   const nextBestAction = buildNextBestAction(nextBestLead, dataMode === "demo");
   const sourceGuardrails = [
-    `Score ${Number(sourceMinScore || 75)}+`,
+    `Score ${Number(sourceMinScore || 82)}+`,
+    "At least one buyer signal",
     "Business email or phone",
     "Decision-maker role",
-    "No agencies, associations, schools, or obvious vendors",
+    "No associations, schools, or obvious non-buyers",
   ];
   const sequenceSteps = buildOutreachSequence(selectedLead, sequenceMode);
   const automationLanes = buildAutomationLanes(integrations, outreachStatus);
@@ -1639,12 +1669,33 @@ export default function Home() {
       detail: sourcingStatus.mockSourceEnabled ? "Demo contacts are enabled." : "Demo contacts are disabled for production sourcing.",
     },
     {
+      label: "Lead intake webhook",
+      ok: Boolean(integrations.leadIntake?.configured),
+      detail: integrations.leadIntake?.configured
+        ? "External lead intelligence can securely post into /api/source/intake."
+        : "Add LEAD_INTAKE_SECRET so ghostai.solutions and outside collectors can feed Lead Command.",
+    },
+    {
+      label: "Google signal source",
+      ok: Boolean(integrations.serpapi?.configured),
+      detail: integrations.serpapi?.configured
+        ? "SerpAPI configured for Google/search signal collectors."
+        : "Add SERPAPI_API_KEY to power Google search, Maps, and local intent sourcing.",
+    },
+    {
+      label: "LinkedIn signal source",
+      ok: Boolean(integrations.linkedin?.configured),
+      detail: integrations.linkedin?.configured
+        ? `LinkedIn configured. Token ${integrations.linkedin.accessToken || "unknown"}, OAuth ${integrations.linkedin.oauthClient || "unknown"}.`
+        : "Add LinkedIn access token or OAuth client settings for LinkedIn signal ingestion.",
+    },
+    {
       label: "Outreach mode",
-      ok: outreachStatus.mode !== "live",
+      ok: outreachStatus.mode === "live",
       detail:
         outreachStatus.mode === "live"
           ? "Live sending is enabled. Keep approvals tight."
-          : "Dry-run mode is active, so outreach will queue safely.",
+          : "Dry-run mode is active. Good for testing, but it will not create revenue.",
     },
     {
       label: "SendGrid",
@@ -1681,7 +1732,7 @@ export default function Home() {
       label: "Operator guardrails",
       ok: Boolean(integrations.operator?.configured),
       detail: integrations.operator?.configured
-        ? `Daily source cap ${integrations.operator.dailySourceLimit}, queue cap ${integrations.operator.dailyQueueLimit}, pending cap ${integrations.operator.maxPendingApprovals}.`
+        ? `Daily source cap ${integrations.operator.dailySourceLimit}, queue cap ${integrations.operator.dailyQueueLimit}, pending cap ${integrations.operator.maxPendingApprovals}. Auto-send ${integrations.operator.autoSend ? "on" : "off"}.`
         : "Autonomous runs need daily caps before unattended sourcing.",
     },
     {
@@ -2007,15 +2058,16 @@ export default function Home() {
                   <div className="grid gap-4">
                     <div className="grid gap-2">
                       <p className="text-sm text-[#aebbb7]">Provider</p>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid gap-2 sm:grid-cols-3">
                         {[
                           { id: "pdl", label: "People Data Labs", active: sourcingStatus.pdlConfigured },
+                          { id: "google-maps", label: "Google Maps", active: sourcingStatus.googleMapsConfigured },
                           { id: "ghost-lead-agent", label: "Ghost Lead Agent", active: sourcingStatus.ghostLeadAgentConfigured },
                         ].map((provider) => (
                           <button
                             key={provider.id}
                             type="button"
-                            onClick={() => setSourceProvider(provider.id as "pdl" | "ghost-lead-agent")}
+                            onClick={() => setSourceProvider(provider.id as "pdl" | "ghost-lead-agent" | "google-maps")}
                             className={`rounded-md border px-3 py-3 text-left text-sm transition ${
                               sourceProvider === provider.id
                                 ? "border-[#d8ff5f] bg-[#d8ff5f]/10 text-white"
@@ -2036,14 +2088,20 @@ export default function Home() {
                     </div>
 
                     <label className="grid gap-2 text-sm text-[#aebbb7]">
-                      {sourceProvider === "ghost-lead-agent" ? "Domains or websites" : "Search brief"}
+                      {sourceProvider === "ghost-lead-agent"
+                        ? "Domains or websites"
+                        : sourceProvider === "google-maps"
+                          ? "Google Maps search"
+                          : "Search brief"}
                       <textarea
                         value={sourceQuery}
                         onChange={(event) => setSourceQuery(event.target.value)}
                         placeholder={
                           sourceProvider === "ghost-lead-agent"
                             ? "example.com\nhttps://acme.io"
-                            : "owners of dental, HVAC, roofing, med spa businesses"
+                            : sourceProvider === "google-maps"
+                              ? "marketing agencies near Dallas OR SaaS companies in Austin"
+                              : "founders revenue leaders growth operators at companies that need more qualified sales calls"
                         }
                         className="min-h-24 rounded-md border border-white/10 bg-[#101417] px-3 py-2 text-white outline-none focus:border-[#83d0c2]"
                       />
@@ -2090,7 +2148,7 @@ export default function Home() {
                     <div className="rounded-md border border-white/10 bg-[#101417] p-4 text-sm text-[#b6c4bf]">
                       <p className="font-semibold text-white">Best route for volume</p>
                       <p className="mt-2">
-                        Use PDL to find broad contact volume, then send the best company websites through the Ghost Lead Agent for scoring, AI opportunity, and outreach context.
+                        Use PDL for named buyer contacts, Google Maps for business discovery plus website/phone signals, and Ghost Lead Agent for deeper website intelligence.
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {sourceGuardrails.map((guardrail) => (
@@ -2189,6 +2247,12 @@ export default function Home() {
                             <span className="rounded-sm bg-[#101417] px-2 py-2">{lead.phone || "no phone"}</span>
                             <span className="rounded-sm bg-[#101417] px-2 py-2">{lead.location || lead.source}</span>
                           </div>
+                          <div className="mt-3 rounded-md border border-white/10 bg-[#101417] p-3">
+                            <p className="text-xs uppercase tracking-[0.12em] text-[#83d0c2]">Buyer Signals</p>
+                            <p className="mt-2 text-sm leading-5 text-[#d6dfdc]">
+                              {lead.signalSummary || lead.intentSignals?.slice(0, 3).join("; ") || "Needs deeper intent enrichment before outreach."}
+                            </p>
+                          </div>
                         </div>
                       ))
                     ) : (
@@ -2204,42 +2268,44 @@ export default function Home() {
             {active === "pipeline" && (
               <div className="grid gap-6 2xl:grid-cols-[1fr_420px]">
                 <Panel title="Lead Pipeline" icon={Layers3}>
-                  <div className="grid gap-4 xl:grid-cols-6">
-                    {stages.map((stage) => {
-                      const stageLeads = leads.filter((lead) => lead.stage === stage);
-                      const stageValue = stageLeads.reduce((sum, lead) => sum + lead.value, 0);
-                      return (
-                        <div key={stage} className="rounded-md border border-white/10 bg-white/[0.03] p-3">
-                          <div className="mb-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <h3 className="text-sm font-semibold">{stage}</h3>
-                              <span className="font-mono text-xs text-[#d8ff5f]">{stageLeads.length}</span>
-                            </div>
-                            <p className="mt-1 font-mono text-xs text-[#9fb0a8]">{money(stageValue)}</p>
-                          </div>
-                          <div className="space-y-3">
-                            {stageLeads.length ? (
-                              stageLeads.map((lead) => (
-                                <PipelineCard
-                                  key={lead.id || lead.company}
-                                  lead={lead}
-                                  selected={selectedLead.id === lead.id || selectedLead.company === lead.company}
-                                  onSelect={() => selectLead(lead)}
-                                  onAction={() => {
-                                    selectLead(lead);
-                                    setActive(lead.stage === "Call Booked" || lead.stage === "Proposal Sent" ? "proposal" : "outreach");
-                                  }}
-                                />
-                              ))
-                            ) : (
-                              <div className="rounded-md border border-dashed border-white/10 bg-[#101417] p-4 text-xs leading-5 text-[#7f8b86]">
-                                No leads here yet.
+                  <div className="overflow-x-auto pb-2">
+                    <div className="flex min-w-max gap-4">
+                      {stages.map((stage) => {
+                        const stageLeads = leads.filter((lead) => lead.stage === stage);
+                        const stageValue = stageLeads.reduce((sum, lead) => sum + lead.value, 0);
+                        return (
+                          <div key={stage} className="w-56 shrink-0 rounded-md border border-white/10 bg-white/[0.03] p-3">
+                            <div className="mb-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <h3 className="text-sm font-semibold">{stage}</h3>
+                                <span className="font-mono text-xs text-[#d8ff5f]">{stageLeads.length}</span>
                               </div>
-                            )}
+                              <p className="mt-1 font-mono text-xs text-[#9fb0a8]">{money(stageValue)}</p>
+                            </div>
+                            <div className="max-h-[72vh] space-y-3 overflow-y-auto pr-1">
+                              {stageLeads.length ? (
+                                stageLeads.map((lead) => (
+                                  <PipelineCard
+                                    key={lead.id || lead.company}
+                                    lead={lead}
+                                    selected={selectedLead.id === lead.id || selectedLead.company === lead.company}
+                                    onSelect={() => selectLead(lead)}
+                                    onAction={() => {
+                                      selectLead(lead);
+                                      setActive(lead.stage === "Call Booked" || lead.stage === "Proposal Sent" ? "proposal" : "outreach");
+                                    }}
+                                  />
+                                ))
+                              ) : (
+                                <div className="rounded-md border border-dashed border-white/10 bg-[#101417] p-4 text-xs leading-5 text-[#7f8b86]">
+                                  No leads here yet.
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </Panel>
                 <LeadDetailPanel
@@ -2726,11 +2792,12 @@ export default function Home() {
             {active === "analytics" && (
               <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
                 <Panel title="Revenue Analytics" icon={Brain}>
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     <MetricCard title="Leads" value={String(analytics?.totals.leads || leads.length)} detail="Total in command center" icon={Target} />
                     <MetricCard title="Reply Rate" value={`${Math.round((analytics?.totals.replyRate || 0) * 100)}%`} detail="Replies / sent or queued" icon={MessageSquareText} />
                     <MetricCard title="Hot Replies" value={String(analytics?.totals.hotReplies || 0)} detail="Buying intent detected" icon={Flame} />
                     <MetricCard title="Pipeline" value={money(analytics?.totals.pipeline || stats.pipeline)} detail="Tracked opportunity value" icon={WalletCards} />
+                    <MetricCard title="Suppressed" value={String(analytics?.suppressedOrFailed || 0)} detail="Failed or blocked sends" icon={DatabaseZap} />
                   </div>
                   <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">
                     <h3 className="font-semibold">Sources</h3>
@@ -2769,7 +2836,7 @@ export default function Home() {
                           />
                         </div>
                         <p className="mt-2 text-sm text-[#aebbb7]">
-                          {Object.entries(status).map(([key, value]) => `${key}: ${value}`).join(" · ")}
+                          {formatIntegrationStatus(status)}
                         </p>
                       </div>
                     ))}
@@ -3469,15 +3536,22 @@ function isQualitySourceLead(lead: SourceLead) {
   const hasContact = Boolean(lead.email || lead.phone);
   const fit = lead.buyerFit.toLowerCase();
   const company = lead.companyName.toLowerCase();
-  const badCompany = ["association", "university", "school", "marketing", "agency", "consulting", "media"].some((term) =>
+  const hasSignal = Boolean(lead.signalSummary || lead.intentSignals?.length);
+  const badCompany = ["association", "university", "school", "government", "municipal"].some((term) =>
     company.includes(term),
   );
-  return hasContact && lead.score >= 70 && !fit.includes("risk") && !badCompany;
+  return hasContact && hasSignal && lead.score >= 70 && !fit.includes("risk") && !badCompany;
+}
+
+function extractBuyerSignal(lead: Lead) {
+  const match = lead.next.match(/Signal: ([^.]+)/i);
+  return match?.[1]?.trim() || "";
 }
 
 function buildOutreachSequence(lead: Lead, mode: "fresh" | "revival" | "booked") {
   const firstName = lead.name.split(" ")[0] || "there";
   const niche = lead.niche.toLowerCase();
+  const signal = extractBuyerSignal(lead) || "your team may be leaking qualified conversations before they reach the calendar";
   if (mode === "booked") {
     return [
       {
@@ -3526,20 +3600,20 @@ function buildOutreachSequence(lead: Lead, mode: "fresh" | "revival" | "booked")
     {
       day: "Day 0",
       channel: "Email",
-      goal: "Open with missed lead flow",
-      copy: `${firstName}, quick idea for ${lead.company}: catch missed estimate requests, old form fills, and unworked calls with AI follow-up.`,
+      goal: "Open with buyer signal",
+      copy: `${firstName}, quick idea for ${lead.company}: I noticed ${signal}. I can show the signal-to-meeting workflow I would run to turn that into qualified calls.`,
     },
     {
       day: "Day 2",
       channel: "SMS",
       goal: "Human nudge",
-      copy: `Worth a quick look if I showed how this would work against your current ${niche} lead flow?`,
+      copy: `Worth a quick look if I showed how this would work against your current ${niche} pipeline?`,
     },
     {
       day: "Day 6",
       channel: "Email",
       goal: "Offer proof/demo",
-      copy: `I can show the actual board: source, approve, send, classify replies, and push booked calls into the sales path.`,
+      copy: `I can show the actual board: buyer signals, enrichment, approved outreach, reply routing, and booked-call handoff.`,
     },
   ];
 }
@@ -3666,12 +3740,14 @@ function buildOutreachCopy(lead: Lead) {
   const firstName = lead.name.split(" ")[0] || "there";
   const company = lead.company;
   const niche = lead.niche.toLowerCase();
+  const signal = extractBuyerSignal(lead);
 
   if (isFreshSourcedLead(lead)) {
+    const signalLine = signal || "you look like a fit for a signal-based outbound test";
     return {
-      subject: `quick ${niche} follow-up idea`,
-      sms: `Hey ${firstName}, quick idea for ${company}: we help ${niche} teams catch missed estimate requests, old form fills, and unworked calls with a lightweight AI follow-up system. Worth a quick look?`,
-      email: `Subject: quick ${niche} follow-up idea\n\n${firstName}, quick idea for ${company}.\n\nI help ${niche} companies catch and follow up with missed estimate requests, old form fills, and unworked calls using a lightweight AI follow-up system.\n\nWorth a quick look if I showed you the workflow against your current lead flow?`,
+      subject: "signal-to-meeting idea",
+      sms: `Hey ${firstName}, noticed ${signalLine}. I am building a signal-to-meeting engine for ${niche} teams. Worth a quick look at how it would find and book warmer prospects for ${company}?`,
+      email: `Subject: signal-to-meeting idea\n\n${firstName}, quick idea for ${company}.\n\nI noticed ${signalLine}.\n\nI am building a lead engine that finds warm buyer signals, enriches the account, writes the first touch, and routes replies into booked calls for ${niche} teams.\n\nWorth a quick look if I showed the exact workflow I would run for ${company}?`,
     };
   }
 
@@ -3777,3 +3853,4 @@ function OfferLine({
     </div>
   );
 }
+

@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { approveOutreachQueueItem } from "@/lib/approval";
 import { generateSalesText } from "@/lib/ai";
 import { createAutomationEvent } from "@/lib/automation";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
@@ -18,6 +19,7 @@ type AgentRunInput = {
   size?: number;
   minScore?: number;
   queueLimit?: number;
+  autoSend?: boolean;
 };
 
 type NicheRecommendation = {
@@ -32,74 +34,81 @@ type NicheRecommendation = {
 
 const nichePlaybook: NicheRecommendation[] = [
   {
-    niche: "Roofing",
-    query: "owners and operators of roofing companies",
+    niche: "B2B SaaS",
+    query: "founders growth leaders revenue leaders at B2B SaaS companies",
     location: "United States",
-    industries: ["Roofing", "Construction"],
+    industries: ["Software", "SaaS", "Technology"],
+    minScore: 84,
+    queueLimit: 8,
+    rationale: [
+      "High ACV supports a fast pilot sale when pipeline creation is painful.",
+      "Founders and revenue leaders understand outbound volume and conversion math.",
+      "The pitch can be tied to warm-signal monitoring, enrichment, and booked demos.",
+    ],
+  },
+  {
+    niche: "Agencies",
+    query: "founders owners growth operators at marketing agencies and B2B service firms",
+    location: "United States",
+    industries: ["Marketing", "Advertising", "Consulting", "B2B Services"],
     minScore: 82,
-    queueLimit: 5,
+    queueLimit: 8,
     rationale: [
-      "High-ticket jobs make one recovered estimate request meaningful.",
-      "Missed calls, old forms, and slow follow-up are easy pains to diagnose.",
-      "The offer maps cleanly to an AI follow-up and booked-estimate workflow.",
+      "Agencies have immediate pressure to book sales calls for themselves and clients.",
+      "A lead-engine offer is easy to demonstrate with their own ICP.",
+      "One client acquisition can justify a setup fee quickly.",
     ],
   },
   {
-    niche: "HVAC",
-    query: "owners and general managers of HVAC companies",
+    niche: "Recruiting and Staffing",
+    query: "founders operators sales leaders at recruiting staffing and talent companies",
     location: "United States",
-    industries: ["HVAC", "Home Services"],
+    industries: ["Staffing", "Recruiting", "Human Resources"],
     minScore: 82,
-    queueLimit: 5,
+    queueLimit: 8,
     rationale: [
-      "Seasonal demand creates urgency without manufacturing pressure.",
-      "Missed estimate requests and service calls are visible revenue leaks.",
-      "Owners understand speed-to-lead and appointment booking value quickly.",
+      "They already buy outbound, enrichment, and booked-meeting systems.",
+      "Hiring and role-change signals map cleanly to buying intent.",
+      "Sales cycles can be short when the offer is qualified calls.",
     ],
   },
   {
-    niche: "Dental",
-    query: "owners and practice managers of dental practices",
+    niche: "Local High-Ticket Services",
+    query: "owners operators growth managers at high ticket local service businesses",
     location: "United States",
-    industries: ["Dental", "Healthcare"],
+    industries: ["Home Services", "Healthcare", "Professional Services"],
     minScore: 80,
-    queueLimit: 5,
+    queueLimit: 8,
     rationale: [
-      "Patient acquisition economics support automation retainers.",
-      "No-show, recall, and unscheduled treatment follow-up are concrete pains.",
-      "Email-first outreach is safer while SMS compliance is pending.",
+      "Missed calls, slow form follow-up, and unworked quotes create immediate pain.",
+      "Booked calls are a concrete deliverable, not an abstract AI promise.",
+      "Setup plus monthly response desk can close fast when the leak is obvious.",
     ],
   },
   {
-    niche: "Med Spa",
-    query: "owners and operators of med spas",
+    niche: "Founder-Led Services",
+    query: "founders owners principals of founder led B2B service companies",
     location: "United States",
-    industries: ["Med Spa", "Wellness"],
+    industries: ["Consulting", "Professional Services", "Business Services"],
     minScore: 80,
-    queueLimit: 5,
+    queueLimit: 8,
     rationale: [
-      "Consultation follow-up and old inquiry revival are easy to demonstrate.",
-      "Margins can support setup plus monthly optimization.",
-      "The demo path is visual: inquiry capture, reply classification, booked consults.",
-    ],
-  },
-  {
-    niche: "Auto Detail",
-    query: "owners of auto detail and ceramic coating shops",
-    location: "United States",
-    industries: ["Auto Detail", "Automotive"],
-    minScore: 78,
-    queueLimit: 5,
-    rationale: [
-      "Shops often lose leads in DMs, missed calls, and quote follow-up.",
-      "The offer is simple: recover quote requests and book paid details.",
-      "A smaller-ticket niche gives fast feedback on copy and workflow.",
+      "Founder-led businesses can approve pilots quickly.",
+      "Their pain is usually simple: not enough qualified conversations.",
+      "The offer can be positioned as done-for-you signal monitoring plus outreach.",
     ],
   },
 ];
 
 function clean(value: string | undefined) {
   return value?.trim() || "";
+}
+
+function boolFromEnv(name: string, fallback = false) {
+  const value = clean(process.env[name]).toLowerCase();
+  if (["true", "1", "yes", "on"].includes(value)) return true;
+  if (["false", "0", "no", "off"].includes(value)) return false;
+  return fallback;
 }
 
 function normalizeDomain(value: string) {
@@ -122,7 +131,8 @@ function parseGeneratedOutreach(text: string, companyName: string) {
 }
 
 function defaultNextAction(lead: SourceLead) {
-  return `AI agent sourced ${lead.companyName}, scored ${lead.score}, and queued a first-touch opener for ${lead.name}.`;
+  const signals = lead.signalSummary || lead.intentSignals?.slice(0, 3).join("; ");
+  return `AI agent sourced ${lead.companyName}, scored ${lead.score}, and queued a first-touch opener for ${lead.name}. Buyer fit: ${lead.buyerFit}.${signals ? ` Signal: ${signals}.` : ""}`;
 }
 
 async function importSourceLead(sourceLead: SourceLead, workspaceId: string) {
@@ -236,6 +246,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const provider = input.provider || "pdl";
+  const autoSend = input.autoSend ?? boolFromEnv("AGENT_AUTO_SEND", false);
   const requestedMinScore = Number(input.minScore || process.env.AGENT_MIN_LEAD_SCORE || 80);
   const requestedQueueLimit = Math.min(10, Math.max(1, Number(input.queueLimit || process.env.AGENT_QUEUE_LIMIT || 5)));
   const requestedSize = Math.min(
@@ -279,15 +290,18 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     detail: `Sourcing ${size} leads from ${provider}, minimum score ${minScore}, queue limit ${queueLimit}. Guardrails active.`,
     status: "running",
     type: "agent",
-    payload: { provider, minScore, queueLimit, size, policy },
+    payload: { provider, minScore, queueLimit, size, policy, autoSend },
   });
 
   const sourceResult = await searchFreshLeads({
     provider,
-    query: input.query || process.env.AGENT_SOURCE_QUERY || "owners of roofing HVAC dental med spa businesses",
+    query:
+      input.query ||
+      process.env.AGENT_SOURCE_QUERY ||
+      "founders revenue leaders growth operators at companies that need more qualified sales calls",
     location: input.location || process.env.AGENT_SOURCE_LOCATION || "United States",
-    industries: input.industries || (process.env.AGENT_SOURCE_INDUSTRIES || "Roofing, HVAC, Dental, Med Spa").split(","),
-    titles: input.titles || ["Owner", "Founder", "CEO", "President", "General Manager", "Vice President"],
+    industries: input.industries || (process.env.AGENT_SOURCE_INDUSTRIES || "Software, SaaS, Marketing, Consulting, B2B Services").split(","),
+    titles: input.titles || ["Founder", "CEO", "Owner", "President", "Head of Growth", "VP Sales", "Revenue Operations", "General Manager"],
     size,
   });
 
@@ -347,13 +361,14 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       include: { lead: true },
     });
 
-    const slack = await notifySlackOutreachApproval(item);
-    queued.push({ lead: imported.lead, item, slack });
+    const slack = autoSend ? { sent: false, skipped: true, reason: "Auto-send enabled; Slack approval card skipped." } : await notifySlackOutreachApproval(item);
+    const approval = autoSend ? await approveOutreachQueueItem(item.id) : null;
+    queued.push({ lead: imported.lead, item, slack, approval });
   }
 
   await createAutomationEvent({
     title: "AI operator finished",
-    detail: `Found ${sourceResult.leads.length}, qualified ${qualified.length}, queued ${queued.length}.`,
+    detail: `Found ${sourceResult.leads.length}, qualified ${qualified.length}, ${autoSend ? "sent/attempted" : "queued"} ${queued.length}.`,
     status: queued.length ? "done" : "blocked",
     type: "agent",
     payload: {
@@ -364,6 +379,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       queued: queued.length,
       skipped,
       guardrails: policy,
+      autoSend,
     },
   });
 
@@ -377,7 +393,9 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     items: queued.map((entry) => entry.item),
     message:
       queued.length > 0
-        ? `AI operator queued ${queued.length} approval-ready emails.`
+        ? autoSend
+          ? `AI operator attempted ${queued.length} live sends.`
+          : `AI operator queued ${queued.length} approval-ready emails.`
         : sourceResult.message || "AI operator did not find new qualified leads to queue.",
   };
 }

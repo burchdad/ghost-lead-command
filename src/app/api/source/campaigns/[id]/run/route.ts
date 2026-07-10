@@ -21,8 +21,13 @@ export async function POST(
     return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   }
 
+  const provider =
+    campaign.provider === "ghost-lead-agent" || campaign.provider === "google-maps"
+      ? campaign.provider
+      : "pdl";
+
   const result = await searchFreshLeads({
-    provider: campaign.provider === "ghost-lead-agent" ? "ghost-lead-agent" : "pdl",
+    provider,
     query: campaign.query,
     location: campaign.location || undefined,
     industries: splitList(campaign.industries),
@@ -30,7 +35,11 @@ export async function POST(
     size: campaign.dailyLimit,
   });
 
-  const qualified = result.leads.filter((lead: SourceLead) => lead.score >= campaign.scoreThreshold);
+  const qualified = result.leads.filter(
+    (lead: SourceLead) =>
+      lead.score >= campaign.scoreThreshold &&
+      Boolean(lead.signalSummary?.trim() || lead.intentSignals?.length),
+  );
 
   await prisma.sourcingCampaign.update({
     where: { id },

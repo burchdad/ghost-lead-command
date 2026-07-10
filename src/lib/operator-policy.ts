@@ -25,6 +25,8 @@ export type OperatorRunPolicy = {
     dailyQueueLimit: number;
     maxPendingApprovals: number;
     requireEmail: boolean;
+    requireBuyerSignal: boolean;
+    autoSend: boolean;
   };
   usage: {
     sourcedToday: number;
@@ -62,6 +64,8 @@ export function getOperatorCaps() {
     dailyQueueLimit: numberFromEnv("AGENT_DAILY_QUEUE_LIMIT", 10),
     maxPendingApprovals: numberFromEnv("AGENT_MAX_PENDING_APPROVALS", 25),
     requireEmail: boolFromEnv("AGENT_REQUIRE_EMAIL", true),
+    requireBuyerSignal: boolFromEnv("AGENT_REQUIRE_BUYER_SIGNAL", true),
+    autoSend: boolFromEnv("AGENT_AUTO_SEND", false),
   };
 }
 
@@ -146,5 +150,8 @@ export function evaluateSourceLead(lead: SourceLead, policy: OperatorRunPolicy) 
   if (!lead.companyName?.trim()) return { ok: false as const, reason: "missing-company" };
   if (!lead.name?.trim()) return { ok: false as const, reason: "missing-contact-name" };
   if (policy.caps.requireEmail && !lead.email?.trim()) return { ok: false as const, reason: "missing-email" };
+  if (policy.caps.requireBuyerSignal && !lead.signalSummary?.trim() && !lead.intentSignals?.length) {
+    return { ok: false as const, reason: "missing-buyer-signal" };
+  }
   return { ok: true as const };
 }

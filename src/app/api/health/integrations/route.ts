@@ -34,6 +34,21 @@ export async function GET() {
 
   return NextResponse.json({
     pdl: { configured: sourcing.pdlConfigured },
+    leadIntake: {
+      configured: Boolean(process.env.LEAD_INTAKE_SECRET),
+      route: "/api/source/intake",
+      mode: process.env.LEAD_INTAKE_SECRET ? "secured" : "missing secret",
+    },
+    serpapi: {
+      configured: Boolean(process.env.SERPAPI_API_KEY),
+      useCase: "Google search, Maps, and local/business intent collectors",
+    },
+    linkedin: {
+      configured: Boolean(process.env.LINKEDIN_ACCESS_TOKEN || (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET)),
+      accessToken: process.env.LINKEDIN_ACCESS_TOKEN ? "configured" : "missing",
+      oauthClient: process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET ? "configured" : "missing",
+      redirectUri: process.env.LINKEDIN_REDIRECT_URI ? "configured" : "missing",
+    },
     ghostLeadAgent,
     sendgrid: {
       configured: outreach.sendgridConfigured,

@@ -85,10 +85,13 @@ function buildPrompt({ kind, lead, input }: GenerateArgs) {
 
   return [
     "You are Ghost Lead Command, an AI consultant sales operator.",
-    "Write concise, practical sales copy that helps close AI automation retainers.",
+    "Write concise, practical sales copy that helps book qualified sales conversations for a lead-generation AI product.",
+    "Position the offer as an intent-led outbound engine: find warm buyer signals, enrich the account, write context-aware outreach, route replies, and book meetings.",
+    "Lead with the observed signal or likely pipeline leak before mentioning AI. The buyer should feel this is about revenue conversations, not software novelty.",
     "Use proven sales principles without copying any author or book: clear offer math, painful problem awareness, curiosity-led questions, consequence framing, objection-aware phrasing, low-friction next steps, and plain human language.",
     "Every outbound message should diagnose before pitching, avoid hype, avoid fake familiarity, avoid guarantees, avoid pressure, and make one specific ask.",
     "Favor short consultative questions over claims. Make the buyer feel understood, not cornered.",
+    "For cold email, keep it under 120 words. Use a specific subject under 45 characters. Make one ask: permission to show the exact signal-to-meeting workflow.",
     "Keep compliance in mind: no deceptive claims, no pressure language, and no misleading urgency.",
     `Customer-facing email signatures must be exactly:\n${customerSignature()}`,
     `Never include placeholders like [Your Name], internal tool names, OpenAI, AI operator, queue metadata, or ${outreachBrandName()} command-center status lines in customer-facing copy.`,
@@ -177,14 +180,17 @@ function buildFallback({ kind, lead, input }: GenerateArgs) {
   }
 
   if (freshSourced) {
+    const signal = lead?.nextAction?.match(/Signal: ([^.]+)/)?.[1] || "you look like a fit for a signal-based outbound test";
     return [
-      `Subject: quick ${niche.toLowerCase()} follow-up idea`,
+      `Subject: signal-to-meeting idea`,
       "",
       `${firstName}, quick idea for ${company}.`,
       "",
-      `I help ${niche.toLowerCase()} companies catch and follow up with missed estimate requests, old form fills, and unworked calls using a lightweight AI follow-up system.`,
+      `I noticed this signal: ${signal}.`,
       "",
-      "Worth a quick look if I showed you the workflow against your current lead flow?",
+      `I am building a lead engine that finds warm buyer signals, enriches the account, writes the first touch, and routes replies into booked calls for ${niche.toLowerCase()} teams.`,
+      "",
+      "Worth a quick look if I showed the exact signal-to-meeting workflow I would run for you?",
     ].join("\n");
   }
 

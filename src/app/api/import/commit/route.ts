@@ -14,6 +14,8 @@ type ImportRecord = {
   location?: string;
   confidence?: string;
   buyerFit?: string;
+  intentSignals?: string[];
+  signalSummary?: string;
   website?: string;
   domain?: string;
   niche?: string;
@@ -39,6 +41,8 @@ function buildNextAction({
   location,
   confidence,
   buyerFit,
+  intentSignals,
+  signalSummary,
 }: {
   companyName: string;
   contactName: string;
@@ -47,12 +51,16 @@ function buildNextAction({
   location: string;
   confidence: string;
   buyerFit: string;
+  intentSignals: string[];
+  signalSummary: string;
 }) {
   const role = title ? `${contactName} (${title})` : contactName;
   const market = [niche, location].filter(Boolean).join(" in ");
   const contactability = confidence ? ` ${confidence}.` : "";
   const fit = buyerFit ? ` Buyer fit: ${buyerFit}.` : "";
-  return `Quality-check ${companyName}, then queue a first-touch opener to ${role}${market ? ` for ${market}` : ""}.${contactability}${fit}`;
+  const signalLine = signalSummary || intentSignals.slice(0, 3).join("; ");
+  const signals = signalLine ? ` Signal: ${signalLine}.` : "";
+  return `Quality-check ${companyName}, then queue a first-touch opener to ${role}${market ? ` for ${market}` : ""}.${contactability}${fit}${signals}`;
 }
 
 export async function POST(request: Request) {
@@ -86,6 +94,8 @@ export async function POST(request: Request) {
     const location = record.location ? String(record.location).trim() : "";
     const confidence = record.confidence ? String(record.confidence).trim() : "";
     const buyerFit = record.buyerFit ? String(record.buyerFit).trim() : "";
+    const intentSignals = Array.isArray(record.intentSignals) ? record.intentSignals.map(String).filter(Boolean) : [];
+    const signalSummary = record.signalSummary ? String(record.signalSummary).trim() : "";
     const website = record.website ? String(record.website).trim() : "";
     const domain = normalizeDomain(record.domain ? String(record.domain) : website);
 
@@ -177,7 +187,17 @@ export async function POST(request: Request) {
         value,
         source: String(record.source || "csv"),
         lastTouch: "Never",
-        nextAction: buildNextAction({ companyName, contactName, title, niche, location, confidence, buyerFit }),
+        nextAction: buildNextAction({
+          companyName,
+          contactName,
+          title,
+          niche,
+          location,
+          confidence,
+          buyerFit,
+          intentSignals,
+          signalSummary,
+        }),
         opportunities: {
           create: {
             companyId: company.id,

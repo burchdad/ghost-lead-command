@@ -13,7 +13,7 @@ export async function GET() {
     const opportunities = await prisma.opportunity.findMany({ where: { company: { is: { workspaceId: workspace.id } } } });
 
     const sent = queue.filter((item) => ["sent", "queued"].includes(item.status)).length;
-    const hotReplies = replies.filter((reply) => reply.classification === "hot").length;
+    const hotReplies = replies.filter((reply) => ["hot", "booked"].includes(reply.classification)).length;
     const won = opportunities.filter((opportunity) => opportunity.stage === "Won").reduce((sum, opportunity) => sum + opportunity.value, 0);
     const pipeline = opportunities.reduce((sum, opportunity) => sum + opportunity.value, 0);
     const sourceBreakdown = leads.reduce<Record<string, number>>((acc, lead) => {
@@ -61,6 +61,7 @@ export async function GET() {
       sourceBreakdown,
       nicheAttribution,
       funnel,
+      suppressedOrFailed: queue.filter((item) => item.status === "failed").length,
       queueByStatus: queue.reduce<Record<string, number>>((acc, item) => {
         acc[item.status] = (acc[item.status] || 0) + 1;
         return acc;
