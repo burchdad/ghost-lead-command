@@ -285,6 +285,20 @@ type SignalCollectorResult = {
   skipped: Record<string, number>;
 };
 
+type SalesNavResult = {
+  commit: boolean;
+  enrich: boolean;
+  parsed: number;
+  qualified: number;
+  contactable: number;
+  needsContact: number;
+  preview: SourceLead[];
+  imported: number;
+  queued: number;
+  skipped: Record<string, number>;
+  pdlEnrichment: boolean;
+};
+
 type BookingTask = {
   id: string;
   status: string;
@@ -417,6 +431,11 @@ Sam Hill,Hill Roofing,sam@example.com,555-1111,Roofing,old crm
 Jenna Park,Park Family Dental,jenna@example.com,555-2222,Dental,dead crm list
 Chris Wade,Wade HVAC,chris@example.com,555-3333,HVAC,old estimate list`;
 
+const sampleSalesNavPaste = `Name,Title,Company,Industry,Location,LinkedIn URL,Notes
+Morgan Reed,Founder,Northstar RevOps,B2B Services,Austin TX,https://www.linkedin.com/in/morgan-reed,Posted about outbound pipeline quality
+Alex Carter,VP Sales,Atlas Automation,Software,Dallas TX,https://www.linkedin.com/in/alex-carter,Hiring SDRs and scaling demos
+Priya Shah,Head of Growth,LaunchGrid Labs,SaaS,United States,https://www.linkedin.com/in/priya-shah,Engaged with competitor content`;
+
 const stages: Stage[] = [
   "Imported",
   "Contacted",
@@ -429,6 +448,14 @@ const stages: Stage[] = [
   "Call Booked",
   "Proposal Sent",
   "Won",
+];
+
+const relationshipStages: Stage[] = [
+  "Networking Contact",
+  "Potential Client",
+  "Referral Partner",
+  "Vendor",
+  "Friend of Business",
 ];
 
 const revivalSteps = [
@@ -601,6 +628,9 @@ export default function Home() {
   const [sourceResults, setSourceResults] = useState<SourceLead[]>([]);
   const [sourceStatus, setSourceStatus] = useState("Ready to find fresh contacts.");
   const [sourceScrollToken, setSourceScrollToken] = useState<string | null>(null);
+  const [salesNavText, setSalesNavText] = useState(sampleSalesNavPaste);
+  const [salesNavBusy, setSalesNavBusy] = useState(false);
+  const [salesNavResult, setSalesNavResult] = useState<SalesNavResult | null>(null);
   const [forceDemoMode, setForceDemoMode] = useState(false);
   const [sourceCampaigns, setSourceCampaigns] = useState<SourceCampaign[]>([]);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
@@ -686,12 +716,15 @@ export default function Home() {
     const params = new URLSearchParams(window.location.search);
     const requestedView = params.get("view");
     const slackAction = params.get("slackAction");
-    if (requestedView && nav.some((item) => item.id === requestedView)) {
-      setActive(requestedView);
-    }
-    if (slackAction) {
-      setOperationStatus(`Slack action processed: ${slackAction.replace(/_/g, " ")}.`);
-    }
+    const timer = window.setTimeout(() => {
+      if (requestedView && nav.some((item) => item.id === requestedView)) {
+        setActive(requestedView);
+      }
+      if (slackAction) {
+        setOperationStatus(`Slack action processed: ${slackAction.replace(/_/g, " ")}.`);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -1101,6 +1134,47 @@ export default function Home() {
     );
     await refreshLeads();
     await refreshOpsData();
+  }
+
+  async function runSalesNavigatorImport(commit = false) {
+    if (salesNavBusy) return;
+    setSalesNavBusy(true);
+    setSourceStatus(commit ? "Importing Sales Navigator leads..." : "Previewing Sales Navigator leads...");
+
+    const response = await fetch("/api/linkedin/sales-nav", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        raw: salesNavText,
+        commit,
+        enrich: true,
+        autoQueue: true,
+        autoSend: outreachStatus.mode === "live",
+        queueLimit: 10,
+        minScore: Number(sourceMinScore || 76),
+        defaultNiche: sourceIndustry.split(",")[0]?.trim() || "B2B Services",
+        defaultLocation: sourceLocation || "United States",
+        limit: Number(sourceLimit || 50),
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setSourceStatus(payload.error || "Sales Navigator import failed.");
+      setSalesNavBusy(false);
+      return;
+    }
+
+    setSalesNavResult(payload);
+    setSourceResults(payload.preview || []);
+    setSourceStatus(
+      commit
+        ? `Sales Nav processed ${payload.parsed || 0}, imported ${payload.imported || 0}, queued ${payload.queued || 0}. ${payload.needsContact || 0} still need contact enrichment.`
+        : `Sales Nav preview: ${payload.qualified || 0} qualified, ${payload.contactable || 0} contactable, ${payload.needsContact || 0} need contact enrichment.`,
+    );
+    await refreshOpsData();
+    if (commit) await refreshLeads();
+    setSalesNavBusy(false);
   }
 
   async function refreshOpsData(ignoreDemoGuard = false) {
@@ -1808,13 +1882,6 @@ export default function Home() {
     () => [...leads].sort((a, b) => b.score - a.score || b.value - a.value)[0] || seedLeads[0],
     [leads],
   );
-  const relationshipStages: Stage[] = [
-    "Networking Contact",
-    "Potential Client",
-    "Referral Partner",
-    "Vendor",
-    "Friend of Business",
-  ];
   const qrRelationships = useMemo(
     () =>
       leads.filter(
@@ -2529,6 +2596,7 @@ export default function Home() {
             )}
 
             {active === "source" && (
+              <>
               <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
                 <Panel title="Fresh Lead Source" icon={Target}>
                   <div className="grid gap-4">
@@ -2739,6 +2807,120 @@ export default function Home() {
                   </div>
                 </Panel>
               </div>
+
+              <Panel title="LinkedIn Sales Navigator Lane" icon={Radar}>
+                <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+                  <div className="grid gap-4">
+                    <div className="rounded-md border border-white/10 bg-[#101417] p-4 text-sm text-[#b6c4bf]">
+                      <p className="font-semibold text-white">Fastest Sales Nav workflow</p>
+                      <p className="mt-2">
+                        Build one Sales Navigator saved search, paste the visible lead rows or CSV here, then let Lead Command enrich, score, import, and queue the contactable records.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {[
+                          "Saved-search match",
+                          "LinkedIn profile context",
+                          "PDL contact enrichment",
+                          "GhostCRM import",
+                          "Approval queue",
+                        ].map((item) => (
+                          <span key={item} className="rounded-sm bg-white/[0.06] px-2 py-1 text-xs text-[#d6dfdc]">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <label className="grid gap-2 text-sm text-[#aebbb7]">
+                      Sales Navigator paste or CSV
+                      <textarea
+                        value={salesNavText}
+                        onChange={(event) => setSalesNavText(event.target.value)}
+                        className="min-h-44 rounded-md border border-white/10 bg-[#101417] px-3 py-2 font-mono text-sm text-white outline-none focus:border-[#83d0c2]"
+                      />
+                    </label>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => runSalesNavigatorImport(false)}
+                        disabled={salesNavBusy}
+                        className="inline-flex items-center gap-2 rounded-md bg-white/[0.08] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.14] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {salesNavBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Radar size={16} />}
+                        Preview Sales Nav
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runSalesNavigatorImport(true)}
+                        disabled={salesNavBusy || !liveDataReady}
+                        className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-4 py-2 text-sm font-semibold text-[#101417] transition hover:bg-[#c8ef4f] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {salesNavBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Target size={16} />}
+                        Import and queue Sales Nav
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border border-white/10 bg-[#101417] p-4">
+                    <div className="grid gap-3 sm:grid-cols-4">
+                      <MetricCard
+                        title="Parsed"
+                        value={String(salesNavResult?.parsed || 0)}
+                        detail="Rows read"
+                        icon={DatabaseZap}
+                      />
+                      <MetricCard
+                        title="Qualified"
+                        value={String(salesNavResult?.qualified || 0)}
+                        detail="Score matched"
+                        icon={Target}
+                      />
+                      <MetricCard
+                        title="Contactable"
+                        value={String(salesNavResult?.contactable || 0)}
+                        detail="Email or phone"
+                        icon={MessageSquareText}
+                      />
+                      <MetricCard
+                        title="Queued"
+                        value={String(salesNavResult?.queued || 0)}
+                        detail="Approval touches"
+                        icon={Send}
+                      />
+                    </div>
+
+                    <div className="mt-4 rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm text-[#b6c4bf]">
+                      <p className="font-semibold text-white">
+                        {salesNavResult?.pdlEnrichment ? "PDL enrichment is available" : "PDL enrichment is not available"}
+                      </p>
+                      <p className="mt-2">
+                        {salesNavResult
+                          ? `${salesNavResult.needsContact} qualified Sales Nav records still need email or phone before automated outreach.`
+                          : "Preview a Sales Navigator list to see how many records can move straight into outreach."}
+                      </p>
+                    </div>
+
+                    {salesNavResult?.preview?.length ? (
+                      <div className="mt-4 grid gap-2">
+                        {salesNavResult.preview.slice(0, 5).map((lead) => (
+                          <div key={lead.id} className="rounded-md bg-white/[0.04] p-3 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="font-semibold text-white">{lead.companyName}</p>
+                                <p className="mt-1 text-[#aebbb7]">{lead.name} - {lead.title}</p>
+                              </div>
+                              <span className="font-mono text-lg text-[#d8ff5f]">{lead.score}</span>
+                            </div>
+                            <p className="mt-2 text-xs text-[#9fb0a8]">{lead.signalSummary}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </Panel>
+              </>
             )}
 
             {active === "pipeline" && (

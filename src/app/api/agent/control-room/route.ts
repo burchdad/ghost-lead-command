@@ -56,7 +56,7 @@ export async function GET() {
   try {
     const prisma = getPrisma();
     const workspace = await getDefaultWorkspace();
-    const [events, leads, queue, replies, suppressions, bookingTasks, sequenceSteps, campaigns, ghostcrm] = await Promise.all([
+    const [events, leads, queue, replies, suppressions, bookingTasks, campaigns, ghostcrm] = await Promise.all([
       prisma.automationEvent.findMany({
         where: { workspaceId: workspace.id },
         orderBy: { createdAt: "desc" },
@@ -67,7 +67,6 @@ export async function GET() {
       prisma.reply.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 200 }),
       prisma.suppressionRecord.count({ where: { workspaceId: workspace.id } }),
       prisma.bookingTask.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 200 }),
-      prisma.sequenceStep.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 200 }),
       prisma.sourcingCampaign.findMany({ where: { workspaceId: workspace.id }, orderBy: { updatedAt: "desc" }, take: 50 }),
       getGhostCrmHealth(),
     ]);
@@ -86,7 +85,6 @@ export async function GET() {
     const failed = queue.filter((item) => item.status === "failed").length;
     const hotReplies = replies.filter((reply) => ["hot", "booked", "objection"].includes(reply.classification)).length;
     const bookedTasks = bookingTasks.filter((task) => task.status !== "blocked").length;
-    const dueSequences = sequenceSteps.filter((step) => ["draft", "active", "queued"].includes(step.status)).length;
     const recentAgentEvent = events.find((event) => event.type === "agent");
     const recentSourceEvent = events.find((event) => ["agent", "source", "sendgrid"].includes(event.type));
     const recentReplyEvent = events.find((event) => ["reply", "sendgrid", "twilio"].includes(event.type));
@@ -95,6 +93,10 @@ export async function GET() {
     const recentSafetyEvent = events.find((event) => ["sendgrid", "suppression", "twilio"].includes(event.type));
 
     const sourceConfigured = sourceStatus.pdlConfigured || sourceStatus.googleMapsConfigured || sourceStatus.ghostLeadAgentConfigured;
+    const linkedinConfigured = Boolean(
+      process.env.LINKEDIN_ACCESS_TOKEN || (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET),
+    );
+    const linkedinLeads = leads.filter((lead) => /linkedin|sales navigator/i.test(lead.source));
     const canSend = outreach.mode === "live" && outreach.sendgridConfigured;
     const canBook = booking.calendarConfigured && booking.ownerEmail && (booking.meetingLink || booking.zoomConfigured);
 
@@ -118,6 +120,24 @@ export async function GET() {
           "source cap": caps.dailySourceLimit,
         },
         blockers: sourceConfigured ? [] : ["Missing PDL_API_KEY, SERPAPI_API_KEY, or GHOST_LEAD_AGENT_SEARCH_URL"],
+      }),
+      agentCard({
+        id: "linkedin",
+        name: "LinkedIn Sales Nav Agent",
+        role: "Convert Sales Navigator saved searches into enriched, scored, approval-ready GhostCRM leads.",
+        status: linkedinConfigured || sourceStatus.pdlConfigured ? "ready" : "needs-work",
+        health: linkedinConfigured ? "LinkedIn connected" : sourceStatus.pdlConfigured ? "Manual Sales Nav lane ready" : "Needs enrichment source",
+        detail:
+          "Paste Sales Navigator rows or CSV into the Source lane. Lead Command enriches contact paths, scores buying context, imports contactable leads, and queues first touches.",
+        lastEvent: events.find((event) => /sales navigator|linkedin/i.test(`${event.title} ${event.detail}`)),
+        actionLabel: "Open Sales Nav lane",
+        actionView: "source",
+        metrics: {
+          "sales nav leads": linkedinLeads.length,
+          "pdl enrich": sourceStatus.pdlConfigured ? "on" : "off",
+          "min score": "76+",
+        },
+        blockers: sourceStatus.pdlConfigured ? [] : ["Sales Nav paste works now, but PDL_API_KEY is needed to enrich missing emails/phones."],
       }),
       agentCard({
         id: "qa",
