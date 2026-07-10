@@ -30,7 +30,13 @@ export type IntakeLead = {
   buyerFit?: string;
   confidence?: string;
   intentSignals?: string[];
+  buyingSignals?: string[] | string;
+  socialSignals?: string[] | string;
   signals?: string[] | string;
+  trigger?: string;
+  triggerEvent?: string;
+  keyword?: string;
+  competitor?: string;
   signalSummary?: string;
   notes?: string;
 };
@@ -56,13 +62,22 @@ function normalizeDomain(value: string) {
 }
 
 function normalizeSignals(lead: IntakeLead) {
-  const raw = lead.intentSignals || lead.signals || [];
-  if (Array.isArray(raw)) return raw.map((item) => String(item).trim()).filter(Boolean).slice(0, 8);
-  return String(raw)
-    .split(/[|;,]\s*/)
+  const raw = [
+    ...(Array.isArray(lead.intentSignals) ? lead.intentSignals : lead.intentSignals ? [lead.intentSignals] : []),
+    ...(Array.isArray(lead.buyingSignals) ? lead.buyingSignals : lead.buyingSignals ? [lead.buyingSignals] : []),
+    ...(Array.isArray(lead.socialSignals) ? lead.socialSignals : lead.socialSignals ? [lead.socialSignals] : []),
+    ...(Array.isArray(lead.signals) ? lead.signals : lead.signals ? [lead.signals] : []),
+    lead.trigger,
+    lead.triggerEvent,
+    lead.keyword ? `keyword signal: ${lead.keyword}` : "",
+    lead.competitor ? `competitor engagement: ${lead.competitor}` : "",
+  ];
+
+  return raw
+    .flatMap((item) => String(item || "").split(/[|;,]\s*/))
     .map((item) => item.trim())
     .filter(Boolean)
-    .slice(0, 8);
+    .slice(0, 10);
 }
 
 function inferSignalSummary(lead: IntakeLead, signals: string[]) {

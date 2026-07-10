@@ -242,6 +242,40 @@ type AgentControlRoom = {
   agents: AgentControlCard[];
 };
 
+type LearningRow = {
+  key: string;
+  leads: number;
+  queued: number;
+  sent: number;
+  failed: number;
+  replies: number;
+  hot: number;
+  booked: number;
+  pipeline: number;
+  replyRate: number;
+  hotRate: number;
+  failureRate: number;
+  quality: string;
+};
+
+type LearningLoop = {
+  summary: {
+    leads: number;
+    sentOrQueued: number;
+    replies: number;
+    hot: number;
+    failed: number;
+    overallReplyRate: number;
+    gojiBerryCloseness: string;
+  };
+  sources: LearningRow[];
+  niches: LearningRow[];
+  signals: LearningRow[];
+  examples: { company: string; source: string; signal: string; score: number; stage: string }[];
+  recommendations: string[];
+  gaps: string[];
+};
+
 type BookingTask = {
   id: string;
   status: string;
@@ -592,6 +626,7 @@ export default function Home() {
     },
   ]);
   const [agentControlRoom, setAgentControlRoom] = useState<AgentControlRoom | null>(null);
+  const [learningLoop, setLearningLoop] = useState<LearningLoop | null>(null);
   const [bookingTasks, setBookingTasks] = useState<BookingTask[]>([]);
   const [sequenceQueue, setSequenceQueue] = useState<SequenceQueueStep[]>([]);
   const [editScore, setEditScore] = useState(String(seedLeads[0].score));
@@ -666,6 +701,7 @@ export default function Home() {
         const bookingResponse = await fetch("/api/automation/booking");
         const sequenceResponse = await fetch("/api/automation/sequence");
         const agentControlResponse = await fetch("/api/agent/control-room");
+        const learningResponse = await fetch("/api/agent/learning");
 
         if (!cancelled && leadsResponse.ok) {
           const payload = await leadsResponse.json();
@@ -763,6 +799,10 @@ export default function Home() {
 
         if (!cancelled && agentControlResponse.ok) {
           setAgentControlRoom(await agentControlResponse.json());
+        }
+
+        if (!cancelled && learningResponse.ok) {
+          setLearningLoop(await learningResponse.json());
         }
       } catch (error) {
         if (!cancelled) {
@@ -1066,6 +1106,7 @@ export default function Home() {
     const bookingResponse = await fetch("/api/automation/booking");
     const sequenceResponse = await fetch("/api/automation/sequence");
     const agentControlResponse = await fetch("/api/agent/control-room");
+    const learningResponse = await fetch("/api/agent/learning");
 
     if (campaignsResponse.ok) setSourceCampaigns((await campaignsResponse.json()).campaigns || []);
     if (queueResponse.ok) setQueueItems((await queueResponse.json()).items || []);
@@ -1080,6 +1121,7 @@ export default function Home() {
     if (bookingResponse.ok) setBookingTasks(((await bookingResponse.json()).tasks || []));
     if (sequenceResponse.ok) setSequenceQueue(((await sequenceResponse.json()).steps || []));
     if (agentControlResponse.ok) setAgentControlRoom(await agentControlResponse.json());
+    if (learningResponse.ok) setLearningLoop(await learningResponse.json());
   }
 
   async function saveSourceCampaign() {
@@ -2228,6 +2270,111 @@ export default function Home() {
                         <p className="mt-2 text-sm leading-5 text-[#aebbb7]">{detail}</p>
                       </div>
                     ))}
+                  </div>
+                </Panel>
+
+                <Panel title="Learning Loop" icon={Brain}>
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <MetricCard
+                      title="GojiBerry Gap"
+                      value={learningLoop?.summary.gojiBerryCloseness || "60-68%"}
+                      detail="Current outbound-agent parity"
+                      icon={Target}
+                    />
+                    <MetricCard
+                      title="Reply Rate"
+                      value={`${learningLoop?.summary.overallReplyRate || 0}%`}
+                      detail="Replies / queued or sent"
+                      icon={MessageSquareText}
+                    />
+                    <MetricCard
+                      title="Hot Signals"
+                      value={String(learningLoop?.summary.hot || 0)}
+                      detail="Hot, booked, or objection replies"
+                      icon={Flame}
+                    />
+                    <MetricCard
+                      title="Failed Sends"
+                      value={String(learningLoop?.summary.failed || 0)}
+                      detail="Deliverability drag to suppress"
+                      icon={DatabaseZap}
+                    />
+                  </div>
+
+                  <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                    <div className="rounded-md border border-white/10 bg-[#101417] p-4">
+                      <h3 className="font-semibold">Source Performance</h3>
+                      <div className="mt-3 space-y-2">
+                        {(learningLoop?.sources || []).slice(0, 5).map((row) => (
+                          <div key={row.key} className="rounded-md bg-white/[0.04] p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm font-semibold">{row.key}</span>
+                              <span className="font-mono text-[#d8ff5f]">{row.replyRate}%</span>
+                            </div>
+                            <p className="mt-1 text-xs text-[#9fb0a8]">
+                              {row.leads} leads · {row.replies} replies · {row.quality}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-md border border-white/10 bg-[#101417] p-4">
+                      <h3 className="font-semibold">Signal Buckets</h3>
+                      <div className="mt-3 space-y-2">
+                        {(learningLoop?.signals || []).slice(0, 5).map((row) => (
+                          <div key={row.key} className="rounded-md bg-white/[0.04] p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm font-semibold">{row.key}</span>
+                              <span className="font-mono text-[#83d0c2]">{row.hot + row.booked}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-[#9fb0a8]">
+                              {row.leads} leads · {row.replyRate}% reply · {row.failureRate}% failed
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-md border border-white/10 bg-[#101417] p-4">
+                      <h3 className="font-semibold">Recommended Moves</h3>
+                      <div className="mt-3 space-y-2">
+                        {(learningLoop?.recommendations || []).map((recommendation) => (
+                          <p key={recommendation} className="rounded-md bg-white/[0.04] p-3 text-sm leading-5 text-[#d6dfdc]">
+                            {recommendation}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                    <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                      <h3 className="font-semibold">Recent Captured Signals</h3>
+                      <div className="mt-3 space-y-2">
+                        {(learningLoop?.examples || []).slice(0, 5).map((example) => (
+                          <div key={`${example.company}-${example.signal}`} className="rounded-md bg-[#101417] p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm font-semibold">{example.company}</span>
+                              <span className="font-mono text-xs text-[#d8ff5f]">{example.score}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-[#9fb0a8]">{example.source} · {example.stage}</p>
+                            <p className="mt-2 text-sm leading-5 text-[#d6dfdc]">{example.signal}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                      <h3 className="font-semibold">Remaining GojiBerry Gaps</h3>
+                      <div className="mt-3 space-y-2">
+                        {(learningLoop?.gaps || []).map((gap) => (
+                          <p key={gap} className="rounded-md bg-[#101417] p-3 text-sm leading-5 text-[#aebbb7]">
+                            {gap}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </Panel>
               </div>
