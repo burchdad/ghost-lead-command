@@ -26,6 +26,11 @@ type PdlEnrichedPerson = {
   job_company_linkedin_url?: string;
 };
 
+type PdlEmail = {
+  address?: string;
+  type?: string;
+};
+
 type SerpOrganicResult = {
   link?: string;
   title?: string;
@@ -34,6 +39,18 @@ type SerpOrganicResult = {
 
 function clean(value: unknown) {
   return String(value || "").trim();
+}
+
+function pdlEmails(value: PdlEnrichedPerson["emails"] | unknown): PdlEmail[] {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") return Object.values(value as Record<string, PdlEmail>);
+  return [];
+}
+
+function pdlPhoneNumbers(value: PdlEnrichedPerson["phone_numbers"] | unknown): string[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") return [value];
+  return [];
 }
 
 function first(record: Record<string, string>, keys: string[]) {
@@ -145,12 +162,14 @@ function normalizeRecord(record: Record<string, string>, options: SalesNavParseO
 }
 
 function contactFromPdlPerson(person: PdlEnrichedPerson) {
+  const emails = pdlEmails(person.emails);
+  const phoneNumbers = pdlPhoneNumbers(person.phone_numbers);
   return {
     email:
       clean(person.work_email) ||
-      clean(person.emails?.find((item) => item.type === "professional")?.address) ||
-      clean(person.emails?.[0]?.address),
-    phone: clean(person.mobile_phone) || clean(person.phone_numbers?.[0]),
+      clean(emails.find((item) => item.type === "professional")?.address) ||
+      clean(emails[0]?.address),
+    phone: clean(person.mobile_phone) || clean(phoneNumbers[0]),
   };
 }
 

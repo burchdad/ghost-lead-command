@@ -48,6 +48,11 @@ type RawPdlPerson = {
   job_company_linkedin_url?: string;
 };
 
+type PdlEmail = {
+  address?: string;
+  type?: string;
+};
+
 type SerpApiMapsResult = {
   place_id?: string;
   data_id?: string;
@@ -65,6 +70,18 @@ type SerpApiMapsResult = {
 
 function clean(value: string | undefined) {
   return value?.trim() || "";
+}
+
+function pdlEmails(value: RawPdlPerson["emails"] | unknown): PdlEmail[] {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") return Object.values(value as Record<string, PdlEmail>);
+  return [];
+}
+
+function pdlPhoneNumbers(value: RawPdlPerson["phone_numbers"] | unknown): string[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") return [value];
+  return [];
 }
 
 function clampSize(size: number | undefined) {
@@ -342,15 +359,17 @@ function buildPdlSql(input: SourceSearchInput) {
 }
 
 function normalizePdlPerson(person: RawPdlPerson): SourceLead {
+  const emails = pdlEmails(person.emails);
+  const phoneNumbers = pdlPhoneNumbers(person.phone_numbers);
   const name =
     clean(person.full_name) ||
     [person.first_name, person.last_name].map((part) => clean(part)).filter(Boolean).join(" ") ||
     "Unknown Contact";
   const email =
     clean(person.work_email) ||
-    clean(person.emails?.find((email) => email.type === "professional")?.address) ||
-    clean(person.emails?.[0]?.address);
-  const phone = clean(person.mobile_phone) || clean(person.phone_numbers?.[0]);
+    clean(emails.find((email) => email.type === "professional")?.address) ||
+    clean(emails[0]?.address);
+  const phone = clean(person.mobile_phone) || clean(phoneNumbers[0]);
   const niche = clean(person.job_company_industry) || "General";
   const companyName = clean(person.job_company_name) || "Unknown Company";
   const title = clean(person.job_title) || "Decision maker";
