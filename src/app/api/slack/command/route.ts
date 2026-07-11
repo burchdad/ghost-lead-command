@@ -22,13 +22,47 @@ async function postSlackCommandResponse(responseUrl: string | null, text: string
 }
 
 function leadRunText(input: Awaited<ReturnType<typeof runVegaLeadRequest>>) {
+  const diagnostics = input.result.diagnostics as
+    | {
+        marketsSearched?: string[];
+        contactable?: number;
+        missingContact?: number;
+        suppressed?: Record<string, number>;
+        policySkipped?: Record<string, number>;
+      }
+    | undefined;
+  const marketsSearched = diagnostics?.marketsSearched || [];
+  const markets = marketsSearched.length
+    ? `Markets: ${marketsSearched.slice(0, 8).join(", ")}`
+    : "";
+  const sourceFilters = diagnostics?.suppressed
+    ? Object.entries(diagnostics.suppressed)
+        .filter(([, count]) => count > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([reason, count]) => `${reason} ${count}`)
+        .join(", ")
+    : "";
+  const policySkips = diagnostics?.policySkipped
+    ? Object.entries(diagnostics.policySkipped)
+        .filter(([, count]) => count > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([reason, count]) => `${reason} ${count}`)
+        .join(", ")
+    : "";
+
   return [
     `Vega ran the lead request for ${input.plan.niche}.`,
     `Source: ${input.plan.provider}`,
-    `Location: ${input.plan.location}`,
-    `Found ${input.result.found}, qualified ${input.result.qualified}, queued ${input.result.queued} approval-ready emails.`,
+    `Location: ${input.plan.location}${input.plan.locations?.length ? ` (${input.plan.locations.length} markets)` : ""}`,
+    `Found ${input.result.rawFound ?? input.result.found}, qualified ${input.result.qualified}, queued ${input.result.queued}, review-ready ${input.result.reviewReady ?? 0}.`,
+    diagnostics ? `Contactable: ${diagnostics.contactable}, missing contact: ${diagnostics.missingContact}` : "",
+    markets,
+    sourceFilters ? `Source filters: ${sourceFilters}` : "",
+    policySkips ? `Policy skips: ${policySkips}` : "",
     input.result.message,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 export async function POST(request: Request) {

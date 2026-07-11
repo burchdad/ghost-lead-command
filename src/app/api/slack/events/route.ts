@@ -111,12 +111,16 @@ export async function POST(request: Request) {
           niche: plan.niche,
           provider: plan.provider,
           location: plan.location,
+          locations: plan.locations,
         },
         result: {
           found: result.found,
+          rawFound: result.rawFound,
           qualified: result.qualified,
           queued: result.queued,
+          reviewReady: result.reviewReady,
           message: result.message,
+          diagnostics: result.diagnostics,
         },
       });
     } catch (error) {
