@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookingReadiness } from "@/lib/automation";
 import { getGhostCrmHealth } from "@/lib/ghostcrm";
+import { getMissionControlBridgeStatus } from "@/lib/mission-control-bridge";
 import { getOperatorCaps } from "@/lib/operator-policy";
 import { getOutreachStatus, getTwilioReadiness } from "@/lib/outreach";
 import { getPrisma } from "@/lib/prisma";
@@ -76,6 +77,7 @@ export async function GET() {
     const caps = getOperatorCaps();
     const twilio = getTwilioReadiness();
     const booking = getBookingReadiness();
+    const missionControl = getMissionControlBridgeStatus();
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
@@ -276,6 +278,23 @@ export async function GET() {
           "booked calls": bookedTasks,
           "sources online": [sourceStatus.googleMapsConfigured, sourceStatus.pdlConfigured, sourceStatus.ghostLeadAgentConfigured].filter(Boolean).length,
         },
+      },
+      missionControl: {
+        nova: missionControl,
+        peers: [
+          {
+            name: missionControl.targetAgent,
+            role: "CEO-level strategy, prioritization, and operator accountability partner.",
+            status: missionControl.configured ? "connected" : "briefing-ready",
+            detail: missionControl.detail,
+          },
+          {
+            name: "Lead Gen Director Agent",
+            role: "Owns sourcing, qualification, outreach queueing, reply handoff, and booking readiness.",
+            status: "active",
+            detail: "Reports lead-gen bottlenecks, wins, and next moves to Nova.",
+          },
+        ],
       },
       summary: {
         ready,

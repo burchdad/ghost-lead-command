@@ -249,6 +249,20 @@ type LeadGenDirector = {
 
 type AgentControlRoom = {
   director?: LeadGenDirector;
+  missionControl?: {
+    nova: {
+      configured: boolean;
+      targetAgent: string;
+      channel: string;
+      detail: string;
+    };
+    peers: {
+      name: string;
+      role: string;
+      status: string;
+      detail: string;
+    }[];
+  };
   summary: {
     ready: number;
     total: number;
@@ -284,6 +298,22 @@ type LeadGenDirectorResult = {
     queued?: number;
     message: string;
   }[];
+};
+
+type NovaBriefResult = {
+  ok: boolean;
+  posted: boolean;
+  postStatus: string;
+  targetAgent: string;
+  brief: string;
+  metrics: {
+    leadsToday: number;
+    pending: number;
+    sentOrQueued: number;
+    replies: number;
+    booked: number;
+  };
+  nextMove: string;
 };
 
 type LearningRow = {
@@ -684,6 +714,7 @@ export default function Home() {
   const [actionToast, setActionToast] = useState<ActionToast | null>(null);
   const [agentBusy, setAgentBusy] = useState(false);
   const [directorBusy, setDirectorBusy] = useState(false);
+  const [novaBusy, setNovaBusy] = useState(false);
   const [outreachStatus, setOutreachStatus] = useState<OutreachStatus>({
     mode: "dry-run",
     smsProvider: "telnyx",
@@ -750,6 +781,7 @@ export default function Home() {
   const [tuningBusy, setTuningBusy] = useState(false);
   const [signalCollectorResult, setSignalCollectorResult] = useState<SignalCollectorResult | null>(null);
   const [directorResult, setDirectorResult] = useState<LeadGenDirectorResult | null>(null);
+  const [novaBriefResult, setNovaBriefResult] = useState<NovaBriefResult | null>(null);
   const [bookingTasks, setBookingTasks] = useState<BookingTask[]>([]);
   const [sequenceQueue, setSequenceQueue] = useState<SequenceQueueStep[]>([]);
   const [editScore, setEditScore] = useState(String(seedLeads[0].score));
@@ -1485,6 +1517,47 @@ export default function Home() {
     await refreshLeads();
     if ((payload.summary?.pendingApprovals || 0) > 0) setActive("queue");
     setDirectorBusy(false);
+  }
+
+  async function briefNovaCeoAgent() {
+    if (novaBusy) return;
+    setNovaBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: "Briefing Nova CEO",
+      detail: "Preparing the Lead Gen Director briefing for the Nova CEO AI Agent.",
+    });
+
+    const response = await fetch("/api/agent/director/nova", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Review lead-gen progress, identify the bottleneck, and push the next calendar-producing action.",
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "Nova briefing blocked",
+        detail: payload.detail || payload.error || "The Director could not brief Nova.",
+      });
+      setNovaBusy(false);
+      return;
+    }
+
+    setNovaBriefResult(payload);
+    setActionToast({
+      phase: "success",
+      title: payload.posted ? "Nova briefed" : "Nova brief prepared",
+      detail: payload.posted
+        ? `Brief posted to ${payload.targetAgent}.`
+        : `${payload.targetAgent} bridge is ready internally. Add NOVA_CEO_AGENT_URL for direct posting.`,
+    });
+    setOperationStatus(payload.nextMove || "Lead Gen Director prepared the Nova CEO briefing.");
+    await refreshOpsData();
+    setNovaBusy(false);
   }
 
   async function runSignalCollector(commit = false) {
@@ -2544,6 +2617,15 @@ export default function Home() {
                         {directorBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Rocket size={16} />}
                         Run director sprint
                       </button>
+                      <button
+                        type="button"
+                        onClick={briefNovaCeoAgent}
+                        disabled={novaBusy}
+                        className="inline-flex items-center gap-2 rounded-md bg-white/[0.08] px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/[0.14] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {novaBusy ? <LoaderCircle className="animate-spin" size={16} /> : <MessageSquareText size={16} />}
+                        Brief Nova CEO
+                      </button>
                     </div>
 
                     <div className="mt-4 grid gap-3 md:grid-cols-4">
@@ -2578,6 +2660,50 @@ export default function Home() {
                           ))}
                         </div>
                       </div>
+                    </div>
+
+                    <div className="mt-4 rounded-md border border-white/10 bg-[#101417] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#83d0c2]">Mission Control Bridge</p>
+                          <h3 className="mt-1 font-semibold">
+                            {agentControlRoom?.missionControl?.nova.targetAgent || "Nova CEO AI Agent"}
+                          </h3>
+                        </div>
+                        <span className="rounded-sm bg-white/[0.08] px-2 py-1 text-xs text-[#c8d6d2]">
+                          {agentControlRoom?.missionControl?.nova.channel || "internal-briefing"}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-5 text-[#aebbb7]">
+                        {agentControlRoom?.missionControl?.nova.detail ||
+                          "Lead Gen Director can prepare CEO-level lead-gen briefs for Nova from this Agents tab."}
+                      </p>
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {(agentControlRoom?.missionControl?.peers || []).map((peer) => (
+                          <div key={peer.name} className="rounded-sm bg-white/[0.04] p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold">{peer.name}</p>
+                              <span className="rounded-sm bg-white/[0.08] px-2 py-1 text-[10px] text-[#aebbb7]">
+                                {peer.status}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-[#9fb0a8]">{peer.role}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {novaBriefResult ? (
+                        <div className="mt-3 rounded-sm bg-white/[0.04] p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold">
+                              {novaBriefResult.posted ? "Posted to Nova" : "Brief ready for Nova"}
+                            </p>
+                            <span className="rounded-sm bg-[#d8ff5f]/15 px-2 py-1 text-[10px] font-semibold text-[#d8ff5f]">
+                              {novaBriefResult.postStatus}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-xs leading-5 text-[#aebbb7]">{novaBriefResult.nextMove}</p>
+                        </div>
+                      ) : null}
                     </div>
 
                     {directorResult ? (
