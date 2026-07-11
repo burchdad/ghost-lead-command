@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const autoQueue = body.autoQueue !== false;
   const autoSend = Boolean(body.autoSend);
   const queueLimit = Math.max(0, Number(body.queueLimit || 10));
-  const minScore = Math.max(0, Number(body.minScore || 72));
+  const minScore = Math.max(0, Number(body.minScore || 68));
 
   if (!images.length) {
     return NextResponse.json({ error: "Upload at least one Sales Navigator screenshot." }, { status: 400 });
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     qualified: qualified.length,
     contactable: contactable.length,
     needsContact,
-    preview: qualified.slice(0, 50),
+    preview: (qualified.length ? qualified : enriched).slice(0, 50),
     rawCsv: visionLeadsToCsv(extraction.leads),
     imported: intake?.count || 0,
     queued: intake?.queued || 0,

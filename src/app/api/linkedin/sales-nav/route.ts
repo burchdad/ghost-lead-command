@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   const autoQueue = body.autoQueue !== false;
   const autoSend = Boolean(body.autoSend);
   const queueLimit = Math.max(0, Number(body.queueLimit || 10));
-  const minScore = Math.max(0, Number(body.minScore || 76));
+  const minScore = Math.max(0, Number(body.minScore || 68));
 
   if (!raw.trim()) {
     return NextResponse.json({ error: "Paste Sales Navigator rows or CSV first." }, { status: 400 });
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     qualified: qualified.length,
     contactable: contactable.length,
     needsContact,
-    preview: qualified.slice(0, 50),
+    preview: (qualified.length ? qualified : enriched).slice(0, 50),
     imported: intake?.count || 0,
     queued: intake?.queued || 0,
     skipped: intake?.skipped || {},
