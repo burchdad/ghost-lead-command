@@ -14,12 +14,15 @@ function stripVegaAddress(text: string) {
 export async function POST(request: Request) {
   const payload = (await request.json().catch(() => ({}))) as SlackEventPayload;
 
-  if (!isSlackEventAuthorized(payload, request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (payload.type === "url_verification") {
+    return new NextResponse(payload.challenge || "", {
+      status: 200,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
   }
 
-  if (payload.type === "url_verification") {
-    return NextResponse.json({ challenge: payload.challenge || "" });
+  if (!isSlackEventAuthorized(payload, request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const event = payload.event;

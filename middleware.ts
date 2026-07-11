@@ -35,6 +35,8 @@ function isAllowedPath(pathname: string) {
     pathname.startsWith("/api/twilio/") ||
     pathname === "/api/webhooks/contact-card" ||
     pathname === "/api/slack/command" ||
+    pathname === "/api/slack/events" ||
+    pathname === "/api/slack/interactions" ||
     pathname.startsWith("/api/slack/actions/") ||
     PUBLIC_FILE.test(pathname)
   );
