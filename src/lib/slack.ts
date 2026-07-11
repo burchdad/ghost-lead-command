@@ -849,6 +849,8 @@ export async function notifySlackReplyAlert(input: {
   classification: string;
   body: string;
   nextAction?: string | null;
+  responseQueued?: boolean;
+  responseNote?: string | null;
 }) {
   const webhookUrl = clean(process.env.SLACK_WEBHOOK_URL);
   if (!webhookUrl) {
@@ -886,7 +888,14 @@ export async function notifySlackReplyAlert(input: {
           elements: [
             {
               type: "mrkdwn",
-              text: input.nextAction || "Lead Command updated the lead stage and next action.",
+              text: [
+                input.nextAction || "Lead Command updated the lead stage and next action.",
+                input.responseQueued
+                  ? "Vega queued a reviewed response draft for approval."
+                  : input.responseNote || "",
+              ]
+                .filter(Boolean)
+                .join(" "),
             },
           ],
         },
