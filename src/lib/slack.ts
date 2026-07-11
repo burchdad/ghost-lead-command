@@ -37,12 +37,12 @@ function actionUrl(itemId: string, action: "approve" | "redo" | "discard" | "sup
   return url.toString();
 }
 
-function batchApproveUrl(limit: number) {
-  const url = new URL("/api/slack/actions/outreach/batch/approve", appBaseUrl());
-  const token = actionToken();
-  if (token) url.searchParams.set("token", token);
-  url.searchParams.set("limit", String(limit));
-  return url.toString();
+function batchApproveValue(limit: number) {
+  return JSON.stringify({
+    action: "vega_batch_approve",
+    limit,
+    token: actionToken(),
+  });
 }
 
 function appViewUrl(view: string) {
@@ -146,6 +146,41 @@ export function isSlackCommandAuthorized(form: URLSearchParams, request: Request
   const queryToken = new URL(request.url).searchParams.get("token") || "";
   return [formToken, headerToken, queryToken].includes(expected);
 }
+
+export function isSlackInteractionAuthorized(payload: SlackInteractionPayload, request: Request) {
+  const expected =
+    clean(process.env.SLACK_COMMAND_TOKEN) ||
+    clean(process.env.SLACK_VERIFICATION_TOKEN) ||
+    actionToken();
+  if (!expected) return false;
+
+  const valueToken = payload.actions
+    .map((action) => {
+      if (!action.value) return "";
+      try {
+        const parsed = JSON.parse(action.value) as { token?: string };
+        return parsed.token || "";
+      } catch {
+        return "";
+      }
+    })
+    .find(Boolean);
+  const headerToken = request.headers.get("x-slack-action-token") || "";
+  const queryToken = new URL(request.url).searchParams.get("token") || "";
+  return [payload.token, valueToken, headerToken, queryToken].includes(expected);
+}
+
+export type SlackInteractionPayload = {
+  type?: string;
+  token?: string;
+  user?: { id?: string; username?: string; name?: string };
+  channel?: { id?: string; name?: string };
+  response_url?: string;
+  actions: {
+    action_id?: string;
+    value?: string;
+  }[];
+};
 
 export async function notifySlackOutreachApproval(
   item: OutreachQueueItem & { lead?: Lead | null },
@@ -521,7 +556,8 @@ export async function notifySlackLeadCommandAudit(input: {
               type: "button",
               text: { type: "plain_text", text: `Stephen approve ${approveLimit}`, emoji: false },
               style: "primary",
-              url: batchApproveUrl(approveLimit),
+              action_id: "vega_batch_approve",
+              value: batchApproveValue(approveLimit),
             },
             {
               type: "button",

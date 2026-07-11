@@ -12,7 +12,8 @@ export async function GET(request: Request) {
     limit: url.searchParams.get("limit") ? Number(url.searchParams.get("limit")) : undefined,
   });
 
-  const destination = new URL("/?view=queue", url.origin);
-  destination.searchParams.set("slackAction", `batch_approved_${result.approved}_failed_${result.failed}`);
-  return NextResponse.redirect(destination);
+  return new NextResponse(
+    `<!doctype html><html><body style="font-family:system-ui,sans-serif;margin:32px"><h1>Vega batch approval complete</h1><p>Approved ${result.approved}/${result.attempted}. Failed: ${result.failed}.</p><p>You can close this tab. New Vega audit buttons will approve directly inside Slack once Slack Interactivity points to <code>/api/slack/interactions</code>.</p><script>window.close();</script></body></html>`,
+    { headers: { "Content-Type": "text/html; charset=utf-8" } },
+  );
 }
