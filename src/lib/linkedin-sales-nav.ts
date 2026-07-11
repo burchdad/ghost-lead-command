@@ -26,6 +26,12 @@ type PdlEnrichedPerson = {
   job_company_linkedin_url?: string;
 };
 
+type SerpOrganicResult = {
+  link?: string;
+  title?: string;
+  snippet?: string;
+};
+
 function clean(value: unknown) {
   return String(value || "").trim();
 }
@@ -52,6 +58,20 @@ function sqlValue(value: string) {
 
 function like(field: string, value: string) {
   return `${field} LIKE '%${sqlValue(value)}%'`;
+}
+
+function normalizeWebsite(value: string) {
+  const site = clean(value);
+  if (!site) return "";
+  return /^https?:\/\//i.test(site) ? site : `https://${site}`;
+}
+
+function normalizeDomain(value: string) {
+  return clean(value)
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0];
 }
 
 function inferSignals(lead: IntakeLead) {
@@ -134,6 +154,27 @@ function contactFromPdlPerson(person: PdlEnrichedPerson) {
   };
 }
 
+function isLikelyOfficialWebsite(url: string) {
+  const domain = normalizeDomain(url);
+  if (!domain || !domain.includes(".")) return false;
+  return ![
+    "linkedin.com",
+    "facebook.com",
+    "instagram.com",
+    "twitter.com",
+    "x.com",
+    "crunchbase.com",
+    "zoominfo.com",
+    "apollo.io",
+    "pitchbook.com",
+    "glassdoor.com",
+    "indeed.com",
+    "wikipedia.org",
+    "bloomberg.com",
+    "dnb.com",
+  ].some((blocked) => domain.includes(blocked));
+}
+
 function mergePdlPerson(lead: IntakeLead, person: PdlEnrichedPerson, sourceSignal: string) {
   const contact = contactFromPdlPerson(person);
   const enriched: IntakeLead = {
@@ -195,6 +236,110 @@ async function searchPdlPersonFallback(apiKey: string, lead: IntakeLead) {
   if (!response || !response.ok) return null;
   const payload = (await response.json().catch(() => ({}))) as { data?: PdlEnrichedPerson[] };
   return payload.data?.[0] || null;
+}
+
+async function discoverCompanyWebsite(lead: IntakeLead) {
+  const existing = normalizeWebsite(clean(lead.website || lead.domain));
+  if (existing) return existing;
+
+  const apiKey = clean(process.env.SERPAPI_API_KEY);
+  const companyName = clean(lead.companyName || lead.company);
+  if (!apiKey || !companyName) return "";
+
+  const url = new URL("https://serpapi.com/search.json");
+  url.searchParams.set("engine", "google");
+  url.searchParams.set("q", `${companyName} official website ${clean(lead.location)}`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("num", "5");
+
+  const response = await fetch(url, { cache: "no-store" }).catch(() => null);
+  if (!response?.ok) return "";
+  const payload = (await response.json().catch(() => ({}))) as { organic_results?: SerpOrganicResult[] };
+  const result = (payload.organic_results || []).find((item) => item.link && isLikelyOfficialWebsite(item.link));
+  return normalizeWebsite(result?.link || "");
+}
+
+function websiteContactUrls(website: string) {
+  try {
+    const base = new URL(website);
+    base.hash = "";
+    base.search = "";
+    const origin = base.origin;
+    return [
+      base.toString(),
+      `${origin}/contact`,
+      `${origin}/contact-us`,
+      `${origin}/about`,
+      `${origin}/about-us`,
+      `${origin}/team`,
+    ];
+  } catch {
+    return [];
+  }
+}
+
+function extractEmail(html: string) {
+  const emails = [
+    ...html.matchAll(/mailto:([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/gi),
+    ...html.matchAll(/\b([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})\b/gi),
+  ]
+    .map((match) => clean(match[1] || match[0]).toLowerCase())
+    .filter((email) => !/(example|domain|sentry|wixpress|schema|placeholder|privacy@|abuse@)/i.test(email));
+
+  return emails.find((email) => /^(hello|info|contact|sales|founder|admin|team|support)@/i.test(email)) || emails[0] || "";
+}
+
+function extractPhone(html: string) {
+  const tel = html.match(/tel:([+\d().\-\s]{7,})/i)?.[1];
+  const plain = html.match(/(?:\+1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/)?.[0];
+  return clean(tel || plain);
+}
+
+async function extractWebsiteContact(website: string) {
+  const candidates = websiteContactUrls(website);
+  for (const url of candidates) {
+    try {
+      const response = await fetch(url, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(3500),
+        headers: {
+          "User-Agent": "GhostLeadCommand/1.0 (+https://ghostai.solutions)",
+        },
+      });
+      if (!response.ok || !response.headers.get("content-type")?.includes("text/html")) continue;
+      const html = await response.text();
+      const email = extractEmail(html);
+      const phone = extractPhone(html);
+      if (email || phone) return { email, phone };
+    } catch {
+      continue;
+    }
+  }
+  return { email: "", phone: "" };
+}
+
+async function companyContactFallback(lead: IntakeLead) {
+  const website = await discoverCompanyWebsite(lead);
+  if (!website) return lead;
+
+  const contact = await extractWebsiteContact(website);
+  const enriched: IntakeLead = {
+    ...lead,
+    website,
+    domain: normalizeDomain(website),
+    email: clean(lead.email) || contact.email,
+    phone: clean(lead.phone) || contact.phone,
+    confidence: contact.email || contact.phone ? "company contact path" : lead.confidence,
+    socialSignals: ["Sales Navigator lead", "company website contact fallback"],
+  };
+  const signals = inferSignals(enriched);
+  return {
+    ...enriched,
+    intentSignals: signals,
+    signalSummary: signals.slice(0, 4).join("; "),
+    score: scoreSalesNavLead({ ...enriched, intentSignals: signals }),
+    value: scoreSalesNavLead({ ...enriched, intentSignals: signals }) >= 88 ? 7500 : 5000,
+  };
 }
 
 function parseLooseLines(raw: string, options: SalesNavParseOptions) {
@@ -274,5 +419,6 @@ export async function enrichSalesNavigatorLead(lead: IntakeLead): Promise<Intake
   }
 
   const fallback = await searchPdlPersonFallback(apiKey, lead);
-  return fallback ? mergePdlPerson(lead, fallback, "PDL person search fallback match") : lead;
+  const pdl = fallback ? mergePdlPerson(lead, fallback, "PDL person search fallback match") : lead;
+  return pdl.email || pdl.phone ? pdl : companyContactFallback(pdl);
 }
