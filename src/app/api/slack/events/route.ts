@@ -8,7 +8,13 @@ function isVegaAddressed(text: string) {
 }
 
 function stripVegaAddress(text: string) {
-  return text.replace(/^\s*(?:vega|<@[A-Z0-9]+>)\s*[,:\-]?\s+/i, "").trim();
+  let cleaned = text.trim();
+  for (let index = 0; index < 3; index += 1) {
+    const next = cleaned.replace(/^\s*(?:vega|<@[A-Z0-9]+>)\s*[,:\-]?\s+/i, "").trim();
+    if (next === cleaned) break;
+    cleaned = next;
+  }
+  return cleaned;
 }
 
 export async function POST(request: Request) {
