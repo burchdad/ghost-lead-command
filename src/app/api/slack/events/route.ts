@@ -12,7 +12,13 @@ function stripVegaAddress(text: string) {
 }
 
 export async function POST(request: Request) {
-  const payload = (await request.json().catch(() => ({}))) as SlackEventPayload;
+  const rawBody = await request.text();
+  let payload: SlackEventPayload;
+  try {
+    payload = (JSON.parse(rawBody || "{}") || {}) as SlackEventPayload;
+  } catch {
+    return NextResponse.json({ error: "Invalid Slack event payload" }, { status: 400 });
+  }
 
   if (payload.type === "url_verification") {
     return new NextResponse(payload.challenge || "", {
@@ -21,7 +27,13 @@ export async function POST(request: Request) {
     });
   }
 
-  if (!isSlackEventAuthorized(payload, request)) {
+  if (!isSlackEventAuthorized(payload, request, rawBody)) {
+    console.warn("slack_events_unauthorized", {
+      type: payload.type,
+      eventType: payload.event?.type,
+      channel: payload.event?.channel,
+      eventId: payload.event_id,
+    });
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -31,36 +43,57 @@ export async function POST(request: Request) {
   }
 
   if (event.subtype || event.bot_id) {
+    console.info("slack_events_ignored_bot_or_subtype", {
+      subtype: event.subtype,
+      botId: event.bot_id,
+      channel: event.channel,
+      eventId: payload.event_id,
+    });
     return NextResponse.json({ ok: true, ignored: true, reason: "bot or subtype message" });
   }
 
   const text = String(event.text || "").trim();
-  if (!isVegaAddressed(text) || !isLeadRequest(text)) {
-    return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
+  if (!isVegaAddressed(text)) {
+    console.info("slack_events_ignored_not_vega", {
+      channel: event.channel,
+      eventId: payload.event_id,
+    });
+    return NextResponse.json({ ok: true, ignored: true, reason: "not addressed to Vega" });
   }
 
   const instruction = stripVegaAddress(text);
-  after(async () => {
-    await createAutomationEvent({
-      title: "Vega Slack message instruction received",
-      detail: instruction,
-      status: "running",
-      type: "slack",
-      payload: {
-        eventId: payload.event_id,
-        userId: event.user,
-        channelId: event.channel,
-        ts: event.ts,
-        text,
-      },
-    });
+  const isLeadInstruction = isLeadRequest(instruction) || isLeadRequest(text);
+  await createAutomationEvent({
+    title: isLeadInstruction ? "Vega Slack lead request received" : "Vega Slack message ignored",
+    detail: instruction || text || "No Slack text received.",
+    status: isLeadInstruction ? "running" : "blocked",
+    type: "slack",
+    payload: {
+      eventId: payload.event_id,
+      userId: event.user,
+      channelId: event.channel,
+      ts: event.ts,
+      text,
+      isLeadInstruction,
+    },
+  });
 
+  if (!isLeadInstruction) {
     await notifySlackVegaLeadRequestResult({
       instruction,
-      status: "received",
-      summary: "Vega is sourcing this request now.",
+      status: "failed",
+      summary: "I heard Vega, but I could not detect a lead sourcing request. Try: Vega, need 10 new HVAC leads near Tyler, Texas.",
     });
+    return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
+  }
 
+  await notifySlackVegaLeadRequestResult({
+    instruction,
+    status: "received",
+    summary: "Vega is sourcing this request now.",
+  });
+
+  after(async () => {
     try {
       const { plan, result } = await runVegaLeadRequest({ text: instruction });
       await notifySlackVegaLeadRequestResult({

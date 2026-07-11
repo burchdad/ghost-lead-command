@@ -1,4 +1,5 @@
 import type { Lead, OutreachQueueItem } from "@prisma/client";
+import { createHmac, timingSafeEqual } from "crypto";
 import type { AgentPlan } from "@/lib/autopilot";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getOperatorCaps } from "@/lib/operator-policy";
@@ -148,7 +149,33 @@ export function isSlackCommandAuthorized(form: URLSearchParams, request: Request
   return [formToken, headerToken, queryToken].includes(expected);
 }
 
-export function isSlackEventAuthorized(payload: SlackEventPayload, request: Request) {
+function safeEqual(a: string, b: string) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function isValidSlackSignature(request: Request, rawBody: string) {
+  const signingSecret = clean(process.env.SLACK_SIGNING_SECRET);
+  const timestamp = request.headers.get("x-slack-request-timestamp") || "";
+  const signature = request.headers.get("x-slack-signature") || "";
+  if (!timestamp || !signature) return false;
+
+  const timestampSeconds = Number(timestamp);
+  if (!Number.isFinite(timestampSeconds)) return false;
+  const ageSeconds = Math.abs(Math.floor(Date.now() / 1000) - timestampSeconds);
+  if (ageSeconds > 60 * 5) return false;
+
+  if (!signingSecret) return true;
+
+  const base = `v0:${timestamp}:${rawBody}`;
+  const expected = `v0=${createHmac("sha256", signingSecret).update(base).digest("hex")}`;
+  return safeEqual(expected, signature);
+}
+
+export function isSlackEventAuthorized(payload: SlackEventPayload, request: Request, rawBody = "") {
+  if (isValidSlackSignature(request, rawBody)) return true;
+
   const expected =
     clean(process.env.SLACK_EVENTS_TOKEN) ||
     clean(process.env.SLACK_VERIFICATION_TOKEN) ||
