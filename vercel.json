@@ -7,6 +7,10 @@
       "schedule": "0 14 * * *"
     },
     {
+      "path": "/api/agent/director",
+      "schedule": "5 14 * * 1-5"
+    },
+    {
       "path": "/api/agent/run",
       "schedule": "15 14 * * 1-5"
     },

@@ -86,6 +86,7 @@ export async function GET() {
     const hotReplies = replies.filter((reply) => ["hot", "booked", "objection"].includes(reply.classification)).length;
     const bookedTasks = bookingTasks.filter((task) => task.status !== "blocked").length;
     const recentAgentEvent = events.find((event) => event.type === "agent");
+    const recentDirectorEvent = events.find((event) => /lead gen director/i.test(event.title));
     const recentSourceEvent = events.find((event) => ["agent", "source", "sendgrid"].includes(event.type));
     const recentReplyEvent = events.find((event) => ["reply", "sendgrid", "twilio"].includes(event.type));
     const recentBookingEvent = events.find((event) => event.type === "booking" || /book/i.test(event.title));
@@ -247,8 +248,35 @@ export async function GET() {
 
     const ready = agents.filter((agent) => agent.status === "ready").length;
     const blocked = agents.filter((agent) => agent.status === "blocked").length;
+    const directorBlockers = [
+      ...(sourceConfigured ? [] : ["No sourcing provider is configured."]),
+      ...(pending >= caps.maxPendingApprovals ? ["Approval queue is at capacity."] : []),
+      ...(canSend ? [] : ["Live SendGrid sending is not fully enabled; approval mode is still usable."]),
+      ...(canBook ? [] : ["Booking link or calendar automation is incomplete."]),
+    ];
 
     return NextResponse.json({
+      director: {
+        name: "Lead Gen Director Agent",
+        mandate: "Own the daily path from source selection to queued outreach, reply classification, booked calls, and source learning.",
+        status: sourceConfigured && pending < caps.maxPendingApprovals ? "ready" : "needs-work",
+        health:
+          sourceConfigured && pending < caps.maxPendingApprovals
+            ? "Ready to run specialist lanes"
+            : "Needs source or queue capacity attention",
+        nextMove:
+          pending > 0
+            ? "Approve pending outreach before adding more volume."
+            : "Run a director sprint against Google Maps first, then broaden with PDL or Sales Nav enrichment.",
+        lastEvent: summarizeEvent(recentDirectorEvent || recentAgentEvent || null),
+        blockers: directorBlockers,
+        metrics: {
+          "pending approvals": pending,
+          "hot replies": hotReplies,
+          "booked calls": bookedTasks,
+          "sources online": [sourceStatus.googleMapsConfigured, sourceStatus.pdlConfigured, sourceStatus.ghostLeadAgentConfigured].filter(Boolean).length,
+        },
+      },
       summary: {
         ready,
         total: agents.length,

@@ -25,6 +25,7 @@ function isAllowedPath(pathname: string) {
     pathname === "/api/access" ||
     pathname === "/api/access/logout" ||
     pathname === "/api/agent/digest" ||
+    pathname === "/api/agent/director" ||
     pathname === "/api/agent/recommend" ||
     pathname === "/api/agent/run" ||
     pathname === "/api/automation/contact-card/run" ||

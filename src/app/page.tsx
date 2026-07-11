@@ -230,7 +230,25 @@ type AgentControlCard = {
   blockers: string[];
 };
 
+type LeadGenDirector = {
+  name: string;
+  mandate: string;
+  status: "running" | "ready" | "needs-work" | "blocked";
+  health: string;
+  nextMove: string;
+  lastEvent?: {
+    title: string;
+    detail: string;
+    status: string;
+    at: string;
+    age: string;
+  } | null;
+  blockers: string[];
+  metrics: Record<string, string | number>;
+};
+
 type AgentControlRoom = {
+  director?: LeadGenDirector;
   summary: {
     ready: number;
     total: number;
@@ -240,6 +258,32 @@ type AgentControlRoom = {
     recommendation: string;
   };
   agents: AgentControlCard[];
+};
+
+type LeadGenDirectorResult = {
+  ok: boolean;
+  summary: {
+    found: number;
+    qualified: number;
+    queued: number;
+    pendingApprovals: number;
+    sentOrQueued: number;
+    hotReplies: number;
+    bookedCalls: number;
+    bookingReady: boolean;
+    nextMove: string;
+  };
+  specialists: {
+    id: string;
+    name: string;
+    role: string;
+    status: "done" | "blocked" | "skipped";
+    provider?: string;
+    found?: number;
+    qualified?: number;
+    queued?: number;
+    message: string;
+  }[];
 };
 
 type LearningRow = {
@@ -639,6 +683,7 @@ export default function Home() {
   const [operationStatus, setOperationStatus] = useState("Connecting to Lead Command data...");
   const [actionToast, setActionToast] = useState<ActionToast | null>(null);
   const [agentBusy, setAgentBusy] = useState(false);
+  const [directorBusy, setDirectorBusy] = useState(false);
   const [outreachStatus, setOutreachStatus] = useState<OutreachStatus>({
     mode: "dry-run",
     smsProvider: "telnyx",
@@ -704,6 +749,7 @@ export default function Home() {
   const [collectorBusy, setCollectorBusy] = useState(false);
   const [tuningBusy, setTuningBusy] = useState(false);
   const [signalCollectorResult, setSignalCollectorResult] = useState<SignalCollectorResult | null>(null);
+  const [directorResult, setDirectorResult] = useState<LeadGenDirectorResult | null>(null);
   const [bookingTasks, setBookingTasks] = useState<BookingTask[]>([]);
   const [sequenceQueue, setSequenceQueue] = useState<SequenceQueueStep[]>([]);
   const [editScore, setEditScore] = useState(String(seedLeads[0].score));
@@ -1393,6 +1439,52 @@ export default function Home() {
     await refreshLeads();
     setActive("queue");
     setAgentBusy(false);
+  }
+
+  async function runLeadGenDirector() {
+    if (directorBusy) return;
+    setDirectorBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: "Lead Gen Director running",
+      detail: "Coordinating sourcing, QA, outreach queueing, and booking readiness across specialist agents.",
+    });
+    setOperationStatus("Lead Gen Director is running the specialist lead-gen team.");
+
+    const response = await fetch("/api/agent/director", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "sprint",
+        autoSend: outreachStatus.mode === "live",
+        location: sourceLocation || "Texas",
+        queueLimit: 10,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "Lead Gen Director blocked",
+        detail: payload.detail || payload.error || "The director could not complete this sprint.",
+      });
+      setOperationStatus(payload.detail || payload.error || "Lead Gen Director run failed.");
+      setDirectorBusy(false);
+      return;
+    }
+
+    setDirectorResult(payload);
+    setActionToast({
+      phase: "success",
+      title: "Director sprint complete",
+      detail: `Found ${payload.summary?.found || 0}, qualified ${payload.summary?.qualified || 0}, queued ${payload.summary?.queued || 0}.`,
+    });
+    setOperationStatus(payload.summary?.nextMove || "Lead Gen Director finished the sprint.");
+    await refreshOpsData();
+    await refreshLeads();
+    if ((payload.summary?.pendingApprovals || 0) > 0) setActive("queue");
+    setDirectorBusy(false);
   }
 
   async function runSignalCollector(commit = false) {
@@ -2426,6 +2518,94 @@ export default function Home() {
                       detail="Current outreach posture"
                       icon={Send}
                     />
+                  </div>
+
+                  <div className="mt-5 rounded-md border border-[#83d0c2]/35 bg-[#83d0c2]/10 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="max-w-3xl">
+                        <div className="flex items-center gap-2">
+                          <span className={`size-2 rounded-full ${agentDotClass(agentControlRoom?.director?.status || "needs-work")}`} />
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#83d0c2]">Lead Gen Director Agent</p>
+                        </div>
+                        <h3 className="mt-2 text-2xl font-semibold">
+                          {agentControlRoom?.director?.name || "Lead Gen Director Agent"}
+                        </h3>
+                        <p className="mt-2 text-sm leading-6 text-[#c8d6d2]">
+                          {agentControlRoom?.director?.mandate ||
+                            "Own the daily path from source selection to queued outreach, reply classification, booked calls, and source learning."}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={runLeadGenDirector}
+                        disabled={directorBusy}
+                        className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-4 py-3 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {directorBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Rocket size={16} />}
+                        Run director sprint
+                      </button>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-4">
+                      {Object.entries(agentControlRoom?.director?.metrics || {}).map(([label, value]) => (
+                        <div key={label} className="rounded-sm bg-[#101417] p-3">
+                          <p className="text-[10px] uppercase tracking-[0.12em] text-[#83d0c2]">{label}</p>
+                          <p className="mt-1 font-mono text-lg text-white">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_0.8fr]">
+                      <div className="rounded-md border border-white/10 bg-[#101417] p-4">
+                        <p className="text-sm font-semibold text-white">{agentControlRoom?.director?.health || "Ready to coordinate specialist lanes"}</p>
+                        <p className="mt-2 text-sm leading-5 text-[#aebbb7]">
+                          {agentControlRoom?.director?.nextMove ||
+                            "Run Google Maps first for contactable local businesses, then broaden with PDL and Sales Navigator enrichment."}
+                        </p>
+                        {agentControlRoom?.director?.lastEvent ? (
+                          <p className="mt-2 text-xs text-[#7f8b86]">
+                            Last: {agentControlRoom.director.lastEvent.title} Â· {agentControlRoom.director.lastEvent.age}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="rounded-md border border-white/10 bg-[#101417] p-4">
+                        <p className="text-sm font-semibold text-white">Director Blockers</p>
+                        <div className="mt-3 space-y-2">
+                          {(agentControlRoom?.director?.blockers?.length ? agentControlRoom.director.blockers : ["No hard blocker. Keep approvals moving."]).map((blocker) => (
+                            <p key={blocker} className="rounded-sm bg-white/[0.05] px-3 py-2 text-xs text-[#c8d6d2]">
+                              {blocker}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {directorResult ? (
+                      <div className="mt-4 rounded-md border border-white/10 bg-[#101417] p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <h3 className="font-semibold">Last Director Sprint</h3>
+                          <span className="rounded-sm bg-[#d8ff5f]/15 px-2 py-1 text-xs font-semibold text-[#d8ff5f]">
+                            queued {directorResult.summary.queued}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-2 md:grid-cols-3">
+                          {directorResult.specialists.map((specialist) => (
+                            <div key={specialist.id} className="rounded-sm bg-white/[0.04] p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold">{specialist.name}</p>
+                                <span className="rounded-sm bg-white/[0.08] px-2 py-1 text-[10px] text-[#aebbb7]">
+                                  {specialist.status}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-[#9fb0a8]">
+                                {specialist.provider || "agent"} Â· found {specialist.found || 0} Â· qualified {specialist.qualified || 0} Â· queued {specialist.queued || 0}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-sm leading-5 text-[#aebbb7]">{directorResult.summary.nextMove}</p>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="mt-5 grid gap-4 xl:grid-cols-2">
