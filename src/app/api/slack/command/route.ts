@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       const result = await runVegaLeadRequest({ text });
       await postSlackCommandResponse(responseUrl, leadRunText(result));
     });
-    return slackText("Vega is running that lead request now. I’ll post the sourcing result back here when the run finishes.");
+    return slackText("Vega is running that lead request now. I'll post the sourcing result back here when the run finishes.");
   }
 
   if (normalized.includes("nova") || normalized.includes("director")) {

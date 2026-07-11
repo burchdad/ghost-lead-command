@@ -148,6 +148,19 @@ export function isSlackCommandAuthorized(form: URLSearchParams, request: Request
   return [formToken, headerToken, queryToken].includes(expected);
 }
 
+export function isSlackEventAuthorized(payload: SlackEventPayload, request: Request) {
+  const expected =
+    clean(process.env.SLACK_EVENTS_TOKEN) ||
+    clean(process.env.SLACK_VERIFICATION_TOKEN) ||
+    clean(process.env.SLACK_COMMAND_TOKEN) ||
+    actionToken();
+  if (!expected) return true;
+
+  const headerToken = request.headers.get("x-slack-action-token") || "";
+  const queryToken = new URL(request.url).searchParams.get("token") || "";
+  return [payload.token, headerToken, queryToken].includes(expected);
+}
+
 export function isSlackInteractionAuthorized(payload: SlackInteractionPayload, request: Request) {
   const expected =
     clean(process.env.SLACK_COMMAND_TOKEN) ||
@@ -181,6 +194,22 @@ export type SlackInteractionPayload = {
     action_id?: string;
     value?: string;
   }[];
+};
+
+export type SlackEventPayload = {
+  token?: string;
+  challenge?: string;
+  type?: "url_verification" | "event_callback" | string;
+  event_id?: string;
+  event?: {
+    type?: string;
+    subtype?: string;
+    text?: string;
+    user?: string;
+    channel?: string;
+    ts?: string;
+    bot_id?: string;
+  };
 };
 
 export async function notifySlackOutreachApproval(
@@ -579,6 +608,86 @@ export async function notifySlackLeadCommandAudit(input: {
   return {
     ...result,
     message: result.sent ? `Lead Command audit posted to ${result.channel || channelName}.` : result.message,
+  };
+}
+
+export async function notifySlackVegaLeadRequestResult(input: {
+  instruction: string;
+  status: "received" | "finished" | "failed";
+  summary: string;
+  plan?: {
+    niche: string;
+    provider: string;
+    location: string;
+  };
+  result?: {
+    found: number;
+    qualified: number;
+    queued: number;
+    message?: string;
+  };
+}) {
+  const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
+  const fields =
+    input.plan && input.result
+      ? [
+          { type: "mrkdwn", text: `*Niche*\n${input.plan.niche}` },
+          { type: "mrkdwn", text: `*Provider*\n${input.plan.provider}` },
+          { type: "mrkdwn", text: `*Location*\n${input.plan.location}` },
+          { type: "mrkdwn", text: `*Found*\n${input.result.found}` },
+          { type: "mrkdwn", text: `*Qualified*\n${input.result.qualified}` },
+          { type: "mrkdwn", text: `*Queued*\n${input.result.queued}` },
+        ]
+      : [];
+
+  const result = await postSlackPayload({
+    webhookUrl:
+      clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_EXECUTIVE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_WEBHOOK_URL),
+    botToken: clean(process.env.SLACK_BOT_TOKEN),
+    channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
+    payload: {
+      text: `Vega lead request ${input.status}: ${input.summary}`,
+      blocks: [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: input.status === "received" ? "Vega lead request received" : "Vega lead request result",
+            emoji: false,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Channel:* #${channelName}\n*Instruction:* ${input.instruction}\n*Status:* ${input.summary}`,
+          },
+        },
+        ...(fields.length ? [{ type: "section", fields }] : []),
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Queue", emoji: false },
+              url: appViewUrl("queue"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Source", emoji: false },
+              url: appViewUrl("source"),
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  return {
+    ...result,
+    message: result.sent ? `Vega lead request update posted to ${result.channel || channelName}.` : result.message,
   };
 }
 
