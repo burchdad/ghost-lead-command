@@ -46,6 +46,14 @@ function splitName(name: string) {
   };
 }
 
+function sqlValue(value: string) {
+  return value.replace(/'/g, "''");
+}
+
+function like(field: string, value: string) {
+  return `${field} LIKE '%${sqlValue(value)}%'`;
+}
+
 function inferSignals(lead: IntakeLead) {
   const signals = new Set<string>();
   const text = `${lead.title || ""} ${lead.niche || ""} ${lead.companyName || ""}`.toLowerCase();
@@ -114,6 +122,79 @@ function normalizeRecord(record: Record<string, string>, options: SalesNavParseO
     score: scoreSalesNavLead({ ...lead, intentSignals: signals }),
     value: scoreSalesNavLead({ ...lead, intentSignals: signals }) >= 88 ? 7500 : 5000,
   };
+}
+
+function contactFromPdlPerson(person: PdlEnrichedPerson) {
+  return {
+    email:
+      clean(person.work_email) ||
+      clean(person.emails?.find((item) => item.type === "professional")?.address) ||
+      clean(person.emails?.[0]?.address),
+    phone: clean(person.mobile_phone) || clean(person.phone_numbers?.[0]),
+  };
+}
+
+function mergePdlPerson(lead: IntakeLead, person: PdlEnrichedPerson, sourceSignal: string) {
+  const contact = contactFromPdlPerson(person);
+  const enriched: IntakeLead = {
+    ...lead,
+    id: person.id || lead.id,
+    name: clean(person.full_name) || lead.name,
+    title: clean(person.job_title) || lead.title,
+    companyName: clean(person.job_company_name) || lead.companyName,
+    niche: clean(person.job_company_industry) || lead.niche,
+    location: clean(person.location_name) || lead.location,
+    email: contact.email || lead.email,
+    phone: contact.phone || lead.phone,
+    website: clean(person.job_company_website) || lead.website,
+    profileUrl: clean(person.linkedin_url) || lead.profileUrl,
+    sourceUrl: clean(person.linkedin_url) || lead.sourceUrl,
+    socialSignals: ["Sales Navigator lead", sourceSignal],
+  };
+  const signals = inferSignals(enriched);
+  return {
+    ...enriched,
+    intentSignals: signals,
+    signalSummary: signals.slice(0, 4).join("; "),
+    score: scoreSalesNavLead({ ...enriched, intentSignals: signals }),
+    value: scoreSalesNavLead({ ...enriched, intentSignals: signals }) >= 88 ? 7500 : 5000,
+  };
+}
+
+async function searchPdlPersonFallback(apiKey: string, lead: IntakeLead) {
+  const companyName = clean(lead.companyName || lead.company);
+  const name = clean(lead.name || lead.contactName);
+  const { firstName, lastName } = splitName(name);
+  if (!companyName || !firstName || !lastName || name.includes("...")) return null;
+
+  const where = [
+    "(work_email IS NOT NULL OR mobile_phone IS NOT NULL)",
+    like("job_company_name", companyName),
+    `(${like("full_name", name)} OR (${like("first_name", firstName)} AND ${like("last_name", lastName)}))`,
+  ];
+
+  const title = clean(lead.title || lead.role);
+  if (title && !/chief|founder|owner|president|ceo|co-founder/i.test(title)) {
+    where.push(like("job_title", title.split(/[|/,-]/)[0].trim()));
+  }
+
+  const response = await fetch("https://api.peopledatalabs.com/v5/person/search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-Key": apiKey,
+    },
+    body: JSON.stringify({
+      sql: `SELECT * FROM person WHERE ${where.join(" AND ")}`,
+      size: 1,
+      dataset: "email,phone,mobile_phone,resume",
+      titlecase: true,
+    }),
+  }).catch(() => null);
+
+  if (!response || !response.ok) return null;
+  const payload = (await response.json().catch(() => ({}))) as { data?: PdlEnrichedPerson[] };
+  return payload.data?.[0] || null;
 }
 
 function parseLooseLines(raw: string, options: SalesNavParseOptions) {
@@ -186,35 +267,12 @@ export async function enrichSalesNavigatorLead(lead: IntakeLead): Promise<Intake
     }),
   }).catch(() => null);
 
-  if (!response || !response.ok) return lead;
-  const person = (await response.json().catch(() => ({}))) as PdlEnrichedPerson;
-  const email =
-    clean(person.work_email) ||
-    clean(person.emails?.find((item) => item.type === "professional")?.address) ||
-    clean(person.emails?.[0]?.address);
-  const phone = clean(person.mobile_phone) || clean(person.phone_numbers?.[0]);
+  if (response?.ok) {
+    const person = (await response.json().catch(() => ({}))) as PdlEnrichedPerson;
+    const direct = mergePdlPerson(lead, person, "PDL person enrichment match");
+    if (direct.email || direct.phone) return direct;
+  }
 
-  const enriched: IntakeLead = {
-    ...lead,
-    id: person.id || lead.id,
-    name: clean(person.full_name) || lead.name,
-    title: clean(person.job_title) || lead.title,
-    companyName: clean(person.job_company_name) || lead.companyName,
-    niche: clean(person.job_company_industry) || lead.niche,
-    location: clean(person.location_name) || lead.location,
-    email,
-    phone,
-    website: clean(person.job_company_website) || lead.website,
-    profileUrl: clean(person.linkedin_url) || lead.profileUrl,
-    sourceUrl: clean(person.linkedin_url) || lead.sourceUrl,
-    socialSignals: ["Sales Navigator lead", "PDL person enrichment match"],
-  };
-  const signals = inferSignals(enriched);
-  return {
-    ...enriched,
-    intentSignals: signals,
-    signalSummary: signals.slice(0, 4).join("; "),
-    score: scoreSalesNavLead({ ...enriched, intentSignals: signals }),
-    value: scoreSalesNavLead({ ...enriched, intentSignals: signals }) >= 88 ? 7500 : 5000,
-  };
+  const fallback = await searchPdlPersonFallback(apiKey, lead);
+  return fallback ? mergePdlPerson(lead, fallback, "PDL person search fallback match") : lead;
 }
