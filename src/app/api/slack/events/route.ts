@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { isLeadRequest, runVegaLeadRequest } from "@/lib/autopilot";
+import { isLeadRequest, isReplyWorkRequest, runVegaLeadRequest, runVegaReplyWork } from "@/lib/autopilot";
 import { createAutomationEvent } from "@/lib/automation";
 import { isSlackEventAuthorized, notifySlackVegaLeadRequestResult, type SlackEventPayload } from "@/lib/slack";
 
@@ -70,10 +70,15 @@ export async function POST(request: Request) {
 
   const instruction = stripVegaAddress(text);
   const isLeadInstruction = isLeadRequest(instruction) || isLeadRequest(text);
+  const isReplyInstruction = isReplyWorkRequest(instruction) || isReplyWorkRequest(text);
   await createAutomationEvent({
-    title: isLeadInstruction ? "Vega Slack lead request received" : "Vega Slack message ignored",
+    title: isLeadInstruction
+      ? "Vega Slack lead request received"
+      : isReplyInstruction
+        ? "Vega Slack reply work received"
+        : "Vega Slack message ignored",
     detail: instruction || text || "No Slack text received.",
-    status: isLeadInstruction ? "running" : "blocked",
+    status: isLeadInstruction || isReplyInstruction ? "running" : "blocked",
     type: "slack",
     payload: {
       eventId: payload.event_id,
@@ -82,16 +87,46 @@ export async function POST(request: Request) {
       ts: event.ts,
       text,
       isLeadInstruction,
+      isReplyInstruction,
     },
   });
 
-  if (!isLeadInstruction) {
+  if (!isLeadInstruction && !isReplyInstruction) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "failed",
-      summary: "I heard Vega, but I could not detect a lead sourcing request. Try: Vega, need 10 new HVAC leads near Tyler, Texas.",
+      summary: "I heard Vega, but I could not detect a lead sourcing or reply-work request. Try: Vega, need 10 new HVAC leads near Tyler, Texas. Or: Vega, work replies.",
     });
     return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
+  }
+
+  if (isReplyInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is working recent replies and booking handoffs now.",
+    });
+
+    after(async () => {
+      try {
+        await runVegaReplyWork({ text: instruction });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Vega reply-work failure.",
+        });
+        await createAutomationEvent({
+          title: "Vega Slack reply instruction failed",
+          detail: error instanceof Error ? error.message : "Unknown Vega reply-work failure.",
+          status: "blocked",
+          type: "slack",
+          payload: { eventId: payload.event_id, instruction },
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
   }
 
   await notifySlackVegaLeadRequestResult({

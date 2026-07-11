@@ -363,3 +363,101 @@ export async function recordInboundReply(input: RecordInboundReplyInput) {
 
   return { reply, lead: updatedLead, route, booking, responseDraft, pausedSequence, slack, matched: true };
 }
+
+export async function runReplyConversionSweep(input: { limit?: number; lookbackHours?: number } = {}) {
+  const prisma = getPrisma();
+  const workspace = await getDefaultWorkspace();
+  const limit = Math.min(25, Math.max(1, Number(input.limit || 10)));
+  const lookbackHours = Math.min(168, Math.max(1, Number(input.lookbackHours || 72)));
+  const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
+
+  const replies = await prisma.reply.findMany({
+    where: {
+      workspaceId: workspace.id,
+      leadId: { not: null },
+      classification: { in: ["booked", "hot", "objection", "nurture"] },
+      createdAt: { gte: since },
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: { lead: true },
+  });
+
+  const results = [];
+  for (const reply of replies) {
+    if (!reply.leadId || !reply.lead) continue;
+
+    const route = routeReply(reply.classification, reply.lead.companyName);
+    const pausedSequence = await pauseOpenSequenceSteps({
+      leadId: reply.leadId,
+      classification: reply.classification,
+    });
+
+    const booking =
+      ["hot", "booked"].includes(reply.classification)
+        ? await createBookingTaskForLead({
+            leadId: reply.leadId,
+            replyBody: reply.body,
+            classification: reply.classification,
+          })
+        : null;
+
+    const responseDraft = await queueReplyResponse({
+      leadId: reply.leadId,
+      classification: reply.classification,
+      replyBody: reply.body,
+      nextAction: reply.lead.nextAction || route.nextAction,
+    });
+
+    results.push({
+      replyId: reply.id,
+      leadId: reply.leadId,
+      companyName: reply.lead.companyName,
+      classification: reply.classification,
+      responseQueued: responseDraft.queued,
+      responseReason: responseDraft.reason || null,
+      queueItemId: "item" in responseDraft ? responseDraft.item?.id || null : null,
+      bookingStatus: booking?.blocked === false ? "ready" : booking?.blocked ? "blocked" : "n/a",
+      pausedSteps: pausedSequence.count,
+    });
+  }
+
+  const queued = results.filter((result) => result.responseQueued).length;
+  const bookingReady = results.filter((result) => result.bookingStatus === "ready").length;
+  const bookingBlocked = results.filter((result) => result.bookingStatus === "blocked").length;
+  const alreadyPending = results.filter((result) => result.responseReason === "Reply response already pending.").length;
+  const missingContact = results.filter((result) => result.responseReason === "Missing contact email.").length;
+
+  await createAutomationEvent({
+    title: "Vega reply conversion sweep",
+    detail: `Reviewed ${results.length} recent engaged replies. Queued ${queued} response drafts. Booking ready ${bookingReady}.`,
+    status: queued || bookingReady ? "done" : "needs_review",
+    type: "reply",
+    payload: {
+      lookbackHours,
+      requestedLimit: limit,
+      repliesFound: replies.length,
+      queued,
+      alreadyPending,
+      missingContact,
+      bookingReady,
+      bookingBlocked,
+      results,
+    },
+  });
+
+  return {
+    reviewed: results.length,
+    queued,
+    alreadyPending,
+    missingContact,
+    bookingReady,
+    bookingBlocked,
+    results,
+    message: queued
+      ? `Vega queued ${queued} reply response draft${queued === 1 ? "" : "s"} for approval.`
+      : results.length
+        ? "Vega found engaged replies, but no new response drafts needed."
+        : "Vega found no recent engaged replies to work.",
+  };
+}

@@ -1,10 +1,12 @@
 import { createAutomationEvent } from "@/lib/automation";
 import { recommendNiche, runLeadCommandAgent } from "@/lib/agent";
 import { getPrisma } from "@/lib/prisma";
+import { runReplyConversionSweep } from "@/lib/replies";
 import {
   notifySlackAgentPlan,
   notifySlackDailyDigest,
   notifySlackNicheRecommendation,
+  notifySlackReplyWorkResult,
 } from "@/lib/slack";
 import type { SourceProvider } from "@/lib/sourcing";
 import { getDefaultWorkspace } from "@/lib/workspace";
@@ -217,11 +219,48 @@ export function isLeadRequest(text: string) {
   );
 }
 
+export function isReplyWorkRequest(text: string) {
+  const normalized = clean(text).toLowerCase();
+  if (!normalized) return false;
+  return (
+    /\b(?:reply|replies|inbox|respond|follow[-\s]?up|booking|bookings|calendar)\b/.test(normalized) &&
+    /\b(?:work|push|convert|handle|process|queue|draft|book|approve|follow)\b/.test(normalized)
+  );
+}
+
+function parseReplyWorkLimit(text: string) {
+  const match =
+    text.match(/\b(?:work|process|handle|queue|draft|push)\s+(\d+)\b/i) ||
+    text.match(/\b(\d+)\s+(?:replies|reply|bookings|hot)\b/i) ||
+    text.match(/\blimit\s*(?:=|:)?\s*(\d+)\b/i);
+  return match ? Number(match[1]) : undefined;
+}
+
 export async function runVegaLeadRequest(input: { text: string }) {
   const plan = createAgentPlan({ text: input.text, source: "slack-command" });
   const result = await approveAgentPlan(plan);
   return { plan, result };
 }
+
+export async function runVegaReplyWork(input: { text: string }) {
+  const result = await runReplyConversionSweep({
+    limit: parseReplyWorkLimit(input.text) || 10,
+    lookbackHours: /week|7\s*days/i.test(input.text) ? 168 : 72,
+  });
+  const slack = await notifySlackReplyWorkResult({
+    instruction: input.text,
+    summary: result.message,
+    reviewed: result.reviewed,
+    queued: result.queued,
+    alreadyPending: result.alreadyPending,
+    missingContact: result.missingContact,
+    bookingReady: result.bookingReady,
+    bookingBlocked: result.bookingBlocked,
+    results: result.results,
+  });
+  return { result, slack };
+}
+
 
 export async function sendDailyRecommendation() {
   const plan = createAgentPlan({ source: "daily" });

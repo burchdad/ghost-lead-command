@@ -762,6 +762,100 @@ export async function notifySlackVegaLeadRequestResult(input: {
   };
 }
 
+export async function notifySlackReplyWorkResult(input: {
+  instruction: string;
+  summary: string;
+  reviewed: number;
+  queued: number;
+  alreadyPending: number;
+  missingContact: number;
+  bookingReady: number;
+  bookingBlocked: number;
+  results?: {
+    companyName: string;
+    classification: string;
+    responseQueued: boolean;
+    responseReason?: string | null;
+    bookingStatus?: string;
+  }[];
+}) {
+  const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
+  const topResults = (input.results || []).slice(0, 6);
+  const resultLines = topResults.length
+    ? topResults
+        .map((result) => {
+          const draft = result.responseQueued ? "draft queued" : result.responseReason || "no draft";
+          return `- *${result.companyName}* (${result.classification}): ${draft}; booking ${result.bookingStatus || "n/a"}`;
+        })
+        .join("\n")
+    : "No engaged replies were ready to work.";
+
+  const result = await postSlackPayload({
+    webhookUrl:
+      clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_EXECUTIVE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_WEBHOOK_URL),
+    botToken: clean(process.env.SLACK_BOT_TOKEN),
+    channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
+    payload: {
+      text: `Vega reply work result: ${input.summary}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "Vega reply-to-booking sweep", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Channel:* #${channelName}\n*Instruction:* ${input.instruction}\n*Status:* ${input.summary}`,
+          },
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Reviewed*\n${input.reviewed}` },
+            { type: "mrkdwn", text: `*Response drafts*\n${input.queued}` },
+            { type: "mrkdwn", text: `*Already pending*\n${input.alreadyPending}` },
+            { type: "mrkdwn", text: `*Missing email*\n${input.missingContact}` },
+            { type: "mrkdwn", text: `*Booking ready*\n${input.bookingReady}` },
+            { type: "mrkdwn", text: `*Booking blocked*\n${input.bookingBlocked}` },
+          ],
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: resultLines.slice(0, 2800) },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Queue", emoji: false },
+              url: appViewUrl("queue"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Inbox", emoji: false },
+              url: appViewUrl("inbox"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Proposal", emoji: false },
+              url: appViewUrl("proposal"),
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  return {
+    ...result,
+    message: result.sent ? `Vega reply work update posted to ${result.channel || channelName}.` : result.message,
+  };
+}
+
 export async function notifySlackNicheRecommendation(input: {
   niche: string;
   query: string;

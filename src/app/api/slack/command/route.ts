@@ -1,5 +1,12 @@
 import { after, NextResponse } from "next/server";
-import { isLeadRequest, runVegaLeadRequest, sendAgentPlan, sendDailyDigest } from "@/lib/autopilot";
+import {
+  isLeadRequest,
+  isReplyWorkRequest,
+  runVegaLeadRequest,
+  runVegaReplyWork,
+  sendAgentPlan,
+  sendDailyDigest,
+} from "@/lib/autopilot";
 import { createAutomationEvent } from "@/lib/automation";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
@@ -93,6 +100,22 @@ export async function POST(request: Request) {
     return slackText("Vega is running that lead request now. I'll post the sourcing result back here when the run finishes.");
   }
 
+  if (isReplyWorkRequest(text)) {
+    after(async () => {
+      const { result } = await runVegaReplyWork({ text });
+      await postSlackCommandResponse(
+        responseUrl,
+        [
+          result.message,
+          `Reviewed ${result.reviewed}, queued ${result.queued}, booking ready ${result.bookingReady}, booking blocked ${result.bookingBlocked}.`,
+          result.alreadyPending ? `Already pending: ${result.alreadyPending}.` : "",
+          result.missingContact ? `Missing email: ${result.missingContact}.` : "",
+        ].filter(Boolean).join("\n"),
+      );
+    });
+    return slackText("Vega is working recent replies now. I'll post the conversion result back here when it finishes.");
+  }
+
   if (normalized.includes("nova") || normalized.includes("director")) {
     const result = await briefNovaCeoAgent({
       message: text || "Slack requested a Lead Gen Director briefing for Nova.",
@@ -125,6 +148,8 @@ export async function POST(request: Request) {
         "`recommend` - propose today's best niche.",
         "`run roofing in Texas score 85 limit 5` - propose a scoped sourcing plan.",
         "`Vega, need 10 new leads in HVAC between Tyler and Dallas, Texas` - run sourcing and queue approval-ready outreach.",
+        "`Vega, work replies` - queue response drafts for hot/booked replies and prep bookings.",
+        "`Vega, push bookings` - work engaged replies toward calendar-ready follow-up.",
         "`digest` - post the current ops digest.",
         "`nova` - have the Lead Gen Director brief the Nova CEO AI Agent in Slack.",
         "`director status` - post the Director-to-Nova lead-gen briefing.",
