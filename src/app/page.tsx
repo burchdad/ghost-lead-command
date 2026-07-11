@@ -1553,7 +1553,7 @@ export default function Home() {
       title: payload.posted ? "Nova briefed" : "Nova brief prepared",
       detail: payload.posted
         ? `Brief posted to ${payload.targetAgent}.`
-        : `${payload.targetAgent} bridge is ready internally. Add NOVA_CEO_AGENT_URL for direct posting.`,
+        : `${payload.targetAgent} brief is ready internally. Check Slack configuration if it did not post.`,
     });
     setOperationStatus(payload.nextMove || "Lead Gen Director prepared the Nova CEO briefing.");
     await refreshOpsData();

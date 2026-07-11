@@ -1,5 +1,6 @@
 import { createAutomationEvent } from "@/lib/automation";
 import { getPrisma } from "@/lib/prisma";
+import { notifySlackDirectorNovaBrief } from "@/lib/slack";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 type NovaBriefInput = {
@@ -20,13 +21,18 @@ function novaToken() {
 
 export function getMissionControlBridgeStatus() {
   const endpoint = novaEndpoint();
+  const slackConfigured = Boolean(clean(process.env.SLACK_WEBHOOK_URL));
   return {
-    configured: Boolean(endpoint),
+    configured: slackConfigured || Boolean(endpoint),
+    slackConfigured,
+    webhookConfigured: Boolean(endpoint),
     targetAgent: process.env.NOVA_CEO_AGENT_NAME || "Nova CEO AI Agent",
-    channel: endpoint ? "mission-control-webhook" : "internal-briefing",
-    detail: endpoint
-      ? "Lead Gen Director can brief Nova through the configured Mission Control endpoint."
-      : "Add NOVA_CEO_AGENT_URL to post Director briefs into Ghost Mission Control automatically.",
+    channel: slackConfigured ? "slack" : endpoint ? "mission-control-webhook" : "internal-briefing",
+    detail: slackConfigured
+      ? "Lead Gen Director can brief Nova in the connected Slack ops channel."
+      : endpoint
+        ? "Lead Gen Director can brief Nova through the configured Mission Control endpoint."
+        : "Add SLACK_WEBHOOK_URL or NOVA_CEO_AGENT_URL to post Director briefs automatically.",
   };
 }
 
@@ -71,10 +77,16 @@ export async function briefNovaCeoAgent(input: NovaBriefInput = {}) {
     .filter(Boolean)
     .join("\n");
 
-  let posted = false;
-  let postStatus = "internal";
+  const slack = await notifySlackDirectorNovaBrief({
+    targetAgent: bridge.targetAgent,
+    brief,
+    nextMove,
+    metrics: { leadsToday, pending, sentOrQueued, replies, booked },
+  });
+  let posted = Boolean(slack.sent);
+  let postStatus = slack.message;
   const endpoint = novaEndpoint();
-  if (endpoint) {
+  if (!posted && endpoint) {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const token = novaToken();
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -95,12 +107,13 @@ export async function briefNovaCeoAgent(input: NovaBriefInput = {}) {
   }
 
   await createAutomationEvent({
-    title: posted ? "Lead Gen Director briefed Nova" : "Lead Gen Director prepared Nova briefing",
-    detail: posted ? `Brief posted to ${bridge.targetAgent}.` : `Brief ready for ${bridge.targetAgent}; ${bridge.detail}`,
-    status: posted || !endpoint ? "done" : "blocked",
+    title: posted ? "Lead Gen Director briefed Nova in Slack" : "Lead Gen Director prepared Nova briefing",
+    detail: posted ? `Brief posted for ${bridge.targetAgent}.` : `Brief ready for ${bridge.targetAgent}; ${bridge.detail}`,
+    status: posted || (!endpoint && !slack.configured) ? "done" : "blocked",
     type: "agent",
     payload: {
       bridge,
+      slack,
       posted,
       postStatus,
       brief,
@@ -110,9 +123,10 @@ export async function briefNovaCeoAgent(input: NovaBriefInput = {}) {
   });
 
   return {
-    ok: posted || !endpoint,
+    ok: posted || (!endpoint && !slack.configured),
     posted,
     postStatus,
+    slack,
     targetAgent: bridge.targetAgent,
     bridge,
     brief,

@@ -33,6 +33,12 @@ function actionUrl(itemId: string, action: "approve" | "redo" | "discard" | "sup
   return url.toString();
 }
 
+function appViewUrl(view: string) {
+  const url = new URL("/", appBaseUrl());
+  url.searchParams.set("view", view);
+  return url.toString();
+}
+
 function planActionUrl(action: "approve" | "deny", plan: AgentPlan) {
   const url = new URL(`/api/slack/actions/plan/${action}`, appBaseUrl());
   const token = actionToken();
@@ -302,6 +308,91 @@ export async function notifySlackDailyDigest(input: {
     configured: true,
     sent: response.ok,
     message: response.ok ? "Slack digest sent." : `Slack webhook returned ${response.status}.`,
+  };
+}
+
+export async function notifySlackDirectorNovaBrief(input: {
+  targetAgent: string;
+  brief: string;
+  nextMove: string;
+  metrics: {
+    leadsToday: number;
+    pending: number;
+    sentOrQueued: number;
+    replies: number;
+    booked: number;
+  };
+}) {
+  const webhookUrl = clean(process.env.SLACK_WEBHOOK_URL);
+  if (!webhookUrl) {
+    return { configured: false, sent: false, message: "Missing SLACK_WEBHOOK_URL." };
+  }
+
+  const preview = input.brief.length > 900 ? `${input.brief.slice(0, 897)}...` : input.brief;
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: `Lead Gen Director briefing for ${input.targetAgent}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "Lead Gen Director to Nova", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*To:* ${input.targetAgent}\n*From:* Lead Gen Director Agent\n*Next move:* ${input.nextMove}`,
+          },
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*New leads*\n${input.metrics.leadsToday}` },
+            { type: "mrkdwn", text: `*Pending approvals*\n${input.metrics.pending}` },
+            { type: "mrkdwn", text: `*Sent/queued*\n${input.metrics.sentOrQueued}` },
+            { type: "mrkdwn", text: `*Replies*\n${input.metrics.replies}` },
+            { type: "mrkdwn", text: `*Booked calls*\n${input.metrics.booked}` },
+          ],
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `\`\`\`${preview}\`\`\`` },
+        },
+        {
+          type: "context",
+          elements: [
+            {
+              type: "mrkdwn",
+              text: "Nova can use this as the CEO-level command brief for the next lead-gen move.",
+            },
+          ],
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Agents", emoji: false },
+              style: "primary",
+              url: appViewUrl("agents"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Queue", emoji: false },
+              url: appViewUrl("queue"),
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  return {
+    configured: true,
+    sent: response.ok,
+    message: response.ok ? "Slack Director-to-Nova brief sent." : `Slack webhook returned ${response.status}.`,
   };
 }
 
