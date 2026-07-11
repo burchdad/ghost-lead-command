@@ -319,6 +319,28 @@ type NovaBriefResult = {
   nextMove: string;
 };
 
+type LeadCommandAuditResult = {
+  ok: boolean;
+  executiveSummary: string;
+  bottleneck: string;
+  nextMove: string;
+  gojiBerryPosition: string;
+  metrics: {
+    leads: number;
+    leadsToday: number;
+    pending: number;
+    sentOrQueued: number;
+    sent: number;
+    replies: number;
+    repliesToday: number;
+    booked: number;
+    failed: number;
+    suppressions: number;
+  };
+  agents: { name: string; status: string; detail: string; owner: string }[];
+  slack?: { sent?: boolean; message?: string } | null;
+};
+
 type LearningRow = {
   key: string;
   leads: number;
@@ -718,6 +740,7 @@ export default function Home() {
   const [agentBusy, setAgentBusy] = useState(false);
   const [directorBusy, setDirectorBusy] = useState(false);
   const [novaBusy, setNovaBusy] = useState(false);
+  const [auditBusy, setAuditBusy] = useState(false);
   const [outreachStatus, setOutreachStatus] = useState<OutreachStatus>({
     mode: "dry-run",
     smsProvider: "telnyx",
@@ -785,6 +808,7 @@ export default function Home() {
   const [signalCollectorResult, setSignalCollectorResult] = useState<SignalCollectorResult | null>(null);
   const [directorResult, setDirectorResult] = useState<LeadGenDirectorResult | null>(null);
   const [novaBriefResult, setNovaBriefResult] = useState<NovaBriefResult | null>(null);
+  const [leadCommandAudit, setLeadCommandAudit] = useState<LeadCommandAuditResult | null>(null);
   const [bookingTasks, setBookingTasks] = useState<BookingTask[]>([]);
   const [sequenceQueue, setSequenceQueue] = useState<SequenceQueueStep[]>([]);
   const [editScore, setEditScore] = useState(String(seedLeads[0].score));
@@ -1561,6 +1585,43 @@ export default function Home() {
     setOperationStatus(payload.nextMove || "Lead Gen Director prepared the Nova CEO briefing.");
     await refreshOpsData();
     setNovaBusy(false);
+  }
+
+  async function runFullLeadCommandAudit() {
+    if (auditBusy) return;
+    setAuditBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: "Vega audit running",
+      detail: "Checking source, web helper, outreach, replies, booking, deliverability, CRM, and Mission Control lanes.",
+    });
+
+    const response = await fetch("/api/agent/audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ postToSlack: true }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "Vega audit blocked",
+        detail: payload.detail || payload.error || "The full audit could not complete.",
+      });
+      setAuditBusy(false);
+      return;
+    }
+
+    setLeadCommandAudit(payload);
+    setActionToast({
+      phase: "success",
+      title: "Vega audit complete",
+      detail: payload.bottleneck || "Lead Command audit posted to the c-suite channel.",
+    });
+    setOperationStatus(payload.nextMove || "Vega completed the Lead Command audit.");
+    await refreshOpsData();
+    setAuditBusy(false);
   }
 
   async function runSignalCollector(commit = false) {
@@ -2629,6 +2690,15 @@ export default function Home() {
                         {novaBusy ? <LoaderCircle className="animate-spin" size={16} /> : <MessageSquareText size={16} />}
                         Brief Nova CEO
                       </button>
+                      <button
+                        type="button"
+                        onClick={runFullLeadCommandAudit}
+                        disabled={auditBusy}
+                        className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-4 py-3 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {auditBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Gauge size={16} />}
+                        Run full audit
+                      </button>
                     </div>
 
                     <div className="mt-4 grid gap-3 md:grid-cols-4">
@@ -2705,6 +2775,27 @@ export default function Home() {
                             </span>
                           </div>
                           <p className="mt-2 text-xs leading-5 text-[#aebbb7]">{novaBriefResult.nextMove}</p>
+                        </div>
+                      ) : null}
+                      {leadCommandAudit ? (
+                        <div className="mt-3 rounded-sm bg-white/[0.04] p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold">
+                              {leadCommandAudit.ok ? "Audit operational" : "Audit needs escalation"}
+                            </p>
+                            <span className="rounded-sm bg-white/[0.08] px-2 py-1 text-[10px] text-[#aebbb7]">
+                              {leadCommandAudit.slack?.sent ? "posted" : "internal"}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-xs leading-5 text-[#aebbb7]">{leadCommandAudit.bottleneck}</p>
+                          <div className="mt-3 grid gap-2 md:grid-cols-3">
+                            {leadCommandAudit.agents.slice(0, 6).map((agent) => (
+                              <div key={agent.name} className="rounded-sm bg-[#101417] p-2">
+                                <p className="text-xs font-semibold">{agent.name}</p>
+                                <p className="mt-1 text-[10px] text-[#9fb0a8]">{agent.status}</p>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ) : null}
                     </div>

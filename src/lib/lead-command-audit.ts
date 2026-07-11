@@ -1,0 +1,188 @@
+import { getBookingReadiness } from "@/lib/automation";
+import { getGhostCrmHealth } from "@/lib/ghostcrm";
+import { getMissionControlBridgeStatus } from "@/lib/mission-control-bridge";
+import { getOperatorCaps } from "@/lib/operator-policy";
+import { getOutreachStatus, getTwilioReadiness } from "@/lib/outreach";
+import { getPrisma } from "@/lib/prisma";
+import { getSourcingStatus } from "@/lib/sourcing";
+import { notifySlackLeadCommandAudit } from "@/lib/slack";
+import { getDefaultWorkspace } from "@/lib/workspace";
+
+type AgentAuditStatus = "online" | "limited" | "blocked";
+
+type AgentAudit = {
+  name: string;
+  status: AgentAuditStatus;
+  detail: string;
+  owner: "Vega" | "Nova" | "Stephen" | "System";
+};
+
+function status(ok: boolean, limited = false): AgentAuditStatus {
+  if (ok) return limited ? "limited" : "online";
+  return "blocked";
+}
+
+export async function runLeadCommandAudit(input: { postToSlack?: boolean } = {}) {
+  const prisma = getPrisma();
+  const workspace = await getDefaultWorkspace();
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [leads, queue, replies, events, suppressions, ghostcrm] = await Promise.all([
+    prisma.lead.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 1000 }),
+    prisma.outreachQueueItem.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 1000 }),
+    prisma.reply.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 1000 }),
+    prisma.automationEvent.findMany({ where: { workspaceId: workspace.id, createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 30 }),
+    prisma.suppressionRecord.count({ where: { workspaceId: workspace.id } }),
+    getGhostCrmHealth(),
+  ]);
+
+  const sourcing = getSourcingStatus();
+  const outreach = getOutreachStatus();
+  const booking = getBookingReadiness();
+  const twilio = getTwilioReadiness();
+  const missionControl = getMissionControlBridgeStatus();
+  const caps = getOperatorCaps();
+  const pending = queue.filter((item) => item.status === "pending").length;
+  const sentOrQueued = queue.filter((item) => ["queued", "sent"].includes(item.status)).length;
+  const sent = queue.filter((item) => item.status === "sent").length;
+  const failed = queue.filter((item) => item.status === "failed").length;
+  const booked = leads.filter((lead) => lead.stage === "Call Booked").length;
+  const leadsToday = leads.filter((lead) => lead.createdAt >= since).length;
+  const repliesToday = replies.filter((reply) => reply.createdAt >= since).length;
+  const sourceOnline = sourcing.googleMapsConfigured || sourcing.pdlConfigured || sourcing.ghostLeadAgentConfigured;
+  const bookingReady = Boolean(booking.calendarConfigured && booking.ownerEmail && (booking.meetingLink || booking.zoomConfigured));
+  const approvalJam = pending >= Math.max(10, caps.maxPendingApprovals);
+  const noReplies = sentOrQueued > 0 && replies.length === 0;
+
+  const agents: AgentAudit[] = [
+    {
+      name: missionControl.sourceAgent || "Vega Lead Director AI",
+      status: status(sourceOnline && outreach.sendgridConfigured, approvalJam || noReplies),
+      detail: approvalJam ? `${pending} pending approvals are blocking new outreach.` : "Can coordinate source, QA, outreach, and escalation lanes.",
+      owner: "Vega",
+    },
+    {
+      name: "Web Helper Agent",
+      status: status(sourcing.googleMapsConfigured || sourcing.ghostLeadAgentConfigured, !sourcing.ghostLeadAgentConfigured),
+      detail: sourcing.ghostLeadAgentConfigured
+        ? "Can use Ghost Lead Intelligence and web context."
+        : "Google Maps/SerpAPI can discover websites; Ghost Lead Agent web helper endpoint is not connected.",
+      owner: "Vega",
+    },
+    {
+      name: "Source Agents",
+      status: status(sourceOnline),
+      detail: `Google Maps ${sourcing.googleMapsConfigured ? "online" : "off"}, PDL ${sourcing.pdlConfigured ? "online" : "off"}, Ghost Lead Agent ${sourcing.ghostLeadAgentConfigured ? "online" : "off"}.`,
+      owner: "Vega",
+    },
+    {
+      name: "Outreach Agent",
+      status: status(outreach.sendgridConfigured, outreach.mode !== "live"),
+      detail: outreach.sendgridConfigured ? `SendGrid configured; send mode ${outreach.mode}.` : "SendGrid is not configured.",
+      owner: "Stephen",
+    },
+    {
+      name: "Reply Agent",
+      status: status(Boolean(process.env.SENDGRID_INBOUND_SECRET || process.env.CRON_SECRET), noReplies),
+      detail: noReplies ? "No replies recorded yet; verify sends and inbox routes after approvals move." : "Inbound reply capture route is available.",
+      owner: "System",
+    },
+    {
+      name: "Booking Agent",
+      status: status(bookingReady, booked === 0),
+      detail: bookingReady ? "Calendar/meeting path is ready for hot replies." : "Calendar owner or meeting link is incomplete.",
+      owner: "Stephen",
+    },
+    {
+      name: "Deliverability Agent",
+      status: status(Boolean(process.env.SENDGRID_EVENT_SECRET), failed > 0),
+      detail: `Suppression count ${suppressionCount(suppressions)}; failed sends ${failed}; Twilio A2P ${twilio.a2pStatus}.`,
+      owner: "System",
+    },
+    {
+      name: "GhostCRM Revenue Agent",
+      status: status(ghostcrm.configured && ghostcrm.reachable),
+      detail: ghostcrm.detail,
+      owner: "System",
+    },
+    {
+      name: "Mission Control Bridge",
+      status: status(missionControl.configured, !missionControl.cSuiteConfigured),
+      detail: missionControl.detail,
+      owner: "Nova",
+    },
+  ];
+
+  const bottleneck = approvalJam
+    ? `${pending} approval-ready drafts are waiting on Stephen. No more sourcing should be prioritized until a reviewed batch is approved.`
+    : !outreach.sendgridConfigured
+      ? "SendGrid is not configured, so email outreach cannot leave the system."
+      : outreach.mode !== "live"
+        ? "Outreach is in dry-run mode, so emails are queued but not actually sent."
+        : !sourceOnline
+          ? "No source provider is online."
+          : noReplies
+            ? "Sends exist but replies are not coming back yet; improve targeting/copy and verify inbound handling."
+            : "System is operational; continue controlled sourcing and approval cadence.";
+  const nextMove = approvalJam
+    ? `Stephen should approve the next ${Math.min(10, pending)} reviewed outreach items from Slack, then Vega should monitor SendGrid events and replies.`
+    : sentOrQueued === 0
+      ? "Vega should run a Google Maps-first director sprint and queue contactable leads."
+      : "Vega should brief Nova daily, monitor replies, and escalate only blocked approvals or booking-ready responses.";
+  const executiveSummary =
+    approvalJam
+      ? "Lead generation is sourcing and drafting, but the machine is jammed at human approval."
+      : "Lead Command is ready for supervised lead-gen operations with Vega coordinating and Nova receiving executive updates.";
+
+  const audit = {
+    ok: agents.every((agent) => agent.status !== "blocked") && !approvalJam,
+    executiveSummary,
+    bottleneck,
+    nextMove,
+    gojiBerryPosition:
+      sourceOnline && outreach.sendgridConfigured && missionControl.configured
+        ? "Approaching parity on sourcing plus supervised outreach; advantage is GhostCRM and c-suite agent coordination."
+        : "Still behind on one or more operational lanes.",
+    metrics: {
+      leads: leads.length,
+      leadsToday,
+      pending,
+      sentOrQueued,
+      sent,
+      replies: replies.length,
+      repliesToday,
+      booked,
+      failed,
+      suppressions,
+    },
+    agents,
+    recentEvents: events.map((event) => ({
+      title: event.title,
+      detail: event.detail,
+      status: event.status,
+      at: event.createdAt.toISOString(),
+    })),
+  };
+
+  const slack = input.postToSlack
+    ? await notifySlackLeadCommandAudit({
+        executiveSummary,
+        bottleneck,
+        nextMove,
+        metrics: {
+          leads: audit.metrics.leads,
+          pending,
+          sent: sentOrQueued,
+          replies: replies.length,
+          booked,
+          failed,
+        },
+        agents,
+      })
+    : null;
+
+  return { ...audit, slack };
+}
+
+function suppressionCount(value: number) {
+  return Number.isFinite(value) ? value : 0;
+}

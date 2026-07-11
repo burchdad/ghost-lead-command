@@ -2,6 +2,7 @@ import { createFollowUpSequenceForLead } from "@/lib/automation";
 import { sendEmail, sendSms } from "@/lib/outreach";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
+import { getDefaultWorkspace } from "@/lib/workspace";
 import { findSuppressionMatch } from "@/lib/suppression";
 
 export async function approveOutreachQueueItem(
@@ -96,4 +97,40 @@ export async function approveOutreachQueueItem(
         });
 
   return { ok: true as const, status: 200, body: { item: updated, delivery, sequence } };
+}
+
+export async function approvePendingOutreachBatch(input: { limit?: number } = {}) {
+  const prisma = getPrisma();
+  const workspace = await getDefaultWorkspace();
+  const maxLimit = Math.min(25, Math.max(1, Number(process.env.VEGA_APPROVAL_BATCH_LIMIT || 10)));
+  const limit = Math.min(maxLimit, Math.max(1, Number(input.limit || maxLimit)));
+  const items = await prisma.outreachQueueItem.findMany({
+    where: {
+      workspaceId: workspace.id,
+      status: "pending",
+      channel: "email",
+      lead: { is: { contact: { is: { email: { not: null } } } } },
+    },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: { id: true },
+  });
+
+  const results = [];
+  for (const item of items) {
+    results.push(await approveOutreachQueueItem(item.id));
+  }
+
+  return {
+    requested: limit,
+    attempted: results.length,
+    approved: results.filter((result) => result.ok).length,
+    failed: results.filter((result) => !result.ok).length,
+    results: results.map((result) => ({
+      ok: result.ok,
+      status: result.status,
+      error: result.ok ? null : result.body.error || "Approval failed",
+      delivery: result.ok ? result.body.delivery : null,
+    })),
+  };
 }

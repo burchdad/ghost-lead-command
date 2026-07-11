@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sendAgentPlan, sendDailyDigest } from "@/lib/autopilot";
 import { createAutomationEvent } from "@/lib/automation";
+import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { isSlackCommandAuthorized } from "@/lib/slack";
 
@@ -41,6 +42,15 @@ export async function POST(request: Request) {
     );
   }
 
+  if (normalized.includes("audit") || normalized.includes("vega")) {
+    const result = await runLeadCommandAudit({ postToSlack: true });
+    return slackText(
+      result.slack?.sent
+        ? `Vega audit posted. Bottleneck: ${result.bottleneck}`
+        : `Vega audit prepared. Bottleneck: ${result.bottleneck}`,
+    );
+  }
+
   if (normalized.includes("digest") || normalized.includes("status") || normalized.includes("summary")) {
     await sendDailyDigest();
     return slackText("Digest posted to the Lead Command Slack channel.");
@@ -55,6 +65,7 @@ export async function POST(request: Request) {
         "`digest` - post the current ops digest.",
         "`nova` - have the Lead Gen Director brief the Nova CEO AI Agent in Slack.",
         "`director status` - post the Director-to-Nova lead-gen briefing.",
+        "`audit` - post Vega's full Lead Command audit with escalation actions.",
         "Approve plans and outreach directly from the Slack buttons.",
       ].join("\n"),
     );

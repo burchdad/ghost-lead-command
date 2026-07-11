@@ -143,6 +143,32 @@ export async function GET() {
         blockers: sourceStatus.pdlConfigured ? [] : ["Sales Nav paste works now, but PDL_API_KEY is needed to enrich missing emails/phones."],
       }),
       agentCard({
+        id: "web-helper",
+        name: "Web Helper Agent",
+        role: "Research company websites, Google/Maps context, and public contact paths for lead scoring and call prep.",
+        status: sourceStatus.googleMapsConfigured || sourceStatus.ghostLeadAgentConfigured ? "ready" : "blocked",
+        health: sourceStatus.ghostLeadAgentConfigured
+          ? "Ghost web intelligence connected"
+          : sourceStatus.googleMapsConfigured
+            ? "Google Maps web context available"
+            : "No web research lane configured",
+        detail: sourceStatus.ghostLeadAgentConfigured
+          ? "Can use Ghost Lead Agent plus source pages to enrich buyer context."
+          : "Uses SerpAPI/Google Maps for business discovery and contact-path research until Ghost Lead Agent is connected.",
+        lastEvent: events.find((event) => /web|google maps|ghost lead/i.test(`${event.title} ${event.detail}`)),
+        actionLabel: "Open source",
+        actionView: "source",
+        metrics: {
+          "maps": sourceStatus.googleMapsConfigured ? "on" : "off",
+          "ghost web": sourceStatus.ghostLeadAgentConfigured ? "on" : "off",
+          "serpapi": process.env.SERPAPI_API_KEY ? "on" : "off",
+        },
+        blockers:
+          sourceStatus.googleMapsConfigured || sourceStatus.ghostLeadAgentConfigured
+            ? []
+            : ["Add SERPAPI_API_KEY or GHOST_LEAD_AGENT_SEARCH_URL for web research."],
+      }),
+      agentCard({
         id: "qa",
         name: "Lead QA Agent",
         role: "Score buyer fit, contactability, intent signals, duplicates, and suppressions.",

@@ -37,6 +37,14 @@ function actionUrl(itemId: string, action: "approve" | "redo" | "discard" | "sup
   return url.toString();
 }
 
+function batchApproveUrl(limit: number) {
+  const url = new URL("/api/slack/actions/outreach/batch/approve", appBaseUrl());
+  const token = actionToken();
+  if (token) url.searchParams.set("token", token);
+  url.searchParams.set("limit", String(limit));
+  return url.toString();
+}
+
 function appViewUrl(view: string) {
   const url = new URL("/", appBaseUrl());
   url.searchParams.set("view", view);
@@ -444,6 +452,96 @@ export async function notifySlackDirectorNovaBrief(input: {
   return {
     ...result,
     message: result.sent ? `Director-to-Nova brief sent to ${result.channel || channelName}.` : result.message,
+  };
+}
+
+export async function notifySlackLeadCommandAudit(input: {
+  executiveSummary: string;
+  bottleneck: string;
+  nextMove: string;
+  metrics: {
+    leads: number;
+    pending: number;
+    sent: number;
+    replies: number;
+    booked: number;
+    failed: number;
+  };
+  agents: { name: string; status: string; detail: string }[];
+  approveLimit?: number;
+}) {
+  const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
+  const approveLimit = Math.min(25, Math.max(1, Number(input.approveLimit || process.env.VEGA_APPROVAL_BATCH_LIMIT || 10)));
+  const result = await postSlackPayload({
+    webhookUrl:
+      clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_EXECUTIVE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_WEBHOOK_URL),
+    botToken: clean(process.env.SLACK_BOT_TOKEN),
+    channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
+    payload: {
+      text: `Lead Command audit: ${input.bottleneck}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "Lead Command full audit", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Channel:* #${channelName}\n*Executive summary:* ${input.executiveSummary}\n*Bottleneck:* ${input.bottleneck}\n*Next move:* ${input.nextMove}`,
+          },
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Leads*\n${input.metrics.leads}` },
+            { type: "mrkdwn", text: `*Pending approvals*\n${input.metrics.pending}` },
+            { type: "mrkdwn", text: `*Sent/queued*\n${input.metrics.sent}` },
+            { type: "mrkdwn", text: `*Replies*\n${input.metrics.replies}` },
+            { type: "mrkdwn", text: `*Booked*\n${input.metrics.booked}` },
+            { type: "mrkdwn", text: `*Failed*\n${input.metrics.failed}` },
+          ],
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Agent status*\n${input.agents
+              .slice(0, 8)
+              .map((agent) => `- *${agent.name}:* ${agent.status} - ${agent.detail}`)
+              .join("\n")}`,
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: `Stephen approve ${approveLimit}`, emoji: false },
+              style: "primary",
+              url: batchApproveUrl(approveLimit),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Queue", emoji: false },
+              url: appViewUrl("queue"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Agents", emoji: false },
+              url: appViewUrl("agents"),
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  return {
+    ...result,
+    message: result.sent ? `Lead Command audit posted to ${result.channel || channelName}.` : result.message,
   };
 }
 
