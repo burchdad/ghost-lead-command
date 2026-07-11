@@ -38,11 +38,12 @@ export async function POST(request: Request) {
   }
 
   const event = payload.event;
-  if (payload.type !== "event_callback" || event?.type !== "message") {
+  const eventType = String(event?.type || "");
+  if (payload.type !== "event_callback" || !event || !["message", "app_mention"].includes(eventType)) {
     return NextResponse.json({ ok: true, ignored: true });
   }
 
-  if (event.subtype || event.bot_id) {
+  if (eventType === "message" && (event.subtype || event.bot_id)) {
     console.info("slack_events_ignored_bot_or_subtype", {
       subtype: event.subtype,
       botId: event.bot_id,
