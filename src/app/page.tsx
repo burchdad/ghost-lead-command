@@ -288,11 +288,14 @@ type SignalCollectorResult = {
 type SalesNavResult = {
   commit: boolean;
   enrich: boolean;
+  provider?: string;
+  model?: string;
   parsed: number;
   qualified: number;
   contactable: number;
   needsContact: number;
   preview: SourceLead[];
+  rawCsv?: string;
   imported: number;
   queued: number;
   skipped: Record<string, number>;
@@ -593,6 +596,37 @@ async function readErrorDetail(response: Response, fallback: string) {
   }
 }
 
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function compressScreenshot(file: File) {
+  const original = await readFileAsDataUrl(file);
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Image load failed"));
+    img.src = original;
+  });
+
+  const maxWidth = 1500;
+  const scale = Math.min(1, maxWidth / image.width);
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) return original;
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", 0.74);
+}
+
 export default function Home() {
   const [active, setActive] = useState("dashboard");
   const [liveLeads, setLiveLeads] = useState(seedLeads);
@@ -630,6 +664,7 @@ export default function Home() {
   const [sourceScrollToken, setSourceScrollToken] = useState<string | null>(null);
   const [salesNavText, setSalesNavText] = useState(sampleSalesNavPaste);
   const [salesNavBusy, setSalesNavBusy] = useState(false);
+  const [salesNavScreenshotCount, setSalesNavScreenshotCount] = useState(0);
   const [salesNavResult, setSalesNavResult] = useState<SalesNavResult | null>(null);
   const [forceDemoMode, setForceDemoMode] = useState(false);
   const [sourceCampaigns, setSourceCampaigns] = useState<SourceCampaign[]>([]);
@@ -1174,6 +1209,60 @@ export default function Home() {
     );
     await refreshOpsData();
     if (commit) await refreshLeads();
+    setSalesNavBusy(false);
+  }
+
+  async function runSalesNavigatorScreenshots(files: FileList | null, commit = false) {
+    const selectedFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/")).slice(0, 9);
+    if (!selectedFiles.length || salesNavBusy) return;
+
+    setSalesNavBusy(true);
+    setSalesNavScreenshotCount(selectedFiles.length);
+    setSourceStatus(
+      commit
+        ? `Extracting and importing ${selectedFiles.length} Sales Navigator screenshots...`
+        : `Extracting ${selectedFiles.length} Sales Navigator screenshots...`,
+    );
+
+    try {
+      const images = await Promise.all(selectedFiles.map((file) => compressScreenshot(file)));
+      const response = await fetch("/api/linkedin/sales-nav/screenshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          images,
+          commit,
+          enrich: true,
+          autoQueue: true,
+          autoSend: outreachStatus.mode === "live",
+          queueLimit: 10,
+          minScore: Number(sourceMinScore || 72),
+          defaultNiche: sourceIndustry.split(",")[0]?.trim() || "B2B Services",
+          defaultLocation: sourceLocation || "United States",
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setSourceStatus(payload.error || "Sales Navigator screenshot extraction failed.");
+        setSalesNavBusy(false);
+        return;
+      }
+
+      setSalesNavResult(payload);
+      if (payload.rawCsv) setSalesNavText(payload.rawCsv);
+      setSourceResults(payload.preview || []);
+      setSourceStatus(
+        commit
+          ? `Screenshots extracted ${payload.parsed || 0}, imported ${payload.imported || 0}, queued ${payload.queued || 0}. ${payload.needsContact || 0} need contact enrichment.`
+          : `Screenshots extracted ${payload.parsed || 0}; ${payload.qualified || 0} qualified, ${payload.contactable || 0} contactable.`,
+      );
+      await refreshOpsData();
+      if (commit) await refreshLeads();
+    } catch (error) {
+      setSourceStatus(`Screenshot extraction failed${error instanceof Error ? `: ${error.message}` : ""}.`);
+    }
+
     setSalesNavBusy(false);
   }
 
@@ -2814,7 +2903,7 @@ export default function Home() {
                     <div className="rounded-md border border-white/10 bg-[#101417] p-4 text-sm text-[#b6c4bf]">
                       <p className="font-semibold text-white">Fastest Sales Nav workflow</p>
                       <p className="mt-2">
-                        Build one Sales Navigator saved search, paste the visible lead rows or CSV here, then let Lead Command enrich, score, import, and queue the contactable records.
+                        Screenshot up to 9 visible Sales Navigator results, or paste rows/CSV here, then let Lead Command extract, enrich, score, import, and queue contactable records.
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {[
@@ -2831,8 +2920,62 @@ export default function Home() {
                       </div>
                     </div>
 
+                    <div className="grid gap-3 rounded-md border border-white/10 bg-white/[0.04] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-white">Screenshot intake</p>
+                          <p className="mt-1 text-sm text-[#9fb0a8]">
+                            {salesNavScreenshotCount
+                              ? `${salesNavScreenshotCount} screenshot${salesNavScreenshotCount === 1 ? "" : "s"} selected last run.`
+                              : "Upload the visible batch from Sales Navigator."}
+                          </p>
+                        </div>
+                        <span className="rounded-sm bg-[#101417] px-2 py-1 text-xs text-[#b7c8c1]">
+                          vision + PDL
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-white/[0.08] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.14]">
+                          {salesNavBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Upload size={16} />}
+                          Extract screenshots
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="sr-only"
+                            disabled={salesNavBusy}
+                            onChange={(event) => {
+                              void runSalesNavigatorScreenshots(event.currentTarget.files, false);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                        <label
+                          className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition ${
+                            liveDataReady && !salesNavBusy
+                              ? "cursor-pointer bg-[#d8ff5f] text-[#101417] hover:bg-[#c8ef4f]"
+                              : "cursor-not-allowed bg-white/[0.12] text-[#7f8b86]"
+                          }`}
+                        >
+                          {salesNavBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Target size={16} />}
+                          Extract, import, queue
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="sr-only"
+                            disabled={salesNavBusy || !liveDataReady}
+                            onChange={(event) => {
+                              void runSalesNavigatorScreenshots(event.currentTarget.files, true);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+
                     <label className="grid gap-2 text-sm text-[#aebbb7]">
-                      Sales Navigator paste or CSV
+                      Sales Navigator paste or extracted CSV
                       <textarea
                         value={salesNavText}
                         onChange={(event) => setSalesNavText(event.target.value)}
@@ -2892,7 +3035,11 @@ export default function Home() {
 
                     <div className="mt-4 rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm text-[#b6c4bf]">
                       <p className="font-semibold text-white">
-                        {salesNavResult?.pdlEnrichment ? "PDL enrichment is available" : "PDL enrichment is not available"}
+                        {salesNavResult?.provider === "openai"
+                          ? `Screenshot extraction used ${salesNavResult.model || "vision"}`
+                          : salesNavResult?.pdlEnrichment
+                            ? "PDL enrichment is available"
+                            : "PDL enrichment is not available"}
                       </p>
                       <p className="mt-2">
                         {salesNavResult
