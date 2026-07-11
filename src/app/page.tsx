@@ -252,7 +252,10 @@ type AgentControlRoom = {
   missionControl?: {
     nova: {
       configured: boolean;
+      cSuiteConfigured?: boolean;
+      cSuiteChannel?: string;
       targetAgent: string;
+      sourceAgent?: string;
       channel: string;
       detail: string;
     };

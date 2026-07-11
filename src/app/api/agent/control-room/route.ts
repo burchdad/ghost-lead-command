@@ -289,7 +289,7 @@ export async function GET() {
             detail: missionControl.detail,
           },
           {
-            name: "Lead Gen Director Agent",
+            name: missionControl.sourceAgent,
             role: "Owns sourcing, qualification, outreach queueing, reply handoff, and booking readiness.",
             status: "active",
             detail: "Reports lead-gen bottlenecks, wins, and next moves to Nova.",

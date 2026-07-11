@@ -7,6 +7,10 @@ function clean(value: string | undefined) {
   return value?.trim() || "";
 }
 
+function leadDirectorAgentName() {
+  return clean(process.env.LEAD_DIRECTOR_AGENT_NAME) || "Vega Lead Director AI";
+}
+
 function appBaseUrl() {
   const explicit = clean(process.env.LEAD_COMMAND_APP_URL) || clean(process.env.NEXT_PUBLIC_APP_URL);
   if (explicit) return normalizeUrl(explicit).replace(/\/$/, "");
@@ -37,6 +41,53 @@ function appViewUrl(view: string) {
   const url = new URL("/", appBaseUrl());
   url.searchParams.set("view", view);
   return url.toString();
+}
+
+async function postSlackPayload(input: {
+  payload: Record<string, unknown>;
+  webhookUrl?: string;
+  botToken?: string;
+  channelId?: string;
+}) {
+  const webhookUrl = clean(input.webhookUrl);
+  if (webhookUrl) {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input.payload),
+    });
+    return {
+      configured: true,
+      sent: response.ok,
+      channel: "webhook",
+      message: response.ok ? "Slack webhook message sent." : `Slack webhook returned ${response.status}.`,
+    };
+  }
+
+  const botToken = clean(input.botToken);
+  const channelId = clean(input.channelId);
+  if (botToken && channelId) {
+    const response = await fetch("https://slack.com/api/chat.postMessage", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        Authorization: `Bearer ${botToken}`,
+      },
+      body: JSON.stringify({
+        channel: channelId,
+        ...input.payload,
+      }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    return {
+      configured: true,
+      sent: Boolean(response.ok && body.ok),
+      channel: channelId,
+      message: response.ok && body.ok ? "Slack bot message sent." : `Slack bot returned ${body.error || response.status}.`,
+    };
+  }
+
+  return { configured: false, sent: false, channel: "", message: "Missing Slack webhook or bot channel configuration." };
 }
 
 function planActionUrl(action: "approve" | "deny", plan: AgentPlan) {
@@ -323,27 +374,28 @@ export async function notifySlackDirectorNovaBrief(input: {
     booked: number;
   };
 }) {
-  const webhookUrl = clean(process.env.SLACK_WEBHOOK_URL);
-  if (!webhookUrl) {
-    return { configured: false, sent: false, message: "Missing SLACK_WEBHOOK_URL." };
-  }
-
   const preview = input.brief.length > 900 ? `${input.brief.slice(0, 897)}...` : input.brief;
-  const response = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  const directorName = leadDirectorAgentName();
+  const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
+  const result = await postSlackPayload({
+    webhookUrl:
+      clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_EXECUTIVE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_WEBHOOK_URL),
+    botToken: clean(process.env.SLACK_BOT_TOKEN),
+    channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
+    payload: {
       text: `Lead Gen Director briefing for ${input.targetAgent}`,
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "Lead Gen Director to Nova", emoji: false },
+          text: { type: "plain_text", text: `${directorName} to Nova`, emoji: false },
         },
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*To:* ${input.targetAgent}\n*From:* Lead Gen Director Agent\n*Next move:* ${input.nextMove}`,
+            text: `*Channel:* #${channelName}\n*To:* ${input.targetAgent}\n*From:* ${directorName}\n*Next move:* ${input.nextMove}`,
           },
         },
         {
@@ -386,13 +438,12 @@ export async function notifySlackDirectorNovaBrief(input: {
           ],
         },
       ],
-    }),
+    },
   });
 
   return {
-    configured: true,
-    sent: response.ok,
-    message: response.ok ? "Slack Director-to-Nova brief sent." : `Slack webhook returned ${response.status}.`,
+    ...result,
+    message: result.sent ? `Director-to-Nova brief sent to ${result.channel || channelName}.` : result.message,
   };
 }
 

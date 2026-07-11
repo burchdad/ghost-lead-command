@@ -19,20 +19,32 @@ function novaToken() {
   return clean(process.env.NOVA_CEO_AGENT_TOKEN) || clean(process.env.GHOST_MISSION_CONTROL_TOKEN);
 }
 
+function leadDirectorAgentName() {
+  return clean(process.env.LEAD_DIRECTOR_AGENT_NAME) || "Vega Lead Director AI";
+}
+
 export function getMissionControlBridgeStatus() {
   const endpoint = novaEndpoint();
-  const slackConfigured = Boolean(clean(process.env.SLACK_WEBHOOK_URL));
+  const cSuiteWebhookConfigured = Boolean(clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) || clean(process.env.SLACK_EXECUTIVE_WEBHOOK_URL));
+  const cSuiteBotConfigured = Boolean(clean(process.env.SLACK_BOT_TOKEN) && clean(process.env.SLACK_C_SUITE_CHANNEL_ID));
+  const slackConfigured = cSuiteWebhookConfigured || cSuiteBotConfigured || Boolean(clean(process.env.SLACK_WEBHOOK_URL));
+  const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
   return {
     configured: slackConfigured || Boolean(endpoint),
     slackConfigured,
+    cSuiteConfigured: cSuiteWebhookConfigured || cSuiteBotConfigured,
+    cSuiteChannel: channelName,
     webhookConfigured: Boolean(endpoint),
     targetAgent: process.env.NOVA_CEO_AGENT_NAME || "Nova CEO AI Agent",
+    sourceAgent: leadDirectorAgentName(),
     channel: slackConfigured ? "slack" : endpoint ? "mission-control-webhook" : "internal-briefing",
-    detail: slackConfigured
-      ? "Lead Gen Director can brief Nova in the connected Slack ops channel."
+    detail: cSuiteWebhookConfigured || cSuiteBotConfigured
+      ? `Lead Director can brief Nova in #${channelName}.`
+      : slackConfigured
+        ? `Lead Director can brief Nova in Slack, but #${channelName} is not separately configured yet.`
       : endpoint
         ? "Lead Gen Director can brief Nova through the configured Mission Control endpoint."
-        : "Add SLACK_WEBHOOK_URL or NOVA_CEO_AGENT_URL to post Director briefs automatically.",
+        : `Add SLACK_C_SUITE_WEBHOOK_URL or SLACK_C_SUITE_CHANNEL_ID to post Director briefs into #${channelName}.`,
   };
 }
 
@@ -62,7 +74,7 @@ export async function briefNovaCeoAgent(input: NovaBriefInput = {}) {
       ? "Nova should push Stephen to approve pending outreach before adding more volume."
       : "Nova should ask the Lead Gen Director to run a Google Maps-first sprint, then review queue creation.";
   const brief = [
-    "Lead Gen Director briefing for Nova CEO AI Agent",
+    `${bridge.sourceAgent} briefing for Nova CEO AI Agent`,
     formatLine("Workspace", workspace.name),
     formatLine("Leads sourced in last 24h", leadsToday),
     formatLine("Pending approvals", pending),
@@ -94,7 +106,7 @@ export async function briefNovaCeoAgent(input: NovaBriefInput = {}) {
       method: "POST",
       headers,
       body: JSON.stringify({
-        fromAgent: "Lead Gen Director Agent",
+        fromAgent: bridge.sourceAgent,
         toAgent: bridge.targetAgent,
         type: "lead-gen-director-briefing",
         message: brief,
