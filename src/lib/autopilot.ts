@@ -6,9 +6,11 @@ import {
   notifySlackDailyDigest,
   notifySlackNicheRecommendation,
 } from "@/lib/slack";
+import type { SourceProvider } from "@/lib/sourcing";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export type AgentPlan = {
+  provider: SourceProvider;
   niche: string;
   query: string;
   location: string;
@@ -33,6 +35,8 @@ const knownNiches = [
   "law firm",
 ];
 
+const localServiceNiches = new Set(["roofing", "hvac", "dental", "med spa", "auto detail", "construction", "plumbing", "landscaping", "chiropractor", "law firm"]);
+
 function titleCase(value: string) {
   return value
     .split(/\s+/)
@@ -45,14 +49,50 @@ function clean(value: string | null | undefined) {
   return value?.trim() || "";
 }
 
+function cleanLocation(value: string | null | undefined) {
+  return clean(value).replace(/[.!?]+$/, "");
+}
+
 function parseLocation(text: string) {
+  const betweenMatch = text.match(/\bbetween\s+(.+?)(?:\s+(?:for|with|at|over|under|score|limit|size|today|tomorrow)|$)/i);
+  if (betweenMatch?.[1]) return cleanLocation(betweenMatch[1]);
+
+  const nearMatch = text.match(/\b(?:near|around|outside of)\s+(.+?)(?:\s+(?:for|with|at|over|under|score|limit|size|today|tomorrow)|$)/i);
+  if (nearMatch?.[1]) return cleanLocation(nearMatch[1]);
+
   const match = text.match(/\bin\s+([a-zA-Z\s,]+?)(?:\s+(?:with|at|over|under|score|limit|today|tomorrow)|$)/i);
-  return clean(match?.[1]) || "United States";
+  return cleanLocation(match?.[1]) || "United States";
+}
+
+function parseLeadCount(text: string) {
+  const match =
+    text.match(/\bneed\s+(\d+)\s+(?:new\s+)?leads?\b/i) ||
+    text.match(/\b(\d+)\s+(?:new\s+)?leads?\b/i) ||
+    text.match(/\bfind\s+(\d+)\b/i);
+  return match ? Number(match[1]) : null;
 }
 
 function parseNumber(text: string, label: "score" | "limit" | "size", fallback: number) {
   const match = text.match(new RegExp(`\\b${label}\\s*(?:above|over|of|=|:)?\\s*(\\d+)`, "i"));
   return match ? Number(match[1]) : fallback;
+}
+
+function parseProvider(text: string, niche: string): SourceProvider {
+  if (text.includes("google maps") || text.includes("map")) return "google-maps";
+  if (text.includes("pdl") || text.includes("people data labs")) return "pdl";
+  if (text.includes("ghost lead agent") || text.includes("web helper")) return "ghost-lead-agent";
+  return localServiceNiches.has(niche.toLowerCase()) ? "google-maps" : "pdl";
+}
+
+function commandQuery(niche: string, text: string) {
+  const lowerNiche = niche.toLowerCase();
+  if (localServiceNiches.has(lowerNiche)) {
+    return `${lowerNiche} companies owners operators that need missed-call follow-up, quote follow-up, booking automation, or speed-to-lead help`;
+  }
+  if (/could use our services|need our services|our services/i.test(text)) {
+    return `owners founders growth operators at ${lowerNiche} companies that need qualified lead generation, follow-up automation, and booked calls`;
+  }
+  return `owners and operators of ${lowerNiche} companies`;
 }
 
 export function createAgentPlan(input: {
@@ -64,19 +104,20 @@ export function createAgentPlan(input: {
   const explicitNiche = knownNiches.find((niche) => text.includes(niche));
   const recommended = recommendNiche({ exclude: input.exclude });
   const niche = explicitNiche ? titleCase(explicitNiche) : recommended.niche;
+  const provider = parseProvider(text, niche);
   const location = text ? parseLocation(text) : recommended.location;
   const industries = explicitNiche
     ? [titleCase(explicitNiche), explicitNiche === "roofing" ? "Construction" : "Local Services"]
     : recommended.industries;
   const minScore = parseNumber(text, "score", recommended.minScore);
-  const queueLimit = Math.min(10, Math.max(1, parseNumber(text, "limit", recommended.queueLimit)));
+  const requestedLeads = parseLeadCount(text);
+  const queueLimit = Math.min(10, Math.max(1, requestedLeads || parseNumber(text, "limit", recommended.queueLimit)));
   const size = Math.min(50, Math.max(queueLimit, parseNumber(text, "size", Math.max(15, queueLimit * 3))));
 
   return {
+    provider,
     niche,
-    query: explicitNiche
-      ? `owners and operators of ${explicitNiche} companies`
-      : recommended.query,
+    query: explicitNiche ? commandQuery(niche, text) : recommended.query,
     location,
     industries,
     minScore,
@@ -85,6 +126,7 @@ export function createAgentPlan(input: {
     rationale: explicitNiche
       ? [
           `Operator requested ${niche}, so the agent will stay inside that market.`,
+          `Vega will use ${provider === "google-maps" ? "Google Maps/web contact discovery" : provider === "ghost-lead-agent" ? "Ghost Lead Intelligence" : "People Data Labs"} for this run.`,
           "The run will source fresh contacts, dedupe, score, draft email-first outreach, and wait for approvals.",
           "Slack remains the control surface for approval, rewrite, discard, and suppression decisions.",
         ]
@@ -122,7 +164,7 @@ export async function approveAgentPlan(plan: AgentPlan) {
   });
 
   return runLeadCommandAgent({
-    provider: "pdl",
+    provider: plan.provider,
     query: plan.query,
     location: plan.location,
     industries: plan.industries,
@@ -130,6 +172,21 @@ export async function approveAgentPlan(plan: AgentPlan) {
     queueLimit: plan.queueLimit,
     size: plan.size,
   });
+}
+
+export function isLeadRequest(text: string) {
+  const normalized = clean(text).toLowerCase();
+  if (!normalized) return false;
+  return (
+    /\b(?:need|find|get|source|pull|bring me|give me)\b/.test(normalized) &&
+    /\bleads?\b/.test(normalized)
+  );
+}
+
+export async function runVegaLeadRequest(input: { text: string }) {
+  const plan = createAgentPlan({ text: input.text, source: "slack-command" });
+  const result = await approveAgentPlan(plan);
+  return { plan, result };
 }
 
 export async function sendDailyRecommendation() {

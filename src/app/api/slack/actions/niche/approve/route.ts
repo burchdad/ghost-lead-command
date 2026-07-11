@@ -11,6 +11,7 @@ export async function GET(request: Request) {
   const industries = url.searchParams.getAll("industries");
   const niche = url.searchParams.get("niche") || "Recommended niche";
   const result = await approveAgentPlan({
+    provider: "pdl",
     niche,
     query: url.searchParams.get("query") || `owners and operators of ${niche.toLowerCase()} companies`,
     location: url.searchParams.get("location") || "United States",

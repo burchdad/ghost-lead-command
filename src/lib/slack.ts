@@ -102,6 +102,7 @@ function planActionUrl(action: "approve" | "deny", plan: AgentPlan) {
   const url = new URL(`/api/slack/actions/plan/${action}`, appBaseUrl());
   const token = actionToken();
   if (token) url.searchParams.set("token", token);
+  url.searchParams.set("provider", plan.provider);
   url.searchParams.set("niche", plan.niche);
   url.searchParams.set("query", plan.query);
   url.searchParams.set("location", plan.location);
@@ -294,7 +295,7 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${plan.niche}*\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | queue ${plan.queueLimit} approvals\n*Guardrails:* daily source ${caps.dailySourceLimit} | daily queue ${caps.dailyQueueLimit} | pending max ${caps.maxPendingApprovals}`,
+            text: `*${plan.niche}*\n*Provider:* ${plan.provider}\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | queue ${plan.queueLimit} approvals\n*Guardrails:* daily source ${caps.dailySourceLimit} | daily queue ${caps.dailyQueueLimit} | pending max ${caps.maxPendingApprovals}`,
           },
         },
         {
@@ -306,7 +307,7 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
           elements: [
             {
               type: "mrkdwn",
-              text: "Approve starts PDL sourcing, dedupe, scoring, draft generation, and Slack approval cards.",
+              text: "Approve starts sourcing, dedupe, scoring, draft generation, and Slack approval cards.",
             },
           ],
         },

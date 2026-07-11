@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { sendAgentPlan, sendDailyDigest } from "@/lib/autopilot";
+import { after, NextResponse } from "next/server";
+import { isLeadRequest, runVegaLeadRequest, sendAgentPlan, sendDailyDigest } from "@/lib/autopilot";
 import { createAutomationEvent } from "@/lib/automation";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
@@ -12,6 +12,25 @@ function slackText(text: string) {
   });
 }
 
+async function postSlackCommandResponse(responseUrl: string | null, text: string) {
+  if (!responseUrl) return;
+  await fetch(responseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ response_type: "ephemeral", text }),
+  }).catch(() => undefined);
+}
+
+function leadRunText(input: Awaited<ReturnType<typeof runVegaLeadRequest>>) {
+  return [
+    `Vega ran the lead request for ${input.plan.niche}.`,
+    `Source: ${input.plan.provider}`,
+    `Location: ${input.plan.location}`,
+    `Found ${input.result.found}, qualified ${input.result.qualified}, queued ${input.result.queued} approval-ready emails.`,
+    input.result.message,
+  ].join("\n");
+}
+
 export async function POST(request: Request) {
   const raw = await request.text();
   const form = new URLSearchParams(raw);
@@ -22,6 +41,7 @@ export async function POST(request: Request) {
 
   const text = String(form.get("text") || "").trim();
   const normalized = text.toLowerCase();
+  const responseUrl = form.get("response_url");
 
   await createAutomationEvent({
     title: "Slack operator command received",
@@ -30,6 +50,14 @@ export async function POST(request: Request) {
     type: "slack",
     payload: { text, userId: form.get("user_id"), channelId: form.get("channel_id") },
   });
+
+  if (isLeadRequest(text)) {
+    after(async () => {
+      const result = await runVegaLeadRequest({ text });
+      await postSlackCommandResponse(responseUrl, leadRunText(result));
+    });
+    return slackText("Vega is running that lead request now. I’ll post the sourcing result back here when the run finishes.");
+  }
 
   if (normalized.includes("nova") || normalized.includes("director")) {
     const result = await briefNovaCeoAgent({
@@ -62,6 +90,7 @@ export async function POST(request: Request) {
         "Lead Command commands:",
         "`recommend` - propose today's best niche.",
         "`run roofing in Texas score 85 limit 5` - propose a scoped sourcing plan.",
+        "`Vega, need 10 new leads in HVAC between Tyler and Dallas, Texas` - run sourcing and queue approval-ready outreach.",
         "`digest` - post the current ops digest.",
         "`nova` - have the Lead Gen Director brief the Nova CEO AI Agent in Slack.",
         "`director status` - post the Director-to-Nova lead-gen briefing.",

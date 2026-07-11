@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { approveAgentPlan, type AgentPlan } from "@/lib/autopilot";
 import { isSlackActionAuthorized } from "@/lib/slack";
+import type { SourceProvider } from "@/lib/sourcing";
+
+function parseProvider(value: string | null): SourceProvider {
+  if (value === "google-maps" || value === "ghost-lead-agent" || value === "pdl") return value;
+  return "pdl";
+}
 
 function planFromUrl(url: URL): AgentPlan {
   const industries = url.searchParams.getAll("industries").filter(Boolean);
   const niche = url.searchParams.get("niche") || "Roofing";
   return {
+    provider: parseProvider(url.searchParams.get("provider")),
     niche,
     query: url.searchParams.get("query") || `owners and operators of ${niche.toLowerCase()} companies`,
     location: url.searchParams.get("location") || "United States",
