@@ -52,6 +52,15 @@ function appViewUrl(view: string) {
   return url.toString();
 }
 
+function compactReasonCounts(label: string, counts?: Record<string, number>) {
+  const entries = Object.entries(counts || {})
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+  if (!entries.length) return "";
+  return `*${label}:* ${entries.map(([reason, count]) => `${reason} ${count}`).join(", ")}`;
+}
+
 async function postSlackPayload(input: {
   payload: Record<string, unknown>;
   webhookUrl?: string;
@@ -646,12 +655,25 @@ export async function notifySlackVegaLeadRequestResult(input: {
     niche: string;
     provider: string;
     location: string;
+    locations?: string[];
   };
   result?: {
     found: number;
+    rawFound?: number;
     qualified: number;
     queued: number;
+    reviewReady?: number;
     message?: string;
+    diagnostics?: {
+      marketsSearched?: string[];
+      rawFound?: number;
+      strictQualified?: number;
+      reviewReady?: number;
+      contactable?: number;
+      missingContact?: number;
+      suppressed?: Record<string, number>;
+      policySkipped?: Record<string, number>;
+    };
   };
 }) {
   const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
@@ -660,12 +682,26 @@ export async function notifySlackVegaLeadRequestResult(input: {
       ? [
           { type: "mrkdwn", text: `*Niche*\n${input.plan.niche}` },
           { type: "mrkdwn", text: `*Provider*\n${input.plan.provider}` },
-          { type: "mrkdwn", text: `*Location*\n${input.plan.location}` },
-          { type: "mrkdwn", text: `*Found*\n${input.result.found}` },
+          { type: "mrkdwn", text: `*Location*\n${input.plan.location}${input.plan.locations?.length ? ` (${input.plan.locations.length} markets)` : ""}` },
+          { type: "mrkdwn", text: `*Found*\n${input.result.rawFound ?? input.result.found}` },
           { type: "mrkdwn", text: `*Qualified*\n${input.result.qualified}` },
           { type: "mrkdwn", text: `*Queued*\n${input.result.queued}` },
+          { type: "mrkdwn", text: `*Review-ready*\n${input.result.reviewReady ?? input.result.diagnostics?.reviewReady ?? 0}` },
+          { type: "mrkdwn", text: `*Contactable*\n${input.result.diagnostics?.contactable ?? "n/a"}` },
         ]
       : [];
+  const diagnosticsText = input.result?.diagnostics
+    ? [
+        input.result.diagnostics.marketsSearched?.length
+          ? `*Markets searched:* ${input.result.diagnostics.marketsSearched.slice(0, 8).join(", ")}`
+          : "",
+        compactReasonCounts("Source filters", input.result.diagnostics.suppressed),
+        compactReasonCounts("Policy skips", input.result.diagnostics.policySkipped),
+        input.result.message ? `*Detail:* ${input.result.message}` : "",
+      ].filter(Boolean).join("\n")
+    : input.result?.message
+      ? `*Detail:* ${input.result.message}`
+      : "";
 
   const result = await postSlackPayload({
     webhookUrl:
@@ -693,6 +729,14 @@ export async function notifySlackVegaLeadRequestResult(input: {
           },
         },
         ...(fields.length ? [{ type: "section", fields }] : []),
+        ...(diagnosticsText
+          ? [
+              {
+                type: "section",
+                text: { type: "mrkdwn", text: diagnosticsText.slice(0, 2800) },
+              },
+            ]
+          : []),
         {
           type: "actions",
           elements: [

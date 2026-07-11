@@ -14,6 +14,7 @@ export type AgentPlan = {
   niche: string;
   query: string;
   location: string;
+  locations?: string[];
   industries: string[];
   minScore: number;
   queueLimit: number;
@@ -65,6 +66,34 @@ function parseLocation(text: string) {
   return cleanLocation(match?.[1]) || "United States";
 }
 
+function parseLocationMarkets(text: string, location: string) {
+  const normalized = clean(text).toLowerCase();
+  if (!/\bbetween\b/.test(normalized)) return undefined;
+
+  if (normalized.includes("tyler") && normalized.includes("dallas")) {
+    return [
+      "Tyler, TX",
+      "Lindale, TX",
+      "Mineola, TX",
+      "Canton, TX",
+      "Wills Point, TX",
+      "Terrell, TX",
+      "Forney, TX",
+      "Dallas, TX",
+    ];
+  }
+
+  const match = normalized.match(/\bbetween\s+(.+?)\s+and\s+(.+?)(?:\s+(?:texas|tx|for|with|at|over|under|score|limit|size|today|tomorrow)|[.!?]*$)/i);
+  if (!match) return undefined;
+  const state = normalized.includes("texas") || normalized.includes(" tx") ? "TX" : "";
+  const endpoints = [match[1], match[2]]
+    .map((part) => titleCase(cleanLocation(part).replace(/\btexas\b|\btx\b/gi, "").replace(/,+$/, "")))
+    .filter(Boolean)
+    .map((city) => (state && !city.includes(",") ? `${city}, ${state}` : city));
+  const fallback = clean(location);
+  return Array.from(new Set([...endpoints, ...(fallback ? [fallback] : [])])).slice(0, 8);
+}
+
 function parseLeadCount(text: string) {
   const match =
     text.match(/\bneed\s+(\d+)\s+(?:new\s+)?leads?\b/i) ||
@@ -107,6 +136,7 @@ export function createAgentPlan(input: {
   const niche = explicitNiche ? titleCase(explicitNiche) : recommended.niche;
   const provider = parseProvider(text, niche);
   const location = text ? parseLocation(text) : recommended.location;
+  const locations = text ? parseLocationMarkets(text, location) : undefined;
   const industries = explicitNiche
     ? [titleCase(explicitNiche), explicitNiche === "roofing" ? "Construction" : "Local Services"]
     : recommended.industries;
@@ -120,6 +150,7 @@ export function createAgentPlan(input: {
     niche,
     query: explicitNiche ? commandQuery(niche, text) : recommended.query,
     location,
+    locations,
     industries,
     minScore,
     queueLimit,
@@ -128,9 +159,10 @@ export function createAgentPlan(input: {
       ? [
           `Operator requested ${niche}, so the agent will stay inside that market.`,
           `Vega will use ${provider === "google-maps" ? "Google Maps/web contact discovery" : provider === "ghost-lead-agent" ? "Ghost Lead Intelligence" : "People Data Labs"} for this run.`,
+          locations?.length ? `Route market expanded into ${locations.length} nearby searches.` : "",
           "The run will source fresh contacts, dedupe, score, draft email-first outreach, and wait for approvals.",
           "Slack remains the control surface for approval, rewrite, discard, and suppression decisions.",
-        ]
+        ].filter(Boolean)
       : recommended.rationale,
     source: input.source || "slack-command",
   };
@@ -168,6 +200,7 @@ export async function approveAgentPlan(plan: AgentPlan) {
     provider: plan.provider,
     query: plan.query,
     location: plan.location,
+    locations: plan.locations,
     industries: plan.industries,
     minScore: plan.minScore,
     queueLimit: plan.queueLimit,

@@ -4,6 +4,7 @@ export type SourceSearchInput = {
   provider: SourceProvider;
   query: string;
   location?: string;
+  locations?: string[];
   titles?: string[];
   industries?: string[];
   size?: number;
@@ -27,6 +28,16 @@ export type SourceLead = {
   buyerFit: string;
   intentSignals: string[];
   signalSummary: string;
+};
+
+export type SourceDiagnostics = {
+  marketsSearched?: string[];
+  rawFound: number;
+  strictQualified: number;
+  reviewReady: number;
+  contactable: number;
+  missingContact: number;
+  suppressed: Record<string, number>;
 };
 
 type RawPdlPerson = {
@@ -133,11 +144,57 @@ async function searchGoogleMaps(input: SourceSearchInput) {
     };
   }
 
-  const query = [input.query, input.location].map(clean).filter(Boolean).join(" ");
+  const markets = sourceMarkets(input).slice(0, 8);
+  const perMarketSize = Math.max(5, Math.ceil(clampSize(input.size) / Math.max(1, markets.length)) + 2);
+  const fetched = await Promise.all(markets.map((market) => fetchGoogleMapsMarket(input, market, perMarketSize)));
+  const failed = fetched.find((result) => result.error);
+  if (failed && fetched.every((result) => result.error)) {
+    return {
+      provider: "google-maps" as const,
+      dryRun: false,
+      total: 0,
+      scrollToken: null,
+      leads: [],
+      reviewLeads: [],
+      diagnostics: emptyDiagnostics(markets),
+      message: failed.error,
+    };
+  }
+
+  const rawResults = dedupeMapsResults(fetched.flatMap((result) => result.results));
+  const leads = await Promise.all(
+    rawResults.slice(0, clampSize(input.size) * 2).map((result, index) => normalizeGoogleMapsResult(result, index, input)),
+  );
+  const classified = classifySourceLeads(leads);
+  const qualified = classified.qualified
+    .sort((a, b) => b.score - a.score)
+    .slice(0, clampSize(input.size));
+  const reviewLeads = classified.review
+    .sort((a, b) => b.score - a.score)
+    .slice(0, clampSize(input.size));
+  const diagnostics = sourceDiagnostics(leads, qualified, reviewLeads, markets);
+
+  return {
+    provider: "google-maps" as const,
+    dryRun: false,
+    total: rawResults.length,
+    scrollToken: fetched.find((result) => result.scrollToken)?.scrollToken || null,
+    leads: qualified,
+    reviewLeads,
+    diagnostics,
+    message:
+      qualified.length === 0
+        ? `Google Maps found ${rawResults.length} businesses across ${markets.length} market${markets.length === 1 ? "" : "s"}, but ${reviewLeads.length} need review/enrichment before email outreach.`
+        : undefined,
+  };
+}
+
+async function fetchGoogleMapsMarket(input: SourceSearchInput, market: string, size: number) {
+  const query = [input.query, market].map(clean).filter(Boolean).join(" ");
   const url = new URL("https://serpapi.com/search.json");
   url.searchParams.set("engine", "google_maps");
   url.searchParams.set("q", query || "B2B services United States");
-  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("api_key", clean(process.env.SERPAPI_API_KEY));
   url.searchParams.set("hl", "en");
   url.searchParams.set("type", "search");
   if (input.scrollToken) url.searchParams.set("next_page_token", input.scrollToken);
@@ -146,12 +203,9 @@ async function searchGoogleMaps(input: SourceSearchInput) {
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     return {
-      provider: "google-maps" as const,
-      dryRun: false,
-      total: 0,
+      results: [] as SerpApiMapsResult[],
       scrollToken: null,
-      leads: [],
-      message: `SerpAPI Google Maps returned ${response.status}${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
+      error: `SerpAPI Google Maps returned ${response.status}${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
     };
   }
 
@@ -161,24 +215,11 @@ async function searchGoogleMaps(input: SourceSearchInput) {
     serpapi_pagination?: { next_page_token?: string };
     error?: string;
   };
-  const rawResults = payload.local_results || (payload.place_results ? [payload.place_results] : []);
-  const leads = await Promise.all(
-    rawResults.slice(0, clampSize(input.size)).map((result, index) => normalizeGoogleMapsResult(result, index, input)),
-  );
-  const qualified = leads
-    .filter((lead) => !isSuppressedSourceLead(lead))
-    .sort((a, b) => b.score - a.score);
-
+  const results = payload.local_results || (payload.place_results ? [payload.place_results] : []);
   return {
-    provider: "google-maps" as const,
-    dryRun: false,
-    total: rawResults.length,
+    results: results.slice(0, size),
     scrollToken: payload.serpapi_pagination?.next_page_token || null,
-    leads: qualified,
-    message:
-      qualified.length === 0
-        ? payload.error || "Google Maps returned businesses, but none had a contact path and buyer signal after enrichment."
-        : undefined,
+    error: payload.error || null,
   };
 }
 
@@ -601,16 +642,112 @@ function extractPhone(html: string) {
   return clean(tel || plain);
 }
 
+function sourceMarkets(input: SourceSearchInput) {
+  const explicit = (input.locations || []).map(clean).filter(Boolean);
+  if (explicit.length) return Array.from(new Set(explicit));
+  const location = clean(input.location);
+  return location ? [location] : ["United States"];
+}
+
+function dedupeMapsResults(results: SerpApiMapsResult[]) {
+  const seen = new Set<string>();
+  const deduped: SerpApiMapsResult[] = [];
+  for (const result of results) {
+    const key = [
+      clean(result.place_id),
+      clean(result.data_id),
+      clean(result.title).toLowerCase(),
+      clean(result.phone).replace(/\D/g, ""),
+      clean(result.address).toLowerCase(),
+    ]
+      .filter(Boolean)
+      .join(":");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(result);
+  }
+  return deduped;
+}
+
+function sourceDiagnostics(
+  allLeads: SourceLead[],
+  qualified: SourceLead[],
+  reviewLeads: SourceLead[],
+  marketsSearched?: string[],
+): SourceDiagnostics {
+  const suppressed: Record<string, number> = {};
+  for (const lead of allLeads) {
+    for (const reason of sourceLeadIssues(lead)) {
+      suppressed[reason] = (suppressed[reason] || 0) + 1;
+    }
+  }
+
+  return {
+    marketsSearched,
+    rawFound: allLeads.length,
+    strictQualified: qualified.length,
+    reviewReady: reviewLeads.length,
+    contactable: allLeads.filter((lead) => lead.email || lead.phone).length,
+    missingContact: allLeads.filter((lead) => !lead.email && !lead.phone).length,
+    suppressed,
+  };
+}
+
+function emptyDiagnostics(marketsSearched?: string[]): SourceDiagnostics {
+  return {
+    marketsSearched,
+    rawFound: 0,
+    strictQualified: 0,
+    reviewReady: 0,
+    contactable: 0,
+    missingContact: 0,
+    suppressed: {},
+  };
+}
+
+function classifySourceLeads(leads: SourceLead[]) {
+  const qualified: SourceLead[] = [];
+  const review: SourceLead[] = [];
+
+  for (const lead of leads) {
+    const issues = sourceLeadIssues(lead);
+    if (!issues.length) {
+      qualified.push(lead);
+      continue;
+    }
+    if (isReviewReadySourceLead(lead, issues)) review.push(lead);
+  }
+
+  return { qualified, review };
+}
+
+function isReviewReadySourceLead(lead: SourceLead, issues = sourceLeadIssues(lead)) {
+  if (!lead.companyName || lead.companyName === "Unknown Company") return false;
+  if (isInstitutionalCompany(lead.companyName)) return false;
+  if (isVendorCompany(lead.companyName) || lead.buyerFit === "Vendor risk") return false;
+  if (!lead.email && !lead.phone && !lead.website) return false;
+  if (lead.score < 45) return false;
+  const softIssues = [...issues, !lead.email ? "missing-email" : "", !lead.phone ? "missing-phone" : ""].filter(Boolean);
+  return softIssues.some((reason) =>
+    ["missing-email", "missing-phone", "below-source-score", "unclear-buyer-fit", "generic-contact", "generic-title"].includes(reason),
+  );
+}
+
+function sourceLeadIssues(lead: SourceLead) {
+  const issues: string[] = [];
+  if (!lead.email && !lead.phone) issues.push("missing-contact-path");
+  if (!lead.companyName || lead.companyName === "Unknown Company") issues.push("missing-company");
+  if (!lead.name || lead.name === "Unknown Contact") issues.push("generic-contact");
+  if (!lead.title || lead.title === "Decision maker") issues.push("generic-title");
+  if (isInstitutionalCompany(lead.companyName)) issues.push("institutional-company");
+  if (isVendorCompany(lead.companyName) || lead.buyerFit === "Vendor risk") issues.push("vendor-risk");
+  if (lead.buyerFit === "Unclear") issues.push("unclear-buyer-fit");
+  if (lead.score < 60) issues.push("below-source-score");
+  return issues;
+}
+
 function isSuppressedSourceLead(lead: SourceLead) {
-  if (!lead.email && !lead.phone) return true;
-  if (!lead.companyName || lead.companyName === "Unknown Company") return true;
-  if (!lead.name || lead.name === "Unknown Contact") return true;
-  if (!lead.title || lead.title === "Decision maker") return true;
-  if (isInstitutionalCompany(lead.companyName)) return true;
-  if (isVendorCompany(lead.companyName) || lead.buyerFit === "Vendor risk") return true;
-  if (lead.buyerFit === "Unclear") return true;
-  if (lead.score < 60) return true;
-  return false;
+  return sourceLeadIssues(lead).length > 0;
 }
 
 function classifyBuyerFit({ title, companyName }: { title: string; companyName: string }) {

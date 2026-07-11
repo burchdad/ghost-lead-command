@@ -5,7 +5,7 @@ import { createAutomationEvent } from "@/lib/automation";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
 import { evaluateSourceLead, prepareOperatorRun } from "@/lib/operator-policy";
 import { getPrisma } from "@/lib/prisma";
-import { searchFreshLeads, type SourceLead, type SourceProvider } from "@/lib/sourcing";
+import { searchFreshLeads, type SourceDiagnostics, type SourceLead, type SourceProvider } from "@/lib/sourcing";
 import { findSuppressionMatch } from "@/lib/suppression";
 import { notifySlackNicheRecommendation, notifySlackOutreachApproval } from "@/lib/slack";
 import { getDefaultWorkspace } from "@/lib/workspace";
@@ -14,12 +14,18 @@ type AgentRunInput = {
   provider?: SourceProvider;
   query?: string;
   location?: string;
+  locations?: string[];
   industries?: string[];
   titles?: string[];
   size?: number;
   minScore?: number;
   queueLimit?: number;
   autoSend?: boolean;
+};
+
+type AgentSourceResult = Awaited<ReturnType<typeof searchFreshLeads>> & {
+  diagnostics?: SourceDiagnostics;
+  reviewLeads?: SourceLead[];
 };
 
 type NicheRecommendation = {
@@ -301,10 +307,11 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       process.env.AGENT_SOURCE_QUERY ||
       "founders revenue leaders growth operators at companies that need more qualified sales calls",
     location: input.location || process.env.AGENT_SOURCE_LOCATION || "United States",
+    locations: input.locations,
     industries: input.industries || (process.env.AGENT_SOURCE_INDUSTRIES || "Software, SaaS, Marketing, Consulting, B2B Services").split(","),
     titles: input.titles || ["Founder", "CEO", "Owner", "President", "Head of Growth", "VP Sales", "Revenue Operations", "General Manager"],
     size,
-  });
+  }) as AgentSourceResult;
 
   const skipped: Record<string, number> = {};
 
@@ -367,9 +374,21 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     queued.push({ lead: imported.lead, item, slack, approval });
   }
 
+  const diagnostics = {
+    ...(sourceResult.diagnostics || {
+      rawFound: sourceResult.leads.length,
+      strictQualified: sourceResult.leads.length,
+      reviewReady: 0,
+      contactable: sourceResult.leads.filter((lead: SourceLead) => lead.email || lead.phone).length,
+      missingContact: sourceResult.leads.filter((lead: SourceLead) => !lead.email && !lead.phone).length,
+      suppressed: {},
+    }),
+    policySkipped: skipped,
+  };
+
   await createAutomationEvent({
     title: "AI operator finished",
-    detail: `Found ${sourceResult.leads.length}, qualified ${qualified.length}, ${autoSend ? "sent/attempted" : "queued"} ${queued.length}.`,
+    detail: `Found ${diagnostics.rawFound}, source-qualified ${sourceResult.leads.length}, policy-qualified ${qualified.length}, ${autoSend ? "sent/attempted" : "queued"} ${queued.length}.`,
     status: queued.length ? "done" : "blocked",
     type: "agent",
     payload: {
@@ -378,7 +397,9 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       found: sourceResult.leads.length,
       qualified: qualified.length,
       queued: queued.length,
+      reviewReady: diagnostics.reviewReady,
       skipped,
+      diagnostics,
       guardrails: policy,
       autoSend,
     },
@@ -387,9 +408,12 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   return {
     provider,
     found: sourceResult.leads.length,
+    rawFound: diagnostics.rawFound,
     qualified: qualified.length,
     queued: queued.length,
+    reviewReady: diagnostics.reviewReady,
     skipped,
+    diagnostics,
     guardrails: policy,
     items: queued.map((entry) => entry.item),
     message:
@@ -397,7 +421,10 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         ? autoSend
           ? `AI operator attempted ${queued.length} live sends.`
           : `AI operator queued ${queued.length} approval-ready emails.`
-        : sourceResult.message || "AI operator did not find new qualified leads to queue.",
+        : sourceResult.message ||
+          (diagnostics.reviewReady > 0
+            ? `AI operator found ${diagnostics.reviewReady} review-ready leads, but none passed the current email/score policy for outreach.`
+            : "AI operator did not find new qualified leads to queue."),
   };
 }
 

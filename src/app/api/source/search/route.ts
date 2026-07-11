@@ -17,6 +17,7 @@ export async function POST(request: Request) {
     provider,
     query: String(body.query || "owner local services"),
     location: body.location ? String(body.location) : undefined,
+    locations: Array.isArray(body.locations) ? body.locations.map(String) : undefined,
     titles: Array.isArray(body.titles) ? body.titles.map(String) : [],
     industries: Array.isArray(body.industries) ? body.industries.map(String) : [],
     size: Number(body.size || 25),
