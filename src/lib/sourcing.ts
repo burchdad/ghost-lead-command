@@ -68,8 +68,9 @@ type SerpApiMapsResult = {
   gps_coordinates?: { latitude?: number; longitude?: number };
 };
 
-function clean(value: string | undefined) {
-  return value?.trim() || "";
+function clean(value: unknown) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
 }
 
 function pdlEmails(value: RawPdlPerson["emails"] | unknown): PdlEmail[] {
@@ -539,7 +540,7 @@ function scoreLead({
   return Math.max(0, Math.min(cap, score));
 }
 
-function normalizeWebsite(value: string) {
+function normalizeWebsite(value: unknown) {
   const site = clean(value);
   if (!site) return "";
   return /^https?:\/\//i.test(site) ? site : `https://${site}`;
@@ -658,7 +659,7 @@ function isVendorTitle(title: string) {
   return ["career coach", "life coach", "student recruiter"].some((term) => role.includes(term));
 }
 
-function tokenizeSearch(value: string | undefined) {
+function tokenizeSearch(value: unknown) {
   return clean(value)
     .split(/[\s,]+/)
     .map((term) => term.toLowerCase().replace(/[^a-z0-9-]/g, ""))

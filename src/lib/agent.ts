@@ -100,8 +100,9 @@ const nichePlaybook: NicheRecommendation[] = [
   },
 ];
 
-function clean(value: string | undefined) {
-  return value?.trim() || "";
+function clean(value: unknown) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
 }
 
 function boolFromEnv(name: string, fallback = false) {
@@ -111,8 +112,8 @@ function boolFromEnv(name: string, fallback = false) {
   return fallback;
 }
 
-function normalizeDomain(value: string) {
-  return value
+function normalizeDomain(value: unknown) {
+  return String(value || "")
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
@@ -137,10 +138,10 @@ function defaultNextAction(lead: SourceLead) {
 
 async function importSourceLead(sourceLead: SourceLead, workspaceId: string) {
   const prisma = getPrisma();
-  const email = sourceLead.email ? sourceLead.email.trim().toLowerCase() : "";
-  const phone = sourceLead.phone ? sourceLead.phone.trim() : "";
-  const companyName = sourceLead.companyName.trim();
-  const contactName = sourceLead.name.trim();
+  const email = clean(sourceLead.email).toLowerCase();
+  const phone = clean(sourceLead.phone);
+  const companyName = clean(sourceLead.companyName);
+  const contactName = clean(sourceLead.name);
   const domain = normalizeDomain((sourceLead as SourceLead & { website?: string }).website || "");
 
   const suppression = await findSuppressionMatch({

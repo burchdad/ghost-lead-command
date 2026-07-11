@@ -45,11 +45,12 @@ function titleCase(value: string) {
     .join(" ");
 }
 
-function clean(value: string | null | undefined) {
-  return value?.trim() || "";
+function clean(value: unknown) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
 }
 
-function cleanLocation(value: string | null | undefined) {
+function cleanLocation(value: unknown) {
   return clean(value).replace(/[.!?]+$/, "");
 }
 
