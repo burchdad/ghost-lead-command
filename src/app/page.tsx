@@ -1131,11 +1131,15 @@ export default function Home() {
       return;
     }
 
-    const response = await fetch("/api/import/commit", {
+    const response = await fetch("/api/source/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        records: qualifiedResults.map((lead) => ({
+        source: `${sourceProvider}-ui-import`,
+        autoQueue: true,
+        autoSend: outreachStatus.mode === "live",
+        queueLimit: 8,
+        leads: qualifiedResults.map((lead) => ({
           name: lead.name,
           companyName: lead.companyName,
           email: lead.email,
@@ -1162,10 +1166,10 @@ export default function Home() {
 
     const payload = await response.json();
     setSourceStatus(
-      `Imported ${payload.count || 0} qualified leads. Skipped ${sourceResults.length - qualifiedResults.length} low-quality records and ${payload.skipped || 0} duplicates.`,
+      `Imported ${payload.count || 0}, queued ${payload.queued || 0}. Skipped ${sourceResults.length - qualifiedResults.length} low-quality records and ${payload.skipped?.duplicate || 0} duplicates.`,
     );
     setOperationStatus(
-      `Fresh sourcing added ${payload.count || 0} pipeline leads and skipped ${payload.skipped || 0} duplicates.`,
+      `Fresh sourcing added ${payload.count || 0} leads and queued ${payload.queued || 0} approval-ready touches.`,
     );
     await refreshLeads();
     await refreshOpsData();
@@ -2814,7 +2818,7 @@ export default function Home() {
                         disabled={!liveDataReady}
                         className="rounded-md bg-white/[0.08] px-4 py-2 text-sm font-semibold text-[#d6dfdc] transition hover:bg-white/12"
                       >
-                        Import Results
+                        Import + Queue
                       </button>
                       <button
                         type="button"
