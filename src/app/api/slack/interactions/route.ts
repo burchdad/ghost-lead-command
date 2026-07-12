@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { approvePendingOutreachBatch } from "@/lib/approval";
 import { createAutomationEvent } from "@/lib/automation";
-import { isSlackInteractionAuthorized, type SlackInteractionPayload } from "@/lib/slack";
+import { isSlackInteractionAuthorized, notifySlackBatchApprovalResult, type SlackInteractionPayload } from "@/lib/slack";
 
 function parseActionValue(value?: string) {
   if (!value) return {} as { action?: string; limit?: number };
@@ -40,9 +40,10 @@ export async function POST(request: Request) {
   }
 
   const result = await approvePendingOutreachBatch({ limit: value.limit });
+  await notifySlackBatchApprovalResult(result);
   await createAutomationEvent({
     title: "Vega Slack batch approval",
-    detail: `Stephen approved ${result.approved} outreach items from Slack. ${result.failed} failed.`,
+    detail: `Stephen approved ${result.approved} outreach items from Slack. Sent ${result.sent}; dry-run ${result.dryRunQueued}; failed ${result.failed}.`,
     status: result.failed ? "needs_review" : "done",
     type: "slack",
     payload: {
@@ -50,6 +51,11 @@ export async function POST(request: Request) {
       attempted: result.attempted,
       approved: result.approved,
       failed: result.failed,
+      sent: result.sent,
+      dryRunQueued: result.dryRunQueued,
+      emailReadyBefore: result.emailReadyBefore,
+      manualPending: result.manualPending,
+      otherPending: result.otherPending,
       userId: payload.user?.id,
       channelId: payload.channel?.id,
     },

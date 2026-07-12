@@ -112,6 +112,32 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
   const workspace = await getDefaultWorkspace();
   const maxLimit = Math.min(25, Math.max(1, Number(process.env.VEGA_APPROVAL_BATCH_LIMIT || 10)));
   const limit = Math.min(maxLimit, Math.max(1, Number(input.limit || maxLimit)));
+  const [emailReady, manualPending, otherPending] = await Promise.all([
+    prisma.outreachQueueItem.count({
+      where: {
+        workspaceId: workspace.id,
+        status: "pending",
+        channel: "email",
+        lead: { is: { contact: { is: { email: { not: null } } } } },
+      },
+    }),
+    prisma.outreachQueueItem.count({
+      where: { workspaceId: workspace.id, status: "pending", channel: "manual" },
+    }),
+    prisma.outreachQueueItem.count({
+      where: {
+        workspaceId: workspace.id,
+        status: "pending",
+        NOT: [
+          {
+            channel: "email",
+            lead: { is: { contact: { is: { email: { not: null } } } } },
+          },
+          { channel: "manual" },
+        ],
+      },
+    }),
+  ]);
   const items = await prisma.outreachQueueItem.findMany({
     where: {
       workspaceId: workspace.id,
@@ -134,6 +160,11 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
     attempted: results.length,
     approved: results.filter((result) => result.ok).length,
     failed: results.filter((result) => !result.ok).length,
+    emailReadyBefore: emailReady,
+    manualPending,
+    otherPending,
+    sent: results.filter((result) => result.ok && result.body.delivery.status === "sent").length,
+    dryRunQueued: results.filter((result) => result.ok && result.body.delivery.dryRun).length,
     results: results.map((result) => ({
       ok: result.ok,
       status: result.status,

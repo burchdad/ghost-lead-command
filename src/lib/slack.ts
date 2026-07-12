@@ -563,6 +563,8 @@ export async function notifySlackLeadCommandAudit(input: {
   metrics: {
     leads: number;
     pending: number;
+    emailReady?: number;
+    manualPending?: number;
     sent: number;
     replies: number;
     booked: number;
@@ -599,6 +601,8 @@ export async function notifySlackLeadCommandAudit(input: {
           fields: [
             { type: "mrkdwn", text: `*Leads*\n${input.metrics.leads}` },
             { type: "mrkdwn", text: `*Pending approvals*\n${input.metrics.pending}` },
+            { type: "mrkdwn", text: `*SendGrid-ready*\n${input.metrics.emailReady ?? "n/a"}` },
+            { type: "mrkdwn", text: `*Manual tasks*\n${input.metrics.manualPending ?? "n/a"}` },
             { type: "mrkdwn", text: `*Sent/queued*\n${input.metrics.sent}` },
             { type: "mrkdwn", text: `*Replies*\n${input.metrics.replies}` },
             { type: "mrkdwn", text: `*Booked*\n${input.metrics.booked}` },
@@ -644,6 +648,80 @@ export async function notifySlackLeadCommandAudit(input: {
   return {
     ...result,
     message: result.sent ? `Lead Command audit posted to ${result.channel || channelName}.` : result.message,
+  };
+}
+
+export async function notifySlackBatchApprovalResult(input: {
+  requested: number;
+  attempted: number;
+  approved: number;
+  failed: number;
+  sent: number;
+  dryRunQueued: number;
+  emailReadyBefore: number;
+  manualPending: number;
+  otherPending: number;
+}) {
+  const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
+  const summary = input.attempted
+    ? `Approved ${input.approved}/${input.attempted}. Sent ${input.sent}. Dry-run queued ${input.dryRunQueued}. Failed ${input.failed}.`
+    : `No SendGrid-ready email approvals found. Manual pending ${input.manualPending}; other pending ${input.otherPending}.`;
+  const result = await postSlackPayload({
+    webhookUrl:
+      clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_EXECUTIVE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_WEBHOOK_URL),
+    botToken: clean(process.env.SLACK_BOT_TOKEN),
+    channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
+    payload: {
+      text: `Vega batch approval result: ${summary}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "Vega batch approval result", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Channel:* #${channelName}\n*Status:* ${summary}`,
+          },
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Requested*\n${input.requested}` },
+            { type: "mrkdwn", text: `*SendGrid-ready before click*\n${input.emailReadyBefore}` },
+            { type: "mrkdwn", text: `*Attempted*\n${input.attempted}` },
+            { type: "mrkdwn", text: `*Actually sent*\n${input.sent}` },
+            { type: "mrkdwn", text: `*Dry-run queued*\n${input.dryRunQueued}` },
+            { type: "mrkdwn", text: `*Failed*\n${input.failed}` },
+            { type: "mrkdwn", text: `*Manual tasks pending*\n${input.manualPending}` },
+            { type: "mrkdwn", text: `*Other pending*\n${input.otherPending}` },
+          ],
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Queue", emoji: false },
+              url: appViewUrl("queue"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Source", emoji: false },
+              url: appViewUrl("source"),
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  return {
+    ...result,
+    message: result.sent ? `Batch approval result posted to ${result.channel || channelName}.` : result.message,
   };
 }
 

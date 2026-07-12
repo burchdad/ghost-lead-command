@@ -28,7 +28,12 @@ export async function runLeadCommandAudit(input: { postToSlack?: boolean } = {})
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [leads, queue, replies, events, suppressions, ghostcrm] = await Promise.all([
     prisma.lead.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 1000 }),
-    prisma.outreachQueueItem.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 1000 }),
+    prisma.outreachQueueItem.findMany({
+      where: { workspaceId: workspace.id },
+      orderBy: { createdAt: "desc" },
+      take: 1000,
+      include: { lead: { include: { contact: true } } },
+    }),
     prisma.reply.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 1000 }),
     prisma.automationEvent.findMany({ where: { workspaceId: workspace.id, createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 30 }),
     prisma.suppressionRecord.count({ where: { workspaceId: workspace.id } }),
@@ -42,6 +47,8 @@ export async function runLeadCommandAudit(input: { postToSlack?: boolean } = {})
   const missionControl = getMissionControlBridgeStatus();
   const caps = getOperatorCaps();
   const pending = queue.filter((item) => item.status === "pending").length;
+  const emailReady = queue.filter((item) => item.status === "pending" && item.channel === "email" && item.lead?.contact?.email).length;
+  const manualPending = queue.filter((item) => item.status === "pending" && item.channel === "manual").length;
   const sentOrQueued = queue.filter((item) => ["queued", "sent"].includes(item.status)).length;
   const sent = queue.filter((item) => item.status === "sent").length;
   const failed = queue.filter((item) => item.status === "failed").length;
@@ -171,6 +178,8 @@ export async function runLeadCommandAudit(input: { postToSlack?: boolean } = {})
         metrics: {
           leads: audit.metrics.leads,
           pending,
+          emailReady,
+          manualPending,
           sent: sentOrQueued,
           replies: replies.length,
           booked,
