@@ -11,6 +11,7 @@ import { createAutomationEvent } from "@/lib/automation";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { isSlackEventAuthorized, notifySlackBatchApprovalResult, notifySlackVegaLeadRequestResult, type SlackEventPayload } from "@/lib/slack";
+import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
 
 function isVegaAddressed(text: string) {
   return /^\s*(?:vega|<@[A-Z0-9]+>)\s*[,:\-]?\s+/i.test(text);
@@ -116,6 +117,7 @@ export async function POST(request: Request) {
   const isDigestInstruction = isDigestRequest(instruction);
   const isNovaInstruction = isNovaBriefRequest(instruction);
   const isApprovalInstruction = isApprovalRequest(instruction);
+  const specialistKind = classifyVegaSpecialistRequest(instruction);
   await createAutomationEvent({
     title: isLeadInstruction
       ? "Vega Slack lead request received"
@@ -127,11 +129,13 @@ export async function POST(request: Request) {
             ? "Vega Slack digest request received"
             : isNovaInstruction
               ? "Vega Slack Nova brief request received"
-              : isApprovalInstruction
-                ? "Vega Slack batch approval received"
+            : isApprovalInstruction
+              ? "Vega Slack batch approval received"
+              : specialistKind
+                ? "Vega Slack specialist request received"
                 : "Vega Slack message ignored",
     detail: instruction || text || "No Slack text received.",
-    status: isLeadInstruction || isReplyInstruction || isAuditInstruction || isDigestInstruction || isNovaInstruction || isApprovalInstruction ? "running" : "blocked",
+    status: isLeadInstruction || isReplyInstruction || isAuditInstruction || isDigestInstruction || isNovaInstruction || isApprovalInstruction || specialistKind ? "running" : "blocked",
     type: "slack",
     payload: {
       eventId: payload.event_id,
@@ -145,16 +149,51 @@ export async function POST(request: Request) {
       isDigestInstruction,
       isNovaInstruction,
       isApprovalInstruction,
+      specialistKind,
     },
   });
 
-  if (!isLeadInstruction && !isReplyInstruction && !isAuditInstruction && !isDigestInstruction && !isNovaInstruction && !isApprovalInstruction) {
+  if (!isLeadInstruction && !isReplyInstruction && !isAuditInstruction && !isDigestInstruction && !isNovaInstruction && !isApprovalInstruction && !specialistKind) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "failed",
       summary: "I heard Vega, but I could not detect a lead sourcing, approval, reply-work, audit, digest, or Nova brief request. Try: Vega, approve 10. Or: Vega, audit.",
     });
     return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
+  }
+
+  if (specialistKind) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: `Vega is running the ${specialistKind} specialist lane now.`,
+    });
+
+    after(async () => {
+      try {
+        const result = await runVegaSpecialist(specialistKind, { limit: 10 });
+        const metrics = result.metrics as Record<string, string | number | boolean>;
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "finished",
+          summary: specialistSlackSummary(result),
+          result: {
+            found: Number(metrics["reviewed"] || metrics["copyReviewed"] || 0),
+            qualified: Number(metrics["ready"] || metrics["bookingReady"] || metrics["rewritten"] || 0),
+            queued: Number(metrics["queued"] || metrics["cadenceQueued"] || metrics["replyDrafts"] || 0),
+            message: result.nextMove,
+          },
+        });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Vega specialist failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
   }
 
   if (isApprovalInstruction) {

@@ -57,7 +57,7 @@ export async function GET() {
   try {
     const prisma = getPrisma();
     const workspace = await getDefaultWorkspace();
-    const [events, leads, queue, replies, suppressions, bookingTasks, campaigns, ghostcrm] = await Promise.all([
+    const [events, leads, queue, replies, suppressions, bookingTasks, campaigns, sequenceSteps, ghostcrm] = await Promise.all([
       prisma.automationEvent.findMany({
         where: { workspaceId: workspace.id },
         orderBy: { createdAt: "desc" },
@@ -69,6 +69,7 @@ export async function GET() {
       prisma.suppressionRecord.count({ where: { workspaceId: workspace.id } }),
       prisma.bookingTask.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 200 }),
       prisma.sourcingCampaign.findMany({ where: { workspaceId: workspace.id }, orderBy: { updatedAt: "desc" }, take: 50 }),
+      prisma.sequenceStep.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 500 }),
       getGhostCrmHealth(),
     ]);
 
@@ -85,6 +86,9 @@ export async function GET() {
     const pending = queue.filter((item) => item.status === "pending").length;
     const queuedOrSent = queue.filter((item) => ["queued", "sent"].includes(item.status)).length;
     const failed = queue.filter((item) => item.status === "failed").length;
+    const manualPending = queue.filter((item) => item.status === "pending" && item.channel === "manual").length;
+    const pendingEmail = queue.filter((item) => item.status === "pending" && item.channel === "email").length;
+    const dueSequence = sequenceSteps.filter((step) => ["draft", "active"].includes(step.status)).length;
     const hotReplies = replies.filter((reply) => ["hot", "booked", "objection"].includes(reply.classification)).length;
     const bookedTasks = bookingTasks.filter((task) => task.status !== "blocked").length;
     const recentAgentEvent = events.find((event) => event.type === "agent");
@@ -94,6 +98,9 @@ export async function GET() {
     const recentBookingEvent = events.find((event) => event.type === "booking" || /book/i.test(event.title));
     const recentCrmEvent = events.find((event) => event.type === "crm" || /crm/i.test(event.title));
     const recentSafetyEvent = events.find((event) => ["sendgrid", "suppression", "twilio"].includes(event.type));
+    const recentCopyEvent = events.find((event) => /copy chief/i.test(event.title));
+    const recentCadenceEvent = events.find((event) => /cadence|follow-up|sequence/i.test(event.title));
+    const recentContactPathEvent = events.find((event) => /contact path|manual/i.test(`${event.title} ${event.detail}`));
 
     const sourceConfigured = sourceStatus.pdlConfigured || sourceStatus.googleMapsConfigured || sourceStatus.ghostLeadAgentConfigured;
     const linkedinConfigured = Boolean(
@@ -204,6 +211,39 @@ export async function GET() {
         blockers: outreach.sendgridConfigured ? [] : ["Missing SENDGRID_API_KEY or SENDGRID_FROM_EMAIL"],
       }),
       agentCard({
+        id: "copy-chief",
+        name: "Copy Chief Agent",
+        role: "Rewrite pending email drafts with the offer scorecard before Stephen approves sends.",
+        status: pendingEmail ? "ready" : "needs-work",
+        health: pendingEmail ? "Draft QA lane active" : "Waiting on pending email drafts",
+        detail: "Applies signal-first, low-pressure copy rules so outreach stays specific, short, and reply-oriented.",
+        lastEvent: recentCopyEvent,
+        actionLabel: "Open queue",
+        actionView: "queue",
+        metrics: {
+          "pending email": pendingEmail,
+          "queue drafts": pending,
+          "copy floor": "76+",
+        },
+      }),
+      agentCard({
+        id: "cadence",
+        name: "Cadence Orchestrator",
+        role: "Move approved leads from initial outreach into due follow-up steps without flooding the queue.",
+        status: dueSequence ? "ready" : "needs-work",
+        health: dueSequence ? "Follow-up steps drafted" : "No active sequence steps",
+        detail: "Hourly cron checks due sequence steps and queues only eligible follow-ups for review.",
+        lastEvent: recentCadenceEvent,
+        nextRun: "Hourly via Vercel Cron",
+        actionLabel: "Open queue",
+        actionView: "queue",
+        metrics: {
+          "open steps": dueSequence,
+          pending,
+          "queue cap": caps.dailyQueueLimit,
+        },
+      }),
+      agentCard({
         id: "reply",
         name: "Reply Agent",
         role: "Classify inbound replies, move stages, alert Slack, and start booking work.",
@@ -237,6 +277,22 @@ export async function GET() {
           blocked: bookingTasks.filter((task) => task.status === "blocked").length,
         },
         blockers: canBook ? [] : ["Missing DEFAULT_MEETING_URL or Zoom config/calendar owner"],
+      }),
+      agentCard({
+        id: "contact-path",
+        name: "Contact Path Agent",
+        role: "Work manual phone/website tasks and enrich contacts that are not email-ready yet.",
+        status: manualPending ? "ready" : "needs-work",
+        health: manualPending ? "Manual tasks waiting" : "No manual tasks waiting",
+        detail: "Keeps Google Maps and website-only leads from dying in the queue when no public email is found.",
+        lastEvent: recentContactPathEvent,
+        actionLabel: "Open queue",
+        actionView: "queue",
+        metrics: {
+          "manual tasks": manualPending,
+          "pending email": pendingEmail,
+          suppressions,
+        },
       }),
       agentCard({
         id: "revenue",

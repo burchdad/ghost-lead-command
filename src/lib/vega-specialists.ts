@@ -1,0 +1,483 @@
+import { createAutomationEvent, createBookingTaskForLead, runDueSequenceSteps } from "@/lib/automation";
+import { improveOfferCopy } from "@/lib/offer-copy-brain";
+import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
+import { getOperatorQueueCapacity } from "@/lib/operator-policy";
+import { getPrisma } from "@/lib/prisma";
+import { runReplyConversionSweep } from "@/lib/replies";
+import { addSuppressionRecord, findSuppressionMatch } from "@/lib/suppression";
+import { getDefaultWorkspace } from "@/lib/workspace";
+
+export type VegaSpecialistKind =
+  | "contact-path"
+  | "booking"
+  | "deliverability"
+  | "copy-chief"
+  | "cadence"
+  | "full-team";
+
+type SpecialistResult = {
+  kind: VegaSpecialistKind;
+  title: string;
+  status: "done" | "needs_review" | "blocked";
+  summary: string;
+  metrics: Record<string, number | string | boolean>;
+  nextMove: string;
+};
+
+function clean(value: unknown) {
+  return String(value || "").trim();
+}
+
+function domainFromEmail(email?: string | null) {
+  const value = clean(email).toLowerCase();
+  return value.includes("@") ? value.split("@").pop() || "" : "";
+}
+
+function normalizeWebsite(value?: string | null) {
+  return clean(value)
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .split("/")[0]
+    .toLowerCase();
+}
+
+function contactPathBody(input: {
+  companyName: string;
+  contactName: string;
+  website?: string | null;
+  phone?: string | null;
+  nextAction?: string | null;
+}) {
+  const website = clean(input.website);
+  const phone = clean(input.phone);
+  const paths = [
+    website ? `Website/contact form: ${website}` : "",
+    phone ? `Call path: ${phone}` : "",
+    website ? `Likely email patterns to verify: info@${normalizeWebsite(website)}, sales@${normalizeWebsite(website)}` : "",
+  ].filter(Boolean);
+
+  return [
+    `Manual contact-path task for ${input.companyName}.`,
+    `Target contact: ${input.contactName}.`,
+    ...paths,
+    input.nextAction ? `Context: ${input.nextAction}` : "",
+    "Vega move: verify a direct email, use the website form, or call the business before moving this lead into email outreach.",
+  ].filter(Boolean).join("\n");
+}
+
+export async function runContactPathAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
+  const prisma = getPrisma();
+  const workspace = await getDefaultWorkspace();
+  const limit = Math.min(25, Math.max(1, Number(input.limit || 10)));
+  const manualItems = await prisma.outreachQueueItem.findMany({
+    where: { workspaceId: workspace.id, status: "pending", channel: "manual" },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    include: { lead: { include: { contact: true, company: true } } },
+  });
+
+  let refreshed = 0;
+  let suppressed = 0;
+  let missingPath = 0;
+
+  for (const item of manualItems) {
+    const lead = item.lead;
+    if (!lead) continue;
+    const suppression = await findSuppressionMatch({
+      email: lead.contact?.email,
+      phone: lead.contact?.phone,
+      domain: lead.company?.website,
+      companyName: lead.companyName,
+    });
+
+    if (suppression) {
+      suppressed += 1;
+      await prisma.outreachQueueItem.update({
+        where: { id: item.id },
+        data: { status: "rejected", rejectedAt: new Date(), reason: `Suppressed: ${suppression.reason}` },
+      });
+      continue;
+    }
+
+    if (!lead.contact?.phone && !lead.company?.website) {
+      missingPath += 1;
+      await prisma.outreachQueueItem.update({
+        where: { id: item.id },
+        data: { reason: "Vega contact-path blocked: no phone, website, or email is available yet." },
+      });
+      continue;
+    }
+
+    await prisma.outreachQueueItem.update({
+      where: { id: item.id },
+      data: {
+        provider: "phone-website",
+        subject: `Manual contact path for ${lead.companyName}`,
+        body: contactPathBody({
+          companyName: lead.companyName,
+          contactName: lead.name,
+          website: lead.company?.website,
+          phone: lead.contact?.phone,
+          nextAction: lead.nextAction,
+        }),
+        reason: "Vega Contact Path Agent refreshed this manual task for operator action.",
+      },
+    });
+    refreshed += 1;
+  }
+
+  await createAutomationEvent({
+    title: "Vega Contact Path Agent sweep",
+    detail: `Reviewed ${manualItems.length} manual contact tasks. Refreshed ${refreshed}, suppressed ${suppressed}, blocked ${missingPath}.`,
+    status: refreshed ? "done" : manualItems.length ? "needs_review" : "blocked",
+    type: "agent",
+    payload: { reviewed: manualItems.length, refreshed, suppressed, missingPath },
+  });
+
+  return {
+    kind: "contact-path",
+    title: "Contact Path Agent",
+    status: refreshed ? "done" : manualItems.length ? "needs_review" : "blocked",
+    summary: manualItems.length
+      ? `Reviewed ${manualItems.length} manual contact tasks and refreshed ${refreshed}.`
+      : "No manual contact-path tasks are waiting.",
+    metrics: { reviewed: manualItems.length, refreshed, suppressed, missingPath },
+    nextMove: refreshed
+      ? "Stephen or Vega should work refreshed manual paths, then add verified emails before email outreach."
+      : "Run more Google Maps/PDL sourcing or loosen manual-path intake only if volume is needed.",
+  };
+}
+
+export async function runBookingConciergeAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
+  const prisma = getPrisma();
+  const workspace = await getDefaultWorkspace();
+  const limit = Math.min(25, Math.max(1, Number(input.limit || 10)));
+  const replies = await prisma.reply.findMany({
+    where: {
+      workspaceId: workspace.id,
+      leadId: { not: null },
+      classification: { in: ["booked", "hot"] },
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: { lead: true },
+  });
+
+  let ready = 0;
+  let blocked = 0;
+  let potentialClients = 0;
+
+  for (const reply of replies) {
+    if (!reply.leadId || !reply.lead) continue;
+    const booking = await createBookingTaskForLead({
+      leadId: reply.leadId,
+      replyBody: reply.body,
+      classification: reply.classification,
+    });
+    if (!booking) continue;
+
+    if (booking.blocked) {
+      blocked += 1;
+      if (!["Potential Client", "Call Booked", "Proposal Sent", "Won"].includes(reply.lead.stage)) {
+        await prisma.lead.update({
+          where: { id: reply.leadId },
+          data: {
+            stage: "Potential Client",
+            nextAction: "Hot reply needs booking handoff, but calendar or meeting-link config is incomplete.",
+          },
+        });
+        potentialClients += 1;
+      }
+    } else {
+      ready += 1;
+      await prisma.lead.update({
+        where: { id: reply.leadId },
+        data: {
+          stage: reply.classification === "booked" ? "Call Booked" : "Potential Client",
+          nextAction:
+            reply.classification === "booked"
+              ? "Confirm calendar invite, meeting link, and call prep."
+              : "Send booking options and move to Call Booked after a time is confirmed.",
+        },
+      });
+    }
+  }
+
+  await createAutomationEvent({
+    title: "Vega Booking Concierge sweep",
+    detail: `Reviewed ${replies.length} hot/booked replies. Booking ready ${ready}, blocked ${blocked}.`,
+    status: ready ? "done" : replies.length ? "needs_review" : "blocked",
+    type: "booking",
+    payload: { reviewed: replies.length, ready, blocked, potentialClients },
+  });
+
+  return {
+    kind: "booking",
+    title: "Booking Concierge Agent",
+    status: ready ? "done" : replies.length ? "needs_review" : "blocked",
+    summary: replies.length
+      ? `Reviewed ${replies.length} hot/booked replies. ${ready} booking tasks are ready; ${blocked} need config or operator help.`
+      : "No hot/booked replies are waiting for booking handoff.",
+    metrics: { reviewed: replies.length, ready, blocked, potentialClients },
+    nextMove: blocked
+      ? "Finish meeting-link/calendar config so booked replies stop getting stuck."
+      : "Use Vega, work replies after every send batch; booked replies should now move cleanly.",
+  };
+}
+
+export async function runDeliverabilityGovernor(input: { limit?: number } = {}): Promise<SpecialistResult> {
+  const prisma = getPrisma();
+  const workspace = await getDefaultWorkspace();
+  const limit = Math.min(100, Math.max(10, Number(input.limit || 50)));
+  const failedItems = await prisma.outreachQueueItem.findMany({
+    where: { workspaceId: workspace.id, status: "failed", channel: "email" },
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+    include: { lead: { include: { contact: true, company: true } } },
+  });
+  const pendingEmail = await prisma.outreachQueueItem.findMany({
+    where: { workspaceId: workspace.id, status: "pending", channel: "email" },
+    include: { lead: { include: { contact: true, company: true } } },
+    take: 250,
+  });
+
+  let suppressionsAdded = 0;
+  let pendingRejected = 0;
+  const failedDomains = new Map<string, number>();
+
+  for (const item of failedItems) {
+    const email = item.lead?.contact?.email || "";
+    const domain = domainFromEmail(email);
+    if (domain) failedDomains.set(domain, (failedDomains.get(domain) || 0) + 1);
+    if (email) {
+      await addSuppressionRecord({
+        type: "email",
+        value: email,
+        reason: item.reason || "Failed email send",
+        source: "vega-deliverability",
+      }).then(() => {
+        suppressionsAdded += 1;
+      }).catch(() => undefined);
+    }
+  }
+
+  for (const item of pendingEmail) {
+    const lead = item.lead;
+    if (!lead) continue;
+    const suppression = await findSuppressionMatch({
+      email: lead.contact?.email,
+      phone: lead.contact?.phone,
+      domain: lead.company?.website,
+      companyName: lead.companyName,
+    });
+    if (!suppression) continue;
+    await prisma.outreachQueueItem.update({
+      where: { id: item.id },
+      data: {
+        status: "rejected",
+        rejectedAt: new Date(),
+        reason: `Vega Deliverability Governor rejected suppressed contact: ${suppression.reason}`,
+      },
+    });
+    pendingRejected += 1;
+  }
+
+  const noisyDomains = [...failedDomains.entries()].filter(([, count]) => count >= 2).map(([domain]) => domain);
+  await createAutomationEvent({
+    title: "Vega Deliverability Governor sweep",
+    detail: `Reviewed ${failedItems.length} failed sends. Added/confirmed ${suppressionsAdded} suppressions and rejected ${pendingRejected} risky pending emails.`,
+    status: failedItems.length || pendingRejected ? "done" : "needs_review",
+    type: "sendgrid",
+    payload: { failed: failedItems.length, suppressionsAdded, pendingRejected, noisyDomains },
+  });
+
+  return {
+    kind: "deliverability",
+    title: "Deliverability Governor",
+    status: failedItems.length || pendingRejected ? "done" : "needs_review",
+    summary: `Protected sending by reviewing ${failedItems.length} failed sends and rejecting ${pendingRejected} risky pending emails.`,
+    metrics: { failed: failedItems.length, suppressionsAdded, pendingRejected, noisyDomains: noisyDomains.length },
+    nextMove: noisyDomains.length
+      ? `Watch noisy domains before scaling: ${noisyDomains.slice(0, 4).join(", ")}.`
+      : "Keep volume controlled and approve only email-ready leads with clear buyer signals.",
+  };
+}
+
+export async function runCopyChiefAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
+  const prisma = getPrisma();
+  const workspace = await getDefaultWorkspace();
+  const limit = Math.min(25, Math.max(1, Number(input.limit || 10)));
+  const items = await prisma.outreachQueueItem.findMany({
+    where: { workspaceId: workspace.id, status: "pending", channel: "email" },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    include: { lead: true },
+  });
+
+  let reviewed = 0;
+  let rewritten = 0;
+  let approved = 0;
+  let averageScore = 0;
+
+  for (const item of items) {
+    if (!item.lead) continue;
+    reviewed += 1;
+    const copy = improveOfferCopy({
+      subject: item.subject,
+      body: item.body,
+      lead: {
+        name: item.lead.name,
+        companyName: item.lead.companyName,
+        niche: item.lead.niche,
+        source: item.lead.source,
+        nextAction: item.lead.nextAction,
+        score: item.lead.score,
+        value: item.lead.value,
+      },
+      mode: "rewrite",
+    });
+    averageScore += copy.scorecard.total;
+    if (copy.repaired || copy.subject !== item.subject || copy.body !== item.body) {
+      rewritten += 1;
+      await prisma.outreachQueueItem.update({
+        where: { id: item.id },
+        data: {
+          subject: sanitizeSubject(copy.subject),
+          body: sanitizeCustomerMessage(copy.body, { channel: "email" }),
+          reason: sanitizeInternalReason(`Vega Copy Chief reviewed and improved this draft. ${copy.reason}`),
+        },
+      });
+    } else {
+      approved += 1;
+      await prisma.outreachQueueItem.update({
+        where: { id: item.id },
+        data: {
+          reason: sanitizeInternalReason(`Vega Copy Chief approved this draft. ${copy.reason}`),
+        },
+      });
+    }
+  }
+
+  const score = reviewed ? Math.round(averageScore / reviewed) : 0;
+  await createAutomationEvent({
+    title: "Vega Copy Chief sweep",
+    detail: `Reviewed ${reviewed} pending email drafts. Rewrote ${rewritten}; approved ${approved}; average score ${score}.`,
+    status: reviewed ? "done" : "blocked",
+    type: "agent",
+    payload: { reviewed, rewritten, approved, averageScore: score },
+  });
+
+  return {
+    kind: "copy-chief",
+    title: "Copy Chief Agent",
+    status: reviewed ? "done" : "blocked",
+    summary: reviewed
+      ? `Reviewed ${reviewed} drafts. Rewrote ${rewritten}; average offer-copy score ${score}.`
+      : "No pending email drafts are waiting for copy QA.",
+    metrics: { reviewed, rewritten, approved, averageScore: score },
+    nextMove: reviewed ? "Approve the best reviewed drafts, then watch reply quality by niche." : "Source more email-ready leads before running copy QA again.",
+  };
+}
+
+export async function runCadenceOrchestrator(input: { limit?: number } = {}): Promise<SpecialistResult> {
+  const workspace = await getDefaultWorkspace();
+  const capacity = await getOperatorQueueCapacity(workspace.id);
+  const result = await runDueSequenceSteps({ limit: input.limit || 8 });
+  await createAutomationEvent({
+    title: "Vega Cadence Orchestrator sweep",
+    detail: `Queued ${result.queued} due follow-up steps, skipped ${result.skipped}. Capacity ${capacity.capacity}.`,
+    status: result.queued ? "done" : result.blocked ? "blocked" : "needs_review",
+    type: "sequence",
+    payload: { result, capacity },
+  });
+
+  return {
+    kind: "cadence",
+    title: "Cadence Orchestrator",
+    status: result.queued ? "done" : result.blocked ? "blocked" : "needs_review",
+    summary: `Queued ${result.queued} due follow-up steps and skipped ${result.skipped}.`,
+    metrics: { queued: result.queued, skipped: result.skipped, capacity: capacity.capacity, pendingApprovals: capacity.usage.pendingApprovals },
+    nextMove: result.blocked
+      ? capacity.blockedReasons.join(" ") || "Cadence is blocked by queue capacity."
+      : "Keep the approval queue moving so due follow-ups do not pile up.",
+  };
+}
+
+export async function runVegaSpecialist(kind: VegaSpecialistKind, input: { limit?: number } = {}) {
+  if (kind === "contact-path") return runContactPathAgent(input);
+  if (kind === "booking") return runBookingConciergeAgent(input);
+  if (kind === "deliverability") return runDeliverabilityGovernor(input);
+  if (kind === "copy-chief") return runCopyChiefAgent(input);
+  if (kind === "cadence") return runCadenceOrchestrator(input);
+  return runVegaSpecialistTeam(input);
+}
+
+export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
+  const [copy, cadence, replies, booking, contact, deliverability] = await Promise.all([
+    runCopyChiefAgent({ limit: input.limit || 10 }),
+    runCadenceOrchestrator({ limit: input.limit || 8 }),
+    runReplyConversionSweep({ limit: input.limit || 10, lookbackHours: 168 }),
+    runBookingConciergeAgent({ limit: input.limit || 10 }),
+    runContactPathAgent({ limit: input.limit || 10 }),
+    runDeliverabilityGovernor({ limit: 50 }),
+  ]);
+
+  const queued = cadence.metrics.queued as number;
+  const responseDrafts = replies.queued;
+  const bookingReady = booking.metrics.ready as number;
+  const status = queued || responseDrafts || bookingReady || copy.metrics.reviewed ? "done" : "needs_review";
+  const summary = [
+    `Copy reviewed ${copy.metrics.reviewed}.`,
+    `Cadence queued ${queued}.`,
+    `Reply drafts queued ${responseDrafts}.`,
+    `Booking ready ${bookingReady}.`,
+    `Manual paths refreshed ${contact.metrics.refreshed}.`,
+    `Risky emails rejected ${deliverability.metrics.pendingRejected}.`,
+  ].join(" ");
+
+  await createAutomationEvent({
+    title: "Vega specialist team sweep",
+    detail: summary,
+    status,
+    type: "agent",
+    payload: { copy, cadence, replies, booking, contact, deliverability },
+  });
+
+  return {
+    kind: "full-team" as const,
+    title: "Vega Specialist Team",
+    status,
+    summary,
+    metrics: {
+      copyReviewed: copy.metrics.reviewed as number,
+      cadenceQueued: queued,
+      replyDrafts: responseDrafts,
+      bookingReady,
+      manualRefreshed: contact.metrics.refreshed as number,
+      riskyRejected: deliverability.metrics.pendingRejected as number,
+    },
+    nextMove: bookingReady
+      ? "Work booking-ready leads first, then approve reviewed drafts."
+      : "Approve reviewed drafts, run a focused source sprint, and keep reply sweeps active.",
+    specialists: { copy, cadence, replies, booking, contact, deliverability },
+  };
+}
+
+export function classifyVegaSpecialistRequest(text: string): VegaSpecialistKind | null {
+  const normalized = clean(text).toLowerCase();
+  if (!normalized) return null;
+  if (/\b(?:full team|specialists?|all agents|run team|bring vega online|work everything)\b/.test(normalized)) return "full-team";
+  if (/\b(?:contact path|manual path|manual tasks?|find emails?|enrich contacts?|phone website)\b/.test(normalized)) return "contact-path";
+  if (/\b(?:push bookings?|booking concierge|booked calls?|calendar handoff|appointment)\b/.test(normalized)) return "booking";
+  if (/\b(?:deliverability|bounces?|suppress|reputation|failed sends?|protect sending)\b/.test(normalized)) return "deliverability";
+  if (/\b(?:copy chief|rewrite|copy qa|improve emails?|offer copy|hormozi|nepq)\b/.test(normalized)) return "copy-chief";
+  if (/\b(?:cadence|sequence|due follow[-\s]?ups?|follow[-\s]?up queue|next touches)\b/.test(normalized)) return "cadence";
+  return null;
+}
+
+export function specialistSlackSummary(result: Awaited<ReturnType<typeof runVegaSpecialist>>) {
+  const metrics = Object.entries(result.metrics)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(", ");
+  return `${result.title}: ${result.summary}${metrics ? ` Metrics: ${metrics}.` : ""} Next: ${result.nextMove}`;
+}

@@ -5,7 +5,7 @@ import { getDefaultWorkspace } from "@/lib/workspace";
 
 export async function GET() {
   try {
-    const prisma = getPrisma() as any;
+    const prisma = getPrisma();
     const workspace = await getDefaultWorkspace();
     const tasks = await prisma.bookingTask.findMany({
       where: { workspaceId: workspace.id },
@@ -24,7 +24,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const prisma = getPrisma() as any;
+    const prisma = getPrisma();
     const body = await request.json();
     const leadId = body.leadId ? String(body.leadId) : null;
     const lead = leadId ? await prisma.lead.findUnique({ where: { id: leadId } }) : null;
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       await prisma.lead.update({
         where: { id: lead.id },
         data: {
-          stage: "Call Booked",
+          stage: blocked ? lead.stage === "Imported" ? "Contacted" : lead.stage : "Call Booked",
           lastTouch: "Just now",
           nextAction: blocked
             ? "Booking task created, but calendar or meeting link config is missing."

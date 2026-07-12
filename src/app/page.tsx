@@ -384,6 +384,17 @@ type SignalCollectorResult = {
   skipped: Record<string, number>;
 };
 
+type VegaSpecialistKind = "contact-path" | "booking" | "deliverability" | "copy-chief" | "cadence" | "full-team";
+
+type VegaSpecialistResult = {
+  kind: VegaSpecialistKind;
+  title: string;
+  status: "done" | "needs_review" | "blocked";
+  summary: string;
+  metrics: Record<string, string | number | boolean>;
+  nextMove: string;
+};
+
 type SalesNavResult = {
   commit: boolean;
   enrich: boolean;
@@ -841,7 +852,9 @@ export default function Home() {
   const [learningLoop, setLearningLoop] = useState<LearningLoop | null>(null);
   const [collectorBusy, setCollectorBusy] = useState(false);
   const [tuningBusy, setTuningBusy] = useState(false);
+  const [specialistBusy, setSpecialistBusy] = useState<VegaSpecialistKind | null>(null);
   const [signalCollectorResult, setSignalCollectorResult] = useState<SignalCollectorResult | null>(null);
+  const [specialistResult, setSpecialistResult] = useState<VegaSpecialistResult | null>(null);
   const [directorResult, setDirectorResult] = useState<LeadGenDirectorResult | null>(null);
   const [novaBriefResult, setNovaBriefResult] = useState<NovaBriefResult | null>(null);
   const [leadCommandAudit, setLeadCommandAudit] = useState<LeadCommandAuditResult | null>(null);
@@ -1918,6 +1931,46 @@ export default function Home() {
     setOperationStatus(payload.message || "Self-tuning agent updated source campaigns.");
     await refreshOpsData();
     setTuningBusy(false);
+  }
+
+  async function runVegaSpecialist(kind: VegaSpecialistKind) {
+    if (specialistBusy) return;
+    setSpecialistBusy(kind);
+    setActionToast({
+      phase: "loading",
+      title: "Vega specialist running",
+      detail: `Running ${kind} specialist lane.`,
+    });
+
+    const response = await fetch("/api/agent/specialists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, limit: 10 }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "Specialist blocked",
+        detail: payload.detail || payload.error || "Vega specialist lane could not finish.",
+      });
+      setSpecialistBusy(null);
+      return;
+    }
+
+    setSpecialistResult(payload);
+    setActionToast({
+      phase: "success",
+      title: payload.title || "Specialist complete",
+      detail: payload.summary || "Vega specialist lane finished.",
+    });
+    setOperationStatus(payload.nextMove || payload.summary || "Vega specialist lane finished.");
+    await refreshOpsData();
+    await refreshLeads();
+    if (["copy-chief", "cadence", "contact-path", "full-team"].includes(kind)) setActive("queue");
+    if (kind === "booking") setActive("proposal");
+    setSpecialistBusy(null);
   }
 
   async function ensureSelectedLeadRecord() {
@@ -3161,6 +3214,27 @@ export default function Home() {
                         <p className="mt-3 text-sm leading-5 text-[#aebbb7]">{directorResult.summary.nextMove}</p>
                       </div>
                     ) : null}
+
+                    {specialistResult ? (
+                      <div className="mt-4 rounded-md border border-white/10 bg-[#101417] p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <h3 className="font-semibold">Last Vega Specialist Run</h3>
+                          <span className={`rounded-sm border px-2 py-1 text-xs font-semibold ${agentStatusClass(specialistResult.status === "done" ? "ready" : specialistResult.status === "blocked" ? "blocked" : "needs-work")}`}>
+                            {specialistResult.status}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm leading-5 text-[#d6dfdc]">{specialistResult.summary}</p>
+                        <div className="mt-3 grid gap-2 md:grid-cols-4">
+                          {Object.entries(specialistResult.metrics || {}).map(([label, value]) => (
+                            <div key={label} className="rounded-sm bg-white/[0.04] p-3">
+                              <p className="text-[10px] uppercase tracking-[0.12em] text-[#83d0c2]">{label}</p>
+                              <p className="mt-1 font-mono text-sm text-white">{String(value)}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-sm leading-5 text-[#aebbb7]">{specialistResult.nextMove}</p>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="mt-5 grid gap-4 xl:grid-cols-2">
@@ -3210,6 +3284,72 @@ export default function Home() {
                         ) : null}
 
                         <div className="mt-4 flex flex-wrap gap-2">
+                          {agent.id === "copy-chief" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaSpecialist("copy-chief")}
+                              disabled={Boolean(specialistBusy)}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {specialistBusy === "copy-chief" ? <LoaderCircle className="animate-spin" size={16} /> : <Sparkles size={16} />}
+                              Tune copy
+                            </button>
+                          ) : null}
+                          {agent.id === "cadence" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaSpecialist("cadence")}
+                              disabled={Boolean(specialistBusy)}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {specialistBusy === "cadence" ? <LoaderCircle className="animate-spin" size={16} /> : <CalendarClock size={16} />}
+                              Run cadence
+                            </button>
+                          ) : null}
+                          {agent.id === "contact-path" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaSpecialist("contact-path")}
+                              disabled={Boolean(specialistBusy)}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {specialistBusy === "contact-path" ? <LoaderCircle className="animate-spin" size={16} /> : <Radar size={16} />}
+                              Work paths
+                            </button>
+                          ) : null}
+                          {agent.id === "booking" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaSpecialist("booking")}
+                              disabled={Boolean(specialistBusy)}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {specialistBusy === "booking" ? <LoaderCircle className="animate-spin" size={16} /> : <CalendarClock size={16} />}
+                              Push bookings
+                            </button>
+                          ) : null}
+                          {agent.id === "safety" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaSpecialist("deliverability")}
+                              disabled={Boolean(specialistBusy)}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {specialistBusy === "deliverability" ? <LoaderCircle className="animate-spin" size={16} /> : <DatabaseZap size={16} />}
+                              Protect sending
+                            </button>
+                          ) : null}
+                          {agent.id === "outreach" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaSpecialist("full-team")}
+                              disabled={Boolean(specialistBusy)}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-[#c8ef4f] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {specialistBusy === "full-team" ? <LoaderCircle className="animate-spin" size={16} /> : <Bot size={16} />}
+                              Run specialists
+                            </button>
+                          ) : null}
                           {agent.id === "sourcing" ? (
                             <button
                               type="button"

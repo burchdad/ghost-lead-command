@@ -6,7 +6,7 @@ import { getDefaultWorkspace } from "@/lib/workspace";
 
 export async function GET() {
   try {
-    const prisma = getPrisma() as any;
+    const prisma = getPrisma();
     const workspace = await getDefaultWorkspace();
     const steps = await prisma.sequenceStep.findMany({
       where: { workspaceId: workspace.id },
@@ -25,7 +25,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const prisma = getPrisma() as any;
+    const prisma = getPrisma();
     const workspace = await getDefaultWorkspace();
     const body = await request.json();
     const leadId = body.leadId ? String(body.leadId) : null;

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { createAutomationEvent } from "@/lib/automation";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export async function GET() {
   try {
-    const prisma = getPrisma() as any;
+    const prisma = getPrisma();
     const workspace = await getDefaultWorkspace();
     const events = await prisma.automationEvent.findMany({
       where: { workspaceId: workspace.id },
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
       detail: String(body.detail || ""),
       status: body.status ? String(body.status) : "done",
       type: body.type ? String(body.type) : "system",
-      payload: body.payload && typeof body.payload === "object" ? body.payload : undefined,
+      payload: body.payload && typeof body.payload === "object" ? (body.payload as Prisma.InputJsonValue) : undefined,
     });
     return NextResponse.json({ event }, { status: 201 });
   } catch (error) {

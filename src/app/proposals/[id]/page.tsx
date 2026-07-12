@@ -229,7 +229,7 @@ export default async function ProposalPage({ params }: PageProps) {
           </section>
 
           <section className="border-t border-white/10 p-8 print:border-[#d7dedb]">
-            <h3 className="text-xl font-semibold text-white print:text-[#101417]">Let's Work Together</h3>
+            <h3 className="text-xl font-semibold text-white print:text-[#101417]">Let&apos;s Work Together</h3>
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <div className="rounded-md bg-white/[0.04] p-5 text-sm leading-7 print:border print:border-[#d7dedb] print:bg-white">
                 <p className="font-semibold text-white print:text-[#101417]">{business.name}</p>

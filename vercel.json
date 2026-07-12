@@ -11,6 +11,14 @@
       "schedule": "5 14 * * 1-5"
     },
     {
+      "path": "/api/agent/specialists/full-team",
+      "schedule": "30 15 * * 1-5"
+    },
+    {
+      "path": "/api/agent/specialists/booking",
+      "schedule": "30 19 * * 1-5"
+    },
+    {
       "path": "/api/agent/run",
       "schedule": "15 14 * * 1-5"
     },

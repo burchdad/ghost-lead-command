@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { improveOfferCopy } from "@/lib/offer-copy-brain";
@@ -34,9 +35,9 @@ export async function createAutomationEvent(input: {
   detail: string;
   status?: string;
   type?: string;
-  payload?: Record<string, unknown>;
+  payload?: unknown;
 }) {
-  const prisma = getPrisma() as any;
+  const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   return prisma.automationEvent.create({
     data: {
@@ -46,7 +47,7 @@ export async function createAutomationEvent(input: {
       detail: input.detail,
       status: input.status || "done",
       type: input.type || "system",
-      payload: input.payload || undefined,
+      payload: input.payload === undefined ? undefined : (input.payload as Prisma.InputJsonValue),
     },
     include: { lead: true },
   });
@@ -56,7 +57,7 @@ export async function createSlackOpsEvent(input: {
   leadId?: string | null;
   title: string;
   detail: string;
-  payload?: Record<string, unknown>;
+  payload?: unknown;
 }) {
   const slack = getSlackReadiness();
   const event = await createAutomationEvent({
@@ -64,7 +65,9 @@ export async function createSlackOpsEvent(input: {
     status: slack.configured && slack.channel ? "done" : "blocked",
     type: "slack",
     payload: {
-      ...input.payload,
+      ...(typeof input.payload === "object" && input.payload && !Array.isArray(input.payload)
+        ? (input.payload as Record<string, unknown>)
+        : {}),
       slackConfigured: slack.configured,
       slackChannel: slack.channel || "missing",
     },
@@ -87,7 +90,7 @@ export async function createBookingTaskForLead(input: {
   replyBody?: string;
   classification?: string;
 }) {
-  const prisma = getPrisma() as any;
+  const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const lead = await prisma.lead.findUnique({ where: { id: input.leadId } });
   if (!lead) return null;
@@ -155,7 +158,7 @@ export async function createFollowUpSequenceForLead(input: {
   seedSubject?: string | null;
   seedBody?: string | null;
 }) {
-  const prisma = getPrisma() as any;
+  const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const lead = await prisma.lead.findUnique({ where: { id: input.leadId } });
   if (!lead) return [];
@@ -257,7 +260,7 @@ function isDue(step: { createdAt: Date; dayOffset: number; scheduledFor: Date | 
 }
 
 export async function runDueSequenceSteps(input: { limit?: number } = {}) {
-  const prisma = getPrisma() as any;
+  const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const now = new Date();
   const requestedLimit = Number.isFinite(input.limit) && Number(input.limit) > 0 ? Number(input.limit) : 5;

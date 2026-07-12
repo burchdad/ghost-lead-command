@@ -12,6 +12,7 @@ import { createAutomationEvent } from "@/lib/automation";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { isSlackCommandAuthorized, notifySlackBatchApprovalResult } from "@/lib/slack";
+import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
 
 function slackText(text: string) {
   return NextResponse.json({
@@ -109,6 +110,15 @@ export async function POST(request: Request) {
     payload: { text, userId: form.get("user_id"), channelId: form.get("channel_id") },
   });
 
+  const specialistKind = classifyVegaSpecialistRequest(text);
+  if (specialistKind) {
+    after(async () => {
+      const result = await runVegaSpecialist(specialistKind, { limit: 10 });
+      await postSlackCommandResponse(responseUrl, specialistSlackSummary(result));
+    });
+    return slackText(`Vega is running the ${specialistKind} specialist lane now.`);
+  }
+
   if (isLeadRequest(text)) {
     after(async () => {
       const result = await runVegaLeadRequest({ text });
@@ -179,6 +189,10 @@ export async function POST(request: Request) {
         "`Vega, need 10 new leads in HVAC between Tyler and Dallas, Texas` - run sourcing and queue approval-ready outreach.",
         "`Vega, work replies` - queue response drafts for hot/booked replies and prep bookings.",
         "`Vega, push bookings` - work engaged replies toward calendar-ready follow-up.",
+        "`Vega, work contact paths` - refresh manual phone/website tasks and blocked contact paths.",
+        "`Vega, tune copy` - rewrite pending email drafts using the offer/copy scorecard.",
+        "`Vega, protect deliverability` - suppress failed contacts and reject risky pending sends.",
+        "`Vega, run specialists` - run copy, cadence, replies, booking, contact paths, and deliverability together.",
         "`Vega, approve 10` - approve the next 10 SendGrid-ready outreach items without relying on Slack buttons.",
         "`digest` - post the current ops digest.",
         "`nova` - have the Lead Gen Director brief the Nova CEO AI Agent in Slack.",
