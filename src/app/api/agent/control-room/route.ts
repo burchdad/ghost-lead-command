@@ -108,6 +108,8 @@ export async function GET() {
     const recentClosingSprintEvent = events.find((event) => /closing sprint/i.test(event.title));
     const recentStandupEvent = events.find((event) => /morning standup/i.test(event.title));
     const recentIntentEvent = events.find((event) => /intent signal feed|intent-ranked|perplexity|web intel/i.test(`${event.title} ${event.detail}`));
+    const recentLearningEvent = events.find((event) => /learning loop|self-tuning|tuned source/i.test(`${event.title} ${event.detail}`));
+    const recentSocialIntentEvent = events.find((event) => /social intent|competitor|social\/competitor/i.test(`${event.title} ${event.detail}`));
     const recentLinkedInTaskEvent = events.find((event) => /linkedin task|sales navigator task|sales nav/i.test(`${event.title} ${event.detail}`));
 
     const sourceConfigured = sourceStatus.pdlConfigured || sourceStatus.googleMapsConfigured || sourceStatus.ghostLeadAgentConfigured;
@@ -119,6 +121,10 @@ export async function GET() {
     const warmSignalPattern = /linkedin|sales navigator|social|post|comment|hiring|growth|review|missed|quote|booking/i;
     const warmSignalLeads = leads.filter((lead) => warmSignalPattern.test(lead.nextAction)).length;
     const emailReadyWarm = leads.filter((lead) => lead.score >= 75 && warmSignalPattern.test(lead.nextAction)).length;
+    const socialSignalLeads = leads.filter((lead) => /social|linkedin|competitor|event|community/i.test(`${lead.source} ${lead.nextAction}`)).length;
+    const activeLearningCampaigns = campaigns.filter((campaign) =>
+      campaign.status === "active" && /signal|growth|pipeline|linkedin|event|hvac|high-ticket/i.test(`${campaign.name} ${campaign.query}`),
+    ).length;
     const canSend = outreach.mode === "live" && outreach.sendgridConfigured;
     const canBook = booking.calendarConfigured && booking.ownerEmail && (booking.meetingLink || booking.zoomConfigured);
     const weeklyCloseTarget = Math.max(1, Number(process.env.VEGA_WEEKLY_CLOSE_TARGET || 10));
@@ -210,6 +216,47 @@ export async function GET() {
           perplexity: perplexity.configured ? "on" : "off",
         },
         blockers: leads.length ? [] : ["No active leads are available for signal ranking yet."],
+      }),
+      agentCard({
+        id: "learning-loop",
+        name: "Adaptive Learning Agent",
+        role: "Learn from sends, replies, bounces, sources, and signal buckets, then activate the next best source plays.",
+        status: leads.length || queue.length ? "ready" : sourceConfigured ? "needs-work" : "blocked",
+        health: activeLearningCampaigns ? "Recommended plays active" : "Ready to tune source plays",
+        detail:
+          "This is Vega's self-tuning layer: it studies what actually converts, updates recommended campaigns, and narrows the GojiBerry gap by outcome.",
+        lastEvent: recentLearningEvent,
+        actionLabel: "Run learning loop",
+        actionView: "agents",
+        metrics: {
+          "active plays": activeLearningCampaigns,
+          "reply rate": `${Math.round((replies.length / Math.max(1, queuedOrSent)) * 100)}%`,
+          "failed sends": failed,
+          "warm signals": warmSignalLeads,
+        },
+        blockers: leads.length || queue.length ? [] : ["Run at least one sourcing/send cycle so Vega has outcomes to learn from."],
+      }),
+      agentCard({
+        id: "social-intent",
+        name: "Social Intent Scout",
+        role: "Find competitor, LinkedIn, event, and public-audience trigger signals before outreach gets written.",
+        status: sourceStatus.pdlConfigured || linkedinConfigured || perplexity.configured ? "ready" : "needs-work",
+        health: socialSignalLeads ? "Social signal records in GhostCRM" : "Ready to scout social intent",
+        detail:
+          "Runs GojiBerry-style signal plays using available public/company/contact sources, then imports and queues qualified accounts for review.",
+        lastEvent: recentSocialIntentEvent,
+        actionLabel: "Scout social intent",
+        actionView: "agents",
+        metrics: {
+          "social leads": socialSignalLeads,
+          "linkedin tasks": linkedinTasks,
+          "perplexity": perplexity.configured ? "on" : "off",
+          "pdl": sourceStatus.pdlConfigured ? "on" : "off",
+        },
+        blockers:
+          sourceStatus.pdlConfigured || linkedinConfigured || perplexity.configured
+            ? []
+            : ["Add PDL, LinkedIn, or Perplexity access for stronger social/competitor signal scouting."],
       }),
       agentCard({
         id: "linkedin",

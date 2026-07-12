@@ -391,6 +391,8 @@ type VegaSpecialistKind =
   | "copy-chief"
   | "cadence"
   | "intent-feed"
+  | "learning-loop"
+  | "social-intent"
   | "linkedin-events"
   | "linkedin-tasks"
   | "full-team";
@@ -3490,6 +3492,28 @@ export default function Home() {
                             >
                               {specialistBusy === "intent-feed" ? <LoaderCircle className="animate-spin" size={16} /> : <Radar size={16} />}
                               Refresh signals
+                            </button>
+                          ) : null}
+                          {agent.id === "learning-loop" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaSpecialist("learning-loop")}
+                              disabled={Boolean(specialistBusy)}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-[#c8ef4f] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {specialistBusy === "learning-loop" ? <LoaderCircle className="animate-spin" size={16} /> : <Sparkles size={16} />}
+                              Tune plays
+                            </button>
+                          ) : null}
+                          {agent.id === "social-intent" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaSpecialist("social-intent")}
+                              disabled={Boolean(specialistBusy)}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {specialistBusy === "social-intent" ? <LoaderCircle className="animate-spin" size={16} /> : <Radar size={16} />}
+                              Scout social
                             </button>
                           ) : null}
                           {agent.id === "linkedin-tasks" ? (

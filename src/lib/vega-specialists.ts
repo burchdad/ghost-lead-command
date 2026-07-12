@@ -1,4 +1,6 @@
 import { createAutomationEvent, createBookingTaskForLead, runDueSequenceSteps } from "@/lib/automation";
+import { runAdaptiveLearningLoop } from "@/lib/adaptive-learning";
+import { computeConversionLearning } from "@/lib/conversion-learning";
 import { runIntentFeedScout } from "@/lib/intent-feed";
 import { listLinkedInEvents } from "@/lib/linkedin-products";
 import { runLinkedInTaskLane } from "@/lib/linkedin-task-lane";
@@ -7,6 +9,7 @@ import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from
 import { getOperatorQueueCapacity } from "@/lib/operator-policy";
 import { getPrisma } from "@/lib/prisma";
 import { runReplyConversionSweep } from "@/lib/replies";
+import { runSocialIntentScout } from "@/lib/social-intent";
 import { addSuppressionRecord, findSuppressionMatch } from "@/lib/suppression";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -17,6 +20,8 @@ export type VegaSpecialistKind =
   | "copy-chief"
   | "cadence"
   | "intent-feed"
+  | "learning-loop"
+  | "social-intent"
   | "linkedin-events"
   | "linkedin-tasks"
   | "full-team";
@@ -479,6 +484,56 @@ export async function runLinkedInEventsAgent(input: { limit?: number } = {}): Pr
   };
 }
 
+export async function runLearningLoopAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
+  const result = await runAdaptiveLearningLoop({ activate: true, limit: input.limit || 3 });
+  const topSource = result.learning.sources[0];
+  const topSignal = result.learning.signals[0];
+  return {
+    kind: "learning-loop",
+    title: "Adaptive Learning Agent",
+    status: "done",
+    summary: `Tuned source plays from live outcomes. GojiBerry gap estimate now ${result.learning.summary.gojiBerryCloseness}.`,
+    metrics: {
+      replyRate: `${result.learning.summary.overallReplyRate}%`,
+      socialCoverage: `${result.learning.summary.socialSignalCoverage}%`,
+      recommendedPlays: result.recommendedPlayIds.length,
+      created: result.created.length,
+      refreshed: result.refreshed.length,
+      topSource: topSource?.key || "none",
+      topSignal: topSignal?.key || "none",
+    },
+    nextMove: result.learning.nextActions[0] || result.message,
+  };
+}
+
+export async function runSocialIntentAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
+  const result = await runSocialIntentScout({
+    limit: input.limit || 15,
+    commit: true,
+    autoQueue: true,
+    autoSend: false,
+  });
+  const skipped = Object.entries(result.skipped)
+    .filter(([, count]) => count > 0)
+    .map(([reason, count]) => `${reason} ${count}`)
+    .join(", ");
+  return {
+    kind: "social-intent",
+    title: "Social Intent Scout",
+    status: result.imported || result.queued || result.qualified.length ? "done" : "blocked",
+    summary: `Ran ${result.runs.length} social/competitor plays. Qualified ${result.qualified.length}, imported ${result.imported}, queued ${result.queued}.`,
+    metrics: {
+      qualified: result.qualified.length,
+      imported: result.imported,
+      queued: result.queued,
+      skipped: skipped || "none",
+    },
+    nextMove: result.queued
+      ? "Review the newly queued social-intent drafts, then approve a small batch and watch replies."
+      : "If skipped records are mostly duplicates or missing contact paths, run LinkedIn tasks and contact-path enrichment next.",
+  };
+}
+
 export async function runVegaSpecialist(kind: VegaSpecialistKind, input: { limit?: number } = {}) {
   if (kind === "contact-path") return runContactPathAgent(input);
   if (kind === "booking") return runBookingConciergeAgent(input);
@@ -486,13 +541,16 @@ export async function runVegaSpecialist(kind: VegaSpecialistKind, input: { limit
   if (kind === "copy-chief") return runCopyChiefAgent(input);
   if (kind === "cadence") return runCadenceOrchestrator(input);
   if (kind === "intent-feed") return runIntentFeedAgent({ ...input, enrich: true });
+  if (kind === "learning-loop") return runLearningLoopAgent(input);
+  if (kind === "social-intent") return runSocialIntentAgent(input);
   if (kind === "linkedin-events") return runLinkedInEventsAgent(input);
   if (kind === "linkedin-tasks") return runLinkedInTaskAgent(input);
   return runVegaSpecialistTeam(input);
 }
 
 export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
-  const [intent, linkedin, copy, cadence, replies, booking, contact, deliverability] = await Promise.all([
+  const [learning, intent, linkedin, copy, cadence, replies, booking, contact, deliverability] = await Promise.all([
+    computeConversionLearning(),
     runIntentFeedAgent({ limit: 10, enrich: false }),
     runLinkedInTaskAgent({ limit: 5 }),
     runCopyChiefAgent({ limit: input.limit || 10 }),
@@ -514,6 +572,7 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
     `Booking ready ${bookingReady}.`,
     `Intent leads ranked ${intent.metrics.ranked}.`,
     `LinkedIn tasks queued ${linkedin.metrics.queued}.`,
+    `Learning closeness ${learning.summary.gojiBerryCloseness}.`,
     `Manual paths refreshed ${contact.metrics.refreshed}.`,
     `Risky emails rejected ${deliverability.metrics.pendingRejected}.`,
   ].join(" ");
@@ -523,7 +582,7 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
     detail: summary,
     status,
     type: "agent",
-    payload: { intent, linkedin, copy, cadence, replies, booking, contact, deliverability },
+    payload: { learning, intent, linkedin, copy, cadence, replies, booking, contact, deliverability },
   });
 
   return {
@@ -536,15 +595,17 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
       cadenceQueued: queued,
       replyDrafts: responseDrafts,
       bookingReady,
+      gojiBerryCloseness: learning.summary.gojiBerryCloseness,
       intentRanked: intent.metrics.ranked as number,
       linkedinQueued: linkedin.metrics.queued as number,
+      recommendedPlays: learning.summary.recommendedPlayIds.join(", "),
       manualRefreshed: contact.metrics.refreshed as number,
       riskyRejected: deliverability.metrics.pendingRejected as number,
     },
     nextMove: bookingReady
       ? "Work booking-ready leads first, then approve reviewed drafts."
       : "Approve reviewed drafts, run a focused source sprint, and keep reply sweeps active.",
-    specialists: { intent, linkedin, copy, cadence, replies, booking, contact, deliverability },
+    specialists: { learning, intent, linkedin, copy, cadence, replies, booking, contact, deliverability },
   };
 }
 
@@ -558,6 +619,8 @@ export function classifyVegaSpecialistRequest(text: string): VegaSpecialistKind 
   if (/\b(?:copy chief|rewrite|copy qa|improve emails?|offer copy|hormozi|nepq)\b/.test(normalized)) return "copy-chief";
   if (/\b(?:cadence|sequence|due follow[-\s]?ups?|follow[-\s]?up queue|next touches)\b/.test(normalized)) return "cadence";
   if (/\b(?:intent feed|signal feed|warm signals?|perplexity|web intel|sonar|research feed)\b/.test(normalized)) return "intent-feed";
+  if (/\b(?:learning loop|self[-\s]?tune|adaptive learning|optimi[sz]e sources?|source learning|campaign learning|what'?s working|gojiberry gap)\b/.test(normalized)) return "learning-loop";
+  if (/\b(?:social intent|competitor signals?|competitor engagement|scout social|social scout|linkedin signals?|social signals?)\b/.test(normalized)) return "social-intent";
   if (/\b(?:linkedin events?|event management|events api|lead gen events?)\b/.test(normalized)) return "linkedin-events";
   if (/\b(?:linkedin tasks?|sales nav tasks?|linkedin lane|sales navigator tasks?|social dm|connection requests?)\b/.test(normalized)) return "linkedin-tasks";
   return null;
