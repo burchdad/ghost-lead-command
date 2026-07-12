@@ -6,10 +6,11 @@ import {
   runVegaReplyWork,
   sendDailyDigest,
 } from "@/lib/autopilot";
+import { approvePendingOutreachBatch } from "@/lib/approval";
 import { createAutomationEvent } from "@/lib/automation";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
-import { isSlackEventAuthorized, notifySlackVegaLeadRequestResult, type SlackEventPayload } from "@/lib/slack";
+import { isSlackEventAuthorized, notifySlackBatchApprovalResult, notifySlackVegaLeadRequestResult, type SlackEventPayload } from "@/lib/slack";
 
 function isVegaAddressed(text: string) {
   return /^\s*(?:vega|<@[A-Z0-9]+>)\s*[,:\-]?\s+/i.test(text);
@@ -42,6 +43,19 @@ function isDigestRequest(text: string) {
 function isNovaBriefRequest(text: string) {
   const normalized = normalizedInstruction(text);
   return /\b(?:nova|ceo|director brief|brief nova)\b/.test(normalized);
+}
+
+function isApprovalRequest(text: string) {
+  const normalized = normalizedInstruction(text);
+  return /\b(?:approve|send|release)\b/.test(normalized) && /\b(?:outreach|emails?|batch|\d+)\b/.test(normalized);
+}
+
+function parseApprovalLimit(text: string) {
+  const match =
+    text.match(/\b(?:approve|send|release)\s+(\d+)\b/i) ||
+    text.match(/\b(\d+)\s+(?:emails?|outreach|approvals?|drafts?)\b/i) ||
+    text.match(/\blimit\s*(?:=|:)?\s*(\d+)\b/i);
+  return match ? Number(match[1]) : undefined;
 }
 
 export async function POST(request: Request) {
@@ -101,6 +115,7 @@ export async function POST(request: Request) {
   const isAuditInstruction = isAuditRequest(instruction);
   const isDigestInstruction = isDigestRequest(instruction);
   const isNovaInstruction = isNovaBriefRequest(instruction);
+  const isApprovalInstruction = isApprovalRequest(instruction);
   await createAutomationEvent({
     title: isLeadInstruction
       ? "Vega Slack lead request received"
@@ -112,9 +127,11 @@ export async function POST(request: Request) {
             ? "Vega Slack digest request received"
             : isNovaInstruction
               ? "Vega Slack Nova brief request received"
-              : "Vega Slack message ignored",
+              : isApprovalInstruction
+                ? "Vega Slack batch approval received"
+                : "Vega Slack message ignored",
     detail: instruction || text || "No Slack text received.",
-    status: isLeadInstruction || isReplyInstruction || isAuditInstruction || isDigestInstruction || isNovaInstruction ? "running" : "blocked",
+    status: isLeadInstruction || isReplyInstruction || isAuditInstruction || isDigestInstruction || isNovaInstruction || isApprovalInstruction ? "running" : "blocked",
     type: "slack",
     payload: {
       eventId: payload.event_id,
@@ -127,16 +144,40 @@ export async function POST(request: Request) {
       isAuditInstruction,
       isDigestInstruction,
       isNovaInstruction,
+      isApprovalInstruction,
     },
   });
 
-  if (!isLeadInstruction && !isReplyInstruction && !isAuditInstruction && !isDigestInstruction && !isNovaInstruction) {
+  if (!isLeadInstruction && !isReplyInstruction && !isAuditInstruction && !isDigestInstruction && !isNovaInstruction && !isApprovalInstruction) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "failed",
-      summary: "I heard Vega, but I could not detect a lead sourcing, reply-work, audit, digest, or Nova brief request. Try: Vega, need 10 new HVAC leads near Tyler, Texas. Or: Vega, audit.",
+      summary: "I heard Vega, but I could not detect a lead sourcing, approval, reply-work, audit, digest, or Nova brief request. Try: Vega, approve 10. Or: Vega, audit.",
     });
     return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
+  }
+
+  if (isApprovalInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is approving the next SendGrid-ready outreach batch now.",
+    });
+
+    after(async () => {
+      try {
+        const result = await approvePendingOutreachBatch({ limit: parseApprovalLimit(instruction) });
+        await notifySlackBatchApprovalResult(result);
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Vega approval failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
   }
 
   if (isAuditInstruction) {

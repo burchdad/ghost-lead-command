@@ -7,10 +7,11 @@ import {
   sendAgentPlan,
   sendDailyDigest,
 } from "@/lib/autopilot";
+import { approvePendingOutreachBatch } from "@/lib/approval";
 import { createAutomationEvent } from "@/lib/automation";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
-import { isSlackCommandAuthorized } from "@/lib/slack";
+import { isSlackCommandAuthorized, notifySlackBatchApprovalResult } from "@/lib/slack";
 
 function slackText(text: string) {
   return NextResponse.json({
@@ -75,6 +76,19 @@ function leadRunText(input: Awaited<ReturnType<typeof runVegaLeadRequest>>) {
   ].filter(Boolean).join("\n");
 }
 
+function isApprovalRequest(text: string) {
+  const normalized = text.trim().toLowerCase();
+  return /\b(?:approve|send|release)\b/.test(normalized) && /\b(?:outreach|emails?|batch|\d+)\b/.test(normalized);
+}
+
+function parseApprovalLimit(text: string) {
+  const match =
+    text.match(/\b(?:approve|send|release)\s+(\d+)\b/i) ||
+    text.match(/\b(\d+)\s+(?:emails?|outreach|approvals?|drafts?)\b/i) ||
+    text.match(/\blimit\s*(?:=|:)?\s*(\d+)\b/i);
+  return match ? Number(match[1]) : undefined;
+}
+
 export async function POST(request: Request) {
   const raw = await request.text();
   const form = new URLSearchParams(raw);
@@ -119,6 +133,18 @@ export async function POST(request: Request) {
     return slackText("Vega is working recent replies now. I'll post the conversion result back here when it finishes.");
   }
 
+  if (isApprovalRequest(text)) {
+    after(async () => {
+      const result = await approvePendingOutreachBatch({ limit: parseApprovalLimit(text) });
+      await notifySlackBatchApprovalResult(result);
+      await postSlackCommandResponse(
+        responseUrl,
+        `Vega approval complete: approved ${result.approved}/${result.attempted}; sent ${result.sent}; dry-run ${result.dryRunQueued}; failed ${result.failed}.`,
+      );
+    });
+    return slackText("Vega is approving the next SendGrid-ready outreach batch now. I'll post the result when it finishes.");
+  }
+
   if (normalized.includes("nova") || normalized.includes("director")) {
     const result = await briefNovaCeoAgent({
       message: text || "Slack requested a Lead Gen Director briefing for Nova.",
@@ -153,6 +179,7 @@ export async function POST(request: Request) {
         "`Vega, need 10 new leads in HVAC between Tyler and Dallas, Texas` - run sourcing and queue approval-ready outreach.",
         "`Vega, work replies` - queue response drafts for hot/booked replies and prep bookings.",
         "`Vega, push bookings` - work engaged replies toward calendar-ready follow-up.",
+        "`Vega, approve 10` - approve the next 10 SendGrid-ready outreach items without relying on Slack buttons.",
         "`digest` - post the current ops digest.",
         "`nova` - have the Lead Gen Director brief the Nova CEO AI Agent in Slack.",
         "`director status` - post the Director-to-Nova lead-gen briefing.",
