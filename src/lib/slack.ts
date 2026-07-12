@@ -664,6 +664,11 @@ export async function notifySlackVegaLeadRequestResult(input: {
     queued: number;
     reviewReady?: number;
     message?: string;
+    guardrails?: {
+      requested?: { minScore?: number };
+      effective?: { minScore?: number; size?: number; queueLimit?: number };
+      caps?: { requireEmail?: boolean; requireBuyerSignal?: boolean };
+    };
     diagnostics?: {
       marketsSearched?: string[];
       rawFound?: number;
@@ -688,6 +693,8 @@ export async function notifySlackVegaLeadRequestResult(input: {
           { type: "mrkdwn", text: `*Queued*\n${input.result.queued}` },
           { type: "mrkdwn", text: `*Review-ready*\n${input.result.reviewReady ?? input.result.diagnostics?.reviewReady ?? 0}` },
           { type: "mrkdwn", text: `*Contactable*\n${input.result.diagnostics?.contactable ?? "n/a"}` },
+          { type: "mrkdwn", text: `*Score policy*\n${input.result.guardrails?.requested?.minScore ?? "n/a"} requested / ${input.result.guardrails?.effective?.minScore ?? "n/a"} effective` },
+          { type: "mrkdwn", text: `*Email required*\n${input.result.guardrails?.caps?.requireEmail === false ? "no" : "yes"}` },
         ]
       : [];
   const diagnosticsText = input.result?.diagnostics

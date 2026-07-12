@@ -91,7 +91,8 @@ export async function prepareOperatorRun(input: PrepareRunInput): Promise<Operat
   const pendingCapacity = Math.max(0, caps.maxPendingApprovals - pendingApprovals);
   const queueLimit = Math.min(input.requestedQueueLimit, remainingQueue, pendingCapacity);
   const size = Math.min(input.requestedSize, remainingSource);
-  const minScore = Math.max(input.requestedMinScore, numberFromEnv("AGENT_MIN_CONTACT_SCORE", 80));
+  const absoluteMinScore = numberFromEnv("AGENT_ABSOLUTE_MIN_CONTACT_SCORE", 50);
+  const minScore = Math.max(input.requestedMinScore, absoluteMinScore);
   const blockedReasons: string[] = [];
 
   if (remainingSource <= 0) blockedReasons.push("Daily source cap reached.");

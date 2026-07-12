@@ -58,11 +58,14 @@ function leadRunText(input: Awaited<ReturnType<typeof runVegaLeadRequest>>) {
         .map(([reason, count]) => `${reason} ${count}`)
         .join(", ")
     : "";
+  const requestedScore = input.result.guardrails?.requested?.minScore;
+  const effectiveScore = input.result.guardrails?.effective?.minScore;
 
   return [
     `Vega ran the lead request for ${input.plan.niche}.`,
     `Source: ${input.plan.provider}`,
     `Location: ${input.plan.location}${input.plan.locations?.length ? ` (${input.plan.locations.length} markets)` : ""}`,
+    requestedScore || effectiveScore ? `Score: ${requestedScore ?? "n/a"} requested / ${effectiveScore ?? "n/a"} effective` : "",
     `Found ${input.result.rawFound ?? input.result.found}, qualified ${input.result.qualified}, queued ${input.result.queued}, review-ready ${input.result.reviewReady ?? 0}.`,
     diagnostics ? `Contactable: ${diagnostics.contactable}, missing contact: ${diagnostics.missingContact}` : "",
     markets,

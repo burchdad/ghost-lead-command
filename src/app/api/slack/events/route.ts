@@ -262,6 +262,7 @@ export async function POST(request: Request) {
           queued: result.queued,
           reviewReady: result.reviewReady,
           message: result.message,
+          guardrails: result.guardrails,
           diagnostics: result.diagnostics,
         },
       });

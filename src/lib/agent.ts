@@ -254,7 +254,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   const workspace = await getDefaultWorkspace();
   const provider = input.provider || "pdl";
   const autoSend = input.autoSend ?? boolFromEnv("AGENT_AUTO_SEND", false);
-  const requestedMinScore = Number(input.minScore || process.env.AGENT_MIN_LEAD_SCORE || 80);
+  const requestedMinScore = Number(input.minScore || process.env.AGENT_MIN_CONTACT_SCORE || process.env.AGENT_MIN_LEAD_SCORE || 80);
   const requestedQueueLimit = Math.min(10, Math.max(1, Number(input.queueLimit || process.env.AGENT_QUEUE_LIMIT || 5)));
   const requestedSize = Math.min(
     50,
