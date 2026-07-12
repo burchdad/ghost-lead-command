@@ -855,56 +855,60 @@ export default function Home() {
   const prompts = livePrompts;
   const queueBoardColumns = useMemo(() => {
     const pendingQueue = queueItems.filter((item) => item.status === "pending");
-    const nonPendingQueue = queueItems.filter((item) => item.status !== "pending");
+    const rejectedQueue = queueItems.filter((item) => item.status === "rejected");
+    const finishedQueue = queueItems.filter((item) => item.status !== "pending" && item.status !== "rejected");
     const isFollowUpQueue = (item: QueueItem) =>
       /follow-up sequence|sequence step|step \d|three-touch/i.test(`${item.reason || ""} ${item.subject || ""}`);
 
-    const initial = pendingQueue
-      .filter((item) => !isFollowUpQueue(item))
-      .map<QueueBoardCard>((item) => ({
-        id: item.id,
-        kind: "queue",
-        title: boardLeadName(item.lead),
-        subtitle: item.subject || boardContactName(item.lead),
-        detail: compactText(publicQueueReason(item) || item.body),
-        status: item.status,
-        meta: [item.channel, item.provider, cardTime(item.createdAt)].filter(Boolean),
-        createdAt: item.createdAt,
-        leadId: item.lead?.id,
-        lead: item.lead,
-        queueItem: item,
-      }));
+    const mapQueueItem = (item: QueueItem): QueueBoardCard => ({
+      id: item.id,
+      kind: "queue",
+      title: boardLeadName(item.lead),
+      subtitle: item.subject || boardContactName(item.lead),
+      detail: compactText(publicQueueReason(item) || item.body),
+      status: item.status,
+      meta: [item.channel, item.provider, cardTime(item.createdAt)].filter(Boolean),
+      createdAt: item.createdAt,
+      leadId: item.lead?.id,
+      lead: item.lead,
+      queueItem: item,
+    });
 
-    const followUpQueue = pendingQueue
-      .filter(isFollowUpQueue)
+    const mapSequenceStep = (step: SequenceQueueStep): QueueBoardCard => ({
+      id: step.id,
+      kind: "sequence",
+      title: boardLeadName(step.lead),
+      subtitle: `Step ${step.stepNumber} - day ${step.dayOffset}`,
+      detail: compactText(step.subject ? `${step.subject}. ${step.body}` : step.body),
+      status: step.status,
+      meta: [step.channel, step.provider || "sequence", cardTime(step.createdAt)].filter(Boolean),
+      createdAt: step.createdAt,
+      leadId: step.lead?.id,
+      lead: step.lead,
+    });
+
+    const queued = pendingQueue
       .map<QueueBoardCard>((item) => ({
-        id: item.id,
-        kind: "queue",
-        title: boardLeadName(item.lead),
-        subtitle: item.subject || "Follow-up draft",
-        detail: compactText(publicQueueReason(item) || item.body),
-        status: item.status,
-        meta: [item.channel, item.provider, cardTime(item.createdAt)].filter(Boolean),
-        createdAt: item.createdAt,
-        leadId: item.lead?.id,
-        lead: item.lead,
-        queueItem: item,
+        ...mapQueueItem(item),
+        status: isFollowUpQueue(item) ? "follow-up queued" : "queued",
       }));
 
     const sequenceCards = sequenceQueue
       .filter((step) => !["sent", "skipped", "rejected"].includes(step.status))
-      .map<QueueBoardCard>((step) => ({
-        id: step.id,
-        kind: "sequence",
-        title: boardLeadName(step.lead),
-        subtitle: `Step ${step.stepNumber} - day ${step.dayOffset}`,
-        detail: compactText(step.subject ? `${step.subject}. ${step.body}` : step.body),
-        status: step.status,
-        meta: [step.channel, step.provider || "sequence", cardTime(step.createdAt)].filter(Boolean),
-        createdAt: step.createdAt,
-        leadId: step.lead?.id,
-        lead: step.lead,
-      }));
+      .map(mapSequenceStep);
+
+    const initial = [
+      ...finishedQueue
+        .filter((item) => !isFollowUpQueue(item) && ["approved", "sent", "delivered"].includes(item.status))
+        .map(mapQueueItem),
+      ...sequenceCards.filter((step) => /step 1\b/i.test(step.subtitle || "")),
+    ];
+
+    const followUpOne = sequenceCards.filter((step) => /step 2\b/i.test(step.subtitle || ""));
+    const followUpTwo = sequenceCards.filter((step) => {
+      const match = (step.subtitle || "").match(/step\s+(\d+)/i);
+      return match ? Number(match[1]) >= 3 : false;
+    });
 
     const replyCards = replyItems
       .filter((reply) => ["hot", "booked", "objection", "nurture"].includes(reply.classification.toLowerCase()))
@@ -949,32 +953,36 @@ export default function Home() {
         })),
     ];
 
-    const done = nonPendingQueue.slice(0, 20).map<QueueBoardCard>((item) => ({
-      id: item.id,
-      kind: "queue",
-      title: boardLeadName(item.lead),
-      subtitle: item.subject || boardContactName(item.lead),
-      detail: compactText(publicQueueReason(item) || item.body),
-      status: item.status,
-      meta: [item.channel, item.provider, cardTime(item.createdAt)].filter(Boolean),
-      createdAt: item.createdAt,
-      leadId: item.lead?.id,
-      lead: item.lead,
-      queueItem: item,
-    }));
+    const rejected = rejectedQueue.slice(0, 20).map(mapQueueItem);
+    const done = finishedQueue
+      .filter((item) => !["approved", "sent", "delivered"].includes(item.status) || isFollowUpQueue(item))
+      .slice(0, 20)
+      .map(mapQueueItem);
 
     return [
       {
+        id: "queued",
+        title: "Queued",
+        subtitle: "Waiting for approval or send",
+        cards: queued,
+      },
+      {
         id: "initial",
         title: "Initial Outreach",
-        subtitle: "First touches needing review",
+        subtitle: "Step 1 touches already in motion",
         cards: initial,
       },
       {
-        id: "follow-up",
-        title: "Follow-Up",
-        subtitle: "Sequence steps and next touches",
-        cards: [...followUpQueue, ...sequenceCards],
+        id: "follow-up-1",
+        title: "Follow-Up 1",
+        subtitle: "Step 2 next-touch lane",
+        cards: followUpOne,
+      },
+      {
+        id: "follow-up-2",
+        title: "Follow-Up 2",
+        subtitle: "Step 3 and later close-loop touches",
+        cards: followUpTwo,
       },
       {
         id: "engaged",
@@ -989,9 +997,15 @@ export default function Home() {
         cards: appointmentCards,
       },
       {
+        id: "rejected",
+        title: "Rejected",
+        subtitle: "Manually removed from outreach",
+        cards: rejected,
+      },
+      {
         id: "done",
-        title: "Done / Rejected",
-        subtitle: "Recently completed queue items",
+        title: "Done",
+        subtitle: "Completed, failed, or skipped queue items",
         cards: done,
       },
     ];
@@ -4168,9 +4182,9 @@ export default function Home() {
             {active === "queue" && (
               <div className="space-y-6">
                 <Panel title="Outreach Pipeline Board" icon={ClipboardList}>
-                  <div className="grid gap-3 md:grid-cols-5">
+                  <div className="flex gap-3 overflow-x-auto pb-2">
                     {queueBoardColumns.map((column) => (
-                      <div key={column.id} className="rounded-md border border-white/10 bg-black/20 p-3">
+                      <div key={column.id} className="w-72 shrink-0 rounded-md border border-white/10 bg-black/20 p-3">
                         <div className="mb-3 flex items-start justify-between gap-2">
                           <div>
                             <h3 className="text-sm font-semibold text-white">{column.title}</h3>
@@ -4235,7 +4249,9 @@ export default function Home() {
                                     </button>
                                   </div>
                                 )}
-                                {column.id !== "appointment" && card.leadId && (
+                                {column.id === "engaged" &&
+                                  card.leadId &&
+                                  ["hot", "booked"].includes(card.status.toLowerCase()) && (
                                   <button
                                     type="button"
                                     onClick={() => markAppointmentSet(card)}
