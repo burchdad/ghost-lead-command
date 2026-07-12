@@ -11,6 +11,10 @@
       "schedule": "5 14 * * 1-5"
     },
     {
+      "path": "/api/agent/closing-sprint",
+      "schedule": "45 14 * * 1-5"
+    },
+    {
       "path": "/api/agent/specialists/full-team",
       "schedule": "30 15 * * 1-5"
     },

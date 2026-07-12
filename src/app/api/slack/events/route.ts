@@ -10,7 +10,14 @@ import { approvePendingOutreachBatch } from "@/lib/approval";
 import { createAutomationEvent } from "@/lib/automation";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
-import { isSlackEventAuthorized, notifySlackBatchApprovalResult, notifySlackVegaLeadRequestResult, type SlackEventPayload } from "@/lib/slack";
+import {
+  isSlackEventAuthorized,
+  notifySlackBatchApprovalResult,
+  notifySlackClosingSprintResult,
+  notifySlackVegaLeadRequestResult,
+  type SlackEventPayload,
+} from "@/lib/slack";
+import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSprint } from "@/lib/vega-closing-sprint";
 import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
 
 function isVegaAddressed(text: string) {
@@ -117,6 +124,7 @@ export async function POST(request: Request) {
   const isDigestInstruction = isDigestRequest(instruction);
   const isNovaInstruction = isNovaBriefRequest(instruction);
   const isApprovalInstruction = isApprovalRequest(instruction);
+  const isClosingInstruction = isClosingSprintRequest(instruction);
   const specialistKind = classifyVegaSpecialistRequest(instruction);
   await createAutomationEvent({
     title: isLeadInstruction
@@ -131,11 +139,23 @@ export async function POST(request: Request) {
               ? "Vega Slack Nova brief request received"
             : isApprovalInstruction
               ? "Vega Slack batch approval received"
-              : specialistKind
-                ? "Vega Slack specialist request received"
-                : "Vega Slack message ignored",
+              : isClosingInstruction
+                ? "Vega Slack closing sprint received"
+                : specialistKind
+                  ? "Vega Slack specialist request received"
+                  : "Vega Slack message ignored",
     detail: instruction || text || "No Slack text received.",
-    status: isLeadInstruction || isReplyInstruction || isAuditInstruction || isDigestInstruction || isNovaInstruction || isApprovalInstruction || specialistKind ? "running" : "blocked",
+    status:
+      isLeadInstruction ||
+      isReplyInstruction ||
+      isAuditInstruction ||
+      isDigestInstruction ||
+      isNovaInstruction ||
+      isApprovalInstruction ||
+      isClosingInstruction ||
+      specialistKind
+        ? "running"
+        : "blocked",
     type: "slack",
     payload: {
       eventId: payload.event_id,
@@ -149,17 +169,59 @@ export async function POST(request: Request) {
       isDigestInstruction,
       isNovaInstruction,
       isApprovalInstruction,
+      isClosingInstruction,
       specialistKind,
     },
   });
 
-  if (!isLeadInstruction && !isReplyInstruction && !isAuditInstruction && !isDigestInstruction && !isNovaInstruction && !isApprovalInstruction && !specialistKind) {
+  if (
+    !isLeadInstruction &&
+    !isReplyInstruction &&
+    !isAuditInstruction &&
+    !isDigestInstruction &&
+    !isNovaInstruction &&
+    !isApprovalInstruction &&
+    !isClosingInstruction &&
+    !specialistKind
+  ) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "failed",
-      summary: "I heard Vega, but I could not detect a lead sourcing, approval, reply-work, audit, digest, or Nova brief request. Try: Vega, approve 10. Or: Vega, audit.",
+      summary:
+        "I heard Vega, but I could not detect a lead sourcing, closing sprint, approval, reply-work, audit, digest, or Nova brief request. Try: Vega, closing sprint. Or: Vega, approve 10.",
     });
     return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
+  }
+
+  if (isClosingInstruction) {
+    await notifySlackClosingSprintResult({
+      instruction,
+      status: "received",
+      summary: "Vega is running the weekly closing sprint now.",
+    });
+
+    after(async () => {
+      try {
+        const result = await runVegaClosingSprint(parseClosingSprintInstruction(instruction));
+        await notifySlackClosingSprintResult({
+          instruction,
+          status: "finished",
+          summary: result.summary,
+          bottleneck: result.bottleneck,
+          metrics: result.after,
+          actions: result.actions,
+          nextMoves: result.nextMoves,
+        });
+      } catch (error) {
+        await notifySlackClosingSprintResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Vega closing sprint failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
   }
 
   if (specialistKind) {

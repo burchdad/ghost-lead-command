@@ -11,7 +11,8 @@ import { approvePendingOutreachBatch } from "@/lib/approval";
 import { createAutomationEvent } from "@/lib/automation";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
-import { isSlackCommandAuthorized, notifySlackBatchApprovalResult } from "@/lib/slack";
+import { isSlackCommandAuthorized, notifySlackBatchApprovalResult, notifySlackClosingSprintResult } from "@/lib/slack";
+import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSprint } from "@/lib/vega-closing-sprint";
 import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
 
 function slackText(text: string) {
@@ -110,6 +111,23 @@ export async function POST(request: Request) {
     payload: { text, userId: form.get("user_id"), channelId: form.get("channel_id") },
   });
 
+  if (isClosingSprintRequest(text)) {
+    after(async () => {
+      const result = await runVegaClosingSprint(parseClosingSprintInstruction(text));
+      await notifySlackClosingSprintResult({
+        instruction: text,
+        status: "finished",
+        summary: result.summary,
+        bottleneck: result.bottleneck,
+        metrics: result.after,
+        actions: result.actions,
+        nextMoves: result.nextMoves,
+      });
+      await postSlackCommandResponse(responseUrl, `${result.summary}\nNext: ${result.nextMoves.join(" ")}`);
+    });
+    return slackText("Vega is running the weekly closing sprint now. I'll post the bottleneck and next moves when it finishes.");
+  }
+
   const specialistKind = classifyVegaSpecialistRequest(text);
   if (specialistKind) {
     after(async () => {
@@ -193,6 +211,8 @@ export async function POST(request: Request) {
         "`Vega, tune copy` - rewrite pending email drafts using the offer/copy scorecard.",
         "`Vega, protect deliverability` - suppress failed contacts and reject risky pending sends.",
         "`Vega, run specialists` - run copy, cadence, replies, booking, contact paths, and deliverability together.",
+        "`Vega, closing sprint for 10 closes this week` - run Vega's close-this-week operating loop and report the bottleneck.",
+        "`Vega, closing sprint approve 10` - run the sprint and approve a SendGrid-ready batch if available.",
         "`Vega, approve 10` - approve the next 10 SendGrid-ready outreach items without relying on Slack buttons.",
         "`digest` - post the current ops digest.",
         "`nova` - have the Lead Gen Director brief the Nova CEO AI Agent in Slack.",

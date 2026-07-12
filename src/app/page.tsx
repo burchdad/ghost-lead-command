@@ -395,6 +395,30 @@ type VegaSpecialistResult = {
   nextMove: string;
 };
 
+type VegaClosingSprintResult = {
+  ok: boolean;
+  mode: "closing-sprint";
+  bottleneck: string;
+  summary: string;
+  after: {
+    targetCloses: number;
+    targetBooked: number;
+    leadsThisWeek: number;
+    sentThisWeek: number;
+    repliesThisWeek: number;
+    hotRepliesThisWeek: number;
+    bookedCalls: number;
+    wonDeals: number;
+    pendingApprovals: number;
+    sendgridReady: number;
+    manualTasks: number;
+    failedSends: number;
+  };
+  actions: { name: string; status: string; detail: string }[];
+  nextMoves: string[];
+  autoApproved: boolean;
+};
+
 type SalesNavResult = {
   commit: boolean;
   enrich: boolean;
@@ -853,8 +877,10 @@ export default function Home() {
   const [collectorBusy, setCollectorBusy] = useState(false);
   const [tuningBusy, setTuningBusy] = useState(false);
   const [specialistBusy, setSpecialistBusy] = useState<VegaSpecialistKind | null>(null);
+  const [closingSprintBusy, setClosingSprintBusy] = useState(false);
   const [signalCollectorResult, setSignalCollectorResult] = useState<SignalCollectorResult | null>(null);
   const [specialistResult, setSpecialistResult] = useState<VegaSpecialistResult | null>(null);
+  const [closingSprintResult, setClosingSprintResult] = useState<VegaClosingSprintResult | null>(null);
   const [directorResult, setDirectorResult] = useState<LeadGenDirectorResult | null>(null);
   const [novaBriefResult, setNovaBriefResult] = useState<NovaBriefResult | null>(null);
   const [leadCommandAudit, setLeadCommandAudit] = useState<LeadCommandAuditResult | null>(null);
@@ -1971,6 +1997,50 @@ export default function Home() {
     if (["copy-chief", "cadence", "contact-path", "full-team"].includes(kind)) setActive("queue");
     if (kind === "booking") setActive("proposal");
     setSpecialistBusy(null);
+  }
+
+  async function runVegaClosingSprint(autoApprove = false) {
+    if (closingSprintBusy) return;
+    setClosingSprintBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: "Closing sprint running",
+      detail: autoApprove ? "Vega is running the sprint and approving a batch if available." : "Vega is running the weekly close target loop.",
+    });
+
+    const response = await fetch("/api/agent/closing-sprint", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: autoApprove ? "Vega closing sprint approve 10" : "Vega closing sprint for 10 closes this week",
+        autoApprove,
+        queueLimit: 10,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "Closing sprint blocked",
+        detail: payload.detail || payload.error || "Vega closing sprint could not finish.",
+      });
+      setClosingSprintBusy(false);
+      return;
+    }
+
+    setClosingSprintResult(payload);
+    setActionToast({
+      phase: "success",
+      title: "Closing sprint complete",
+      detail: payload.summary || "Vega closing sprint finished.",
+    });
+    setOperationStatus(payload.nextMoves?.[0] || payload.summary || "Vega closing sprint finished.");
+    await refreshOpsData();
+    await refreshLeads();
+    if (["approvals", "follow-up-cadence", "contact-path", "outbound-volume", "fresh-sourcing"].includes(payload.bottleneck)) setActive("queue");
+    if (["booking-handoff", "close-mode"].includes(payload.bottleneck)) setActive("proposal");
+    setClosingSprintBusy(false);
   }
 
   async function ensureSelectedLeadRecord() {
@@ -3235,6 +3305,54 @@ export default function Home() {
                         <p className="mt-3 text-sm leading-5 text-[#aebbb7]">{specialistResult.nextMove}</p>
                       </div>
                     ) : null}
+
+                    {closingSprintResult ? (
+                      <div className="mt-4 rounded-md border border-[#d8ff5f]/25 bg-[#d8ff5f]/[0.06] p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <h3 className="font-semibold text-white">Last Vega Closing Sprint</h3>
+                            <p className="mt-1 text-sm leading-5 text-[#d6dfdc]">{closingSprintResult.summary}</p>
+                          </div>
+                          <span className="rounded-sm border border-[#d8ff5f]/40 bg-[#d8ff5f]/10 px-2 py-1 text-xs font-semibold text-[#d8ff5f]">
+                            {closingSprintResult.bottleneck}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-2 md:grid-cols-5">
+                          <div className="rounded-sm bg-[#101417] p-3">
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-[#83d0c2]">Close target</p>
+                            <p className="mt-1 font-mono text-sm text-white">{closingSprintResult.after.wonDeals}/{closingSprintResult.after.targetCloses}</p>
+                          </div>
+                          <div className="rounded-sm bg-[#101417] p-3">
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-[#83d0c2]">Booked target</p>
+                            <p className="mt-1 font-mono text-sm text-white">{closingSprintResult.after.bookedCalls}/{closingSprintResult.after.targetBooked}</p>
+                          </div>
+                          <div className="rounded-sm bg-[#101417] p-3">
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-[#83d0c2]">Sent week</p>
+                            <p className="mt-1 font-mono text-sm text-white">{closingSprintResult.after.sentThisWeek}</p>
+                          </div>
+                          <div className="rounded-sm bg-[#101417] p-3">
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-[#83d0c2]">Hot replies</p>
+                            <p className="mt-1 font-mono text-sm text-white">{closingSprintResult.after.hotRepliesThisWeek}</p>
+                          </div>
+                          <div className="rounded-sm bg-[#101417] p-3">
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-[#83d0c2]">Ready</p>
+                            <p className="mt-1 font-mono text-sm text-white">{closingSprintResult.after.sendgridReady}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid gap-2 md:grid-cols-2">
+                          <div className="rounded-sm bg-[#101417] p-3">
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-[#83d0c2]">Actions</p>
+                            <p className="mt-1 text-sm leading-5 text-[#d6dfdc]">
+                              {closingSprintResult.actions.slice(0, 3).map((action) => `${action.name}: ${action.status}`).join(" | ") || "No actions finished."}
+                            </p>
+                          </div>
+                          <div className="rounded-sm bg-[#101417] p-3">
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-[#83d0c2]">Next move</p>
+                            <p className="mt-1 text-sm leading-5 text-[#d6dfdc]">{closingSprintResult.nextMoves[0] || "Run another focused sprint."}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="mt-5 grid gap-4 xl:grid-cols-2">
@@ -3284,6 +3402,28 @@ export default function Home() {
                         ) : null}
 
                         <div className="mt-4 flex flex-wrap gap-2">
+                          {agent.id === "closing-sprint" ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => runVegaClosingSprint(false)}
+                                disabled={closingSprintBusy}
+                                className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-[#c8ef4f] disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {closingSprintBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Target size={16} />}
+                                Run sprint
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => runVegaClosingSprint(true)}
+                                disabled={closingSprintBusy}
+                                className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {closingSprintBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Send size={16} />}
+                                Sprint + approve
+                              </button>
+                            </>
+                          ) : null}
                           {agent.id === "copy-chief" ? (
                             <button
                               type="button"

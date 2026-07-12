@@ -101,6 +101,7 @@ export async function GET() {
     const recentCopyEvent = events.find((event) => /copy chief/i.test(event.title));
     const recentCadenceEvent = events.find((event) => /cadence|follow-up|sequence/i.test(event.title));
     const recentContactPathEvent = events.find((event) => /contact path|manual/i.test(`${event.title} ${event.detail}`));
+    const recentClosingSprintEvent = events.find((event) => /closing sprint/i.test(event.title));
 
     const sourceConfigured = sourceStatus.pdlConfigured || sourceStatus.googleMapsConfigured || sourceStatus.ghostLeadAgentConfigured;
     const linkedinConfigured = Boolean(
@@ -109,8 +110,38 @@ export async function GET() {
     const linkedinLeads = leads.filter((lead) => /linkedin|sales navigator/i.test(lead.source));
     const canSend = outreach.mode === "live" && outreach.sendgridConfigured;
     const canBook = booking.calendarConfigured && booking.ownerEmail && (booking.meetingLink || booking.zoomConfigured);
+    const weeklyCloseTarget = Math.max(1, Number(process.env.VEGA_WEEKLY_CLOSE_TARGET || 10));
+    const bookedCalls = leads.filter((lead) => lead.stage === "Call Booked").length;
+    const wonDeals = leads.filter((lead) => lead.stage === "Won").length;
 
     const agents = [
+      agentCard({
+        id: "closing-sprint",
+        name: "Vega Closing Sprint Commander",
+        role: "Own the week-level target: source, approve, follow up, book calls, and escalate what blocks 10 closes.",
+        status: wonDeals >= weeklyCloseTarget || bookedCalls >= weeklyCloseTarget ? "ready" : sourceConfigured ? "running" : "blocked",
+        health:
+          wonDeals >= weeklyCloseTarget
+            ? "Close target met"
+            : bookedCalls >= weeklyCloseTarget
+              ? "Booked-call target met"
+              : sourceConfigured
+                ? "Sprint active"
+                : "Needs source provider",
+        detail:
+          "Runs the director, Copy Chief, cadence, reply, booking, contact-path, and deliverability lanes around the weekly revenue target.",
+        lastEvent: recentClosingSprintEvent,
+        nextRun: "Weekdays 8:45 AM CT via Vercel Cron",
+        actionLabel: "Run closing sprint",
+        actionView: "agents",
+        metrics: {
+          "won deals": `${wonDeals}/${weeklyCloseTarget}`,
+          "booked calls": bookedCalls,
+          "pending approvals": pending,
+          "hot replies": hotReplies,
+        },
+        blockers: sourceConfigured ? [] : ["No sourcing provider is configured for sprint volume."],
+      }),
       agentCard({
         id: "sourcing",
         name: "Sourcing Agent",
@@ -307,7 +338,7 @@ export async function GET() {
         metrics: {
           "pipeline leads": leads.length,
           proposals: leads.filter((lead) => lead.stage === "Proposal Sent").length,
-          won: leads.filter((lead) => lead.stage === "Won").length,
+          won: wonDeals,
         },
         blockers: ghostcrm.configured && ghostcrm.reachable ? [] : ["GhostCRM sync endpoint or API key needs attention"],
       }),

@@ -847,6 +847,123 @@ export async function notifySlackVegaLeadRequestResult(input: {
   };
 }
 
+export async function notifySlackClosingSprintResult(input: {
+  instruction: string;
+  status: "received" | "finished" | "failed";
+  summary: string;
+  bottleneck?: string;
+  metrics?: {
+    targetCloses: number;
+    targetBooked: number;
+    leadsThisWeek: number;
+    sentThisWeek: number;
+    repliesThisWeek: number;
+    hotRepliesThisWeek: number;
+    bookedCalls: number;
+    wonDeals: number;
+    pendingApprovals: number;
+    sendgridReady: number;
+    manualTasks: number;
+    failedSends: number;
+  };
+  actions?: { name: string; status: string; detail: string }[];
+  nextMoves?: string[];
+}) {
+  const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
+  const actionLines = input.actions?.length
+    ? input.actions.slice(0, 6).map((action) => `- *${action.name}:* ${action.status} - ${action.detail}`).join("\n")
+    : "No sprint actions have finished yet.";
+  const nextMoveLines = input.nextMoves?.length
+    ? input.nextMoves.slice(0, 5).map((move) => `- ${move}`).join("\n")
+    : "- Vega is preparing the next sprint move.";
+
+  const result = await postSlackPayload({
+    webhookUrl:
+      clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_EXECUTIVE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_WEBHOOK_URL),
+    botToken: clean(process.env.SLACK_BOT_TOKEN),
+    channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
+    payload: {
+      text: `Vega closing sprint ${input.status}: ${input.summary}`,
+      blocks: [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: input.status === "received" ? "Vega closing sprint received" : "Vega closing sprint report",
+            emoji: false,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Channel:* #${channelName}\n*Instruction:* ${input.instruction}\n*Status:* ${input.summary}${input.bottleneck ? `\n*Bottleneck:* ${input.bottleneck}` : ""}`,
+          },
+        },
+        ...(input.metrics
+          ? [
+              {
+                type: "section",
+                fields: [
+                  { type: "mrkdwn", text: `*Close target*\n${input.metrics.wonDeals}/${input.metrics.targetCloses}` },
+                  { type: "mrkdwn", text: `*Booked target*\n${input.metrics.bookedCalls}/${input.metrics.targetBooked}` },
+                  { type: "mrkdwn", text: `*Leads this week*\n${input.metrics.leadsThisWeek}` },
+                  { type: "mrkdwn", text: `*Sent this week*\n${input.metrics.sentThisWeek}` },
+                  { type: "mrkdwn", text: `*Replies this week*\n${input.metrics.repliesThisWeek}` },
+                  { type: "mrkdwn", text: `*Hot replies*\n${input.metrics.hotRepliesThisWeek}` },
+                  { type: "mrkdwn", text: `*Pending approvals*\n${input.metrics.pendingApprovals}` },
+                  { type: "mrkdwn", text: `*SendGrid-ready*\n${input.metrics.sendgridReady}` },
+                  { type: "mrkdwn", text: `*Manual tasks*\n${input.metrics.manualTasks}` },
+                  { type: "mrkdwn", text: `*Failed sends*\n${input.metrics.failedSends}` },
+                ],
+              },
+            ]
+          : []),
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Actions run*\n${actionLines.slice(0, 2800)}` },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Next moves*\n${nextMoveLines.slice(0, 1800)}` },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Queue", emoji: false },
+              url: appViewUrl("queue"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Inbox", emoji: false },
+              url: appViewUrl("inbox"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Agents", emoji: false },
+              url: appViewUrl("agents"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Proposal", emoji: false },
+              url: appViewUrl("proposal"),
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  return {
+    ...result,
+    message: result.sent ? `Vega closing sprint update posted to ${result.channel || channelName}.` : result.message,
+  };
+}
+
 export async function notifySlackReplyWorkResult(input: {
   instruction: string;
   summary: string;
