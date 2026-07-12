@@ -1,6 +1,6 @@
 import { createAutomationEvent } from "@/lib/automation";
 import { selectOfferAngle } from "@/lib/offer-copy-brain";
-import { findPublicCompanySignals, getPerplexityStatus } from "@/lib/perplexity";
+import { buildCompanyAccountBrief, findPublicCompanySignals, getPerplexityStatus } from "@/lib/perplexity";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -17,6 +17,7 @@ export type IntentFeedItem = {
   signalType: string;
   signalSummary: string;
   offerAngle: string;
+  accountBrief?: string;
   nextMove: string;
   sources: { title: string; url: string; snippet: string }[];
 };
@@ -82,6 +83,8 @@ export async function getIntentFeed(input: { limit?: number; enrich?: boolean } 
   });
 
   const items: IntentFeedItem[] = [];
+  const accountBriefs: Record<string, string> = {};
+  let briefsUsed = 0;
   for (const lead of leads) {
     const contact = contactability(lead);
     const sent = lead.outreachQueue.filter((item) => ["queued", "sent"].includes(item.status)).length;
@@ -109,6 +112,19 @@ export async function getIntentFeed(input: { limit?: number; enrich?: boolean } 
         url: source.url,
         snippet: source.snippet,
       }));
+      if (briefsUsed < 1 && base >= 78) {
+        const brief = await buildCompanyAccountBrief({
+          companyName: lead.companyName,
+          contactName: lead.name,
+          niche: lead.niche,
+          website: lead.company?.website,
+          signalSummary,
+        });
+        if (brief.brief) {
+          accountBriefs[lead.id] = brief.brief.slice(0, 900);
+          briefsUsed += 1;
+        }
+      }
     }
 
     const mergedSignal = [signalSummary, ...publicSignals].filter(Boolean).slice(0, 5).join("; ");
@@ -137,6 +153,7 @@ export async function getIntentFeed(input: { limit?: number; enrich?: boolean } 
       signalType: finalSignalType,
       signalSummary: mergedSignal,
       offerAngle: angle,
+      accountBrief: accountBriefs[lead.id],
       nextMove:
         lead.replies.length > 0
           ? "Work reply and push booking."
