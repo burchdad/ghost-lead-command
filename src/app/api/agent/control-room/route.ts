@@ -107,6 +107,7 @@ export async function GET() {
     const recentContactPathEvent = events.find((event) => /contact path|manual/i.test(`${event.title} ${event.detail}`));
     const recentClosingSprintEvent = events.find((event) => /closing sprint/i.test(event.title));
     const recentStandupEvent = events.find((event) => /morning standup/i.test(event.title));
+    const recentOpsEvent = events.find((event) => /vega ops|ops loop|sub-agent command/i.test(`${event.title} ${event.detail}`));
     const recentIntentEvent = events.find((event) => /intent signal feed|intent-ranked|perplexity|web intel/i.test(`${event.title} ${event.detail}`));
     const recentLearningEvent = events.find((event) => /learning loop|self-tuning|tuned source/i.test(`${event.title} ${event.detail}`));
     const recentSocialIntentEvent = events.find((event) => /social intent|competitor|social\/competitor/i.test(`${event.title} ${event.detail}`));
@@ -150,6 +151,26 @@ export async function GET() {
           "booked calls": bookedCalls,
           "hot replies": hotReplies,
         },
+      }),
+      agentCard({
+        id: "ops-loop",
+        name: "Vega Ops Commander",
+        role: "Collect sub-agent reports, choose the bottleneck, brief Nova/Stephen, and run safe autonomy lanes.",
+        status: missionControl.configured ? "ready" : "needs-work",
+        health: recentOpsEvent ? "Sub-agent command loop active" : "Ready for ops loop",
+        detail:
+          "Posts the chain-of-command brief into Slack: what every sub-agent reports to Vega, what Vega orders next, what Nova should reinforce, and what Stephen must unblock.",
+        lastEvent: recentOpsEvent,
+        nextRun: "Weekdays 12:00 PM CT via Vercel Cron",
+        actionLabel: "Run ops loop",
+        actionView: "agents",
+        metrics: {
+          bottleneck: pending ? "approvals" : hotReplies ? "booking" : "sourcing",
+          "pending approvals": pending,
+          "hot replies": hotReplies,
+          "failed sends": failed,
+        },
+        blockers: missionControl.configured ? [] : ["Configure Slack C-suite or Mission Control bridge so Vega can brief Nova."],
       }),
       agentCard({
         id: "closing-sprint",

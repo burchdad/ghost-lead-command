@@ -890,6 +890,7 @@ export default function Home() {
   const [specialistBusy, setSpecialistBusy] = useState<VegaSpecialistKind | null>(null);
   const [closingSprintBusy, setClosingSprintBusy] = useState(false);
   const [standupBusy, setStandupBusy] = useState(false);
+  const [opsLoopBusy, setOpsLoopBusy] = useState(false);
   const [signalCollectorResult, setSignalCollectorResult] = useState<SignalCollectorResult | null>(null);
   const [specialistResult, setSpecialistResult] = useState<VegaSpecialistResult | null>(null);
   const [closingSprintResult, setClosingSprintResult] = useState<VegaClosingSprintResult | null>(null);
@@ -2089,6 +2090,47 @@ export default function Home() {
     setOperationStatus(payload.stephenAsk || "Morning standup posted to Slack.");
     await refreshOpsData();
     setStandupBusy(false);
+  }
+
+  async function runVegaOpsLoop(execute = true) {
+    if (opsLoopBusy) return;
+    setOpsLoopBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: execute ? "Vega ops loop running" : "Vega ops brief running",
+      detail: execute ? "Vega is collecting sub-agent reports and running safe autonomy lanes." : "Vega is preparing the sub-agent command brief.",
+    });
+
+    const response = await fetch("/api/agent/ops", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: execute ? "Manual Vega ops loop from Mission Control" : "Manual Vega ops brief from Mission Control",
+        execute,
+        briefNova: true,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "Ops loop blocked",
+        detail: payload.detail || payload.error || "Vega ops loop could not finish.",
+      });
+      setOpsLoopBusy(false);
+      return;
+    }
+
+    setActionToast({
+      phase: "success",
+      title: execute ? "Ops loop complete" : "Ops brief posted",
+      detail: payload.summary || "Vega ops command brief posted.",
+    });
+    setOperationStatus(payload.stephenAsk || payload.nextMove || payload.summary || "Vega ops loop finished.");
+    await refreshOpsData();
+    await refreshLeads();
+    setOpsLoopBusy(false);
   }
 
   async function ensureSelectedLeadRecord() {
@@ -3459,6 +3501,17 @@ export default function Home() {
                             >
                               {standupBusy ? <LoaderCircle className="animate-spin" size={16} /> : <MessageSquareText size={16} />}
                               Run standup
+                            </button>
+                          ) : null}
+                          {agent.id === "ops-loop" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaOpsLoop(true)}
+                              disabled={opsLoopBusy}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-[#c8ef4f] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {opsLoopBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Bot size={16} />}
+                              Run ops loop
                             </button>
                           ) : null}
                           {agent.id === "closing-sprint" ? (

@@ -14,6 +14,7 @@ import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { runMorningStandup } from "@/lib/morning-standup";
 import { isSlackCommandAuthorized, notifySlackBatchApprovalResult, notifySlackClosingSprintResult } from "@/lib/slack";
 import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSprint } from "@/lib/vega-closing-sprint";
+import { isVegaOpsRequest, runVegaOpsBrief, shouldExecuteOps } from "@/lib/vega-ops-brief";
 import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
 
 function slackText(text: string) {
@@ -145,6 +146,18 @@ export async function POST(request: Request) {
     return slackText("Vega is running the weekly closing sprint now. I'll post the bottleneck and next moves when it finishes.");
   }
 
+  if (isVegaOpsRequest(text)) {
+    const execute = shouldExecuteOps(text);
+    after(async () => {
+      const result = await runVegaOpsBrief({ instruction: text, execute, briefNova: normalized.includes("nova") });
+      await postSlackCommandResponse(
+        responseUrl,
+        `${result.summary}\nBottleneck: ${result.bottleneck}\nStephen ask: ${result.stephenAsk}`,
+      );
+    });
+    return slackText(execute ? "Vega is running the ops loop now." : "Vega is preparing the sub-agent ops brief now.");
+  }
+
   const specialistKind = classifyVegaSpecialistRequest(text);
   if (specialistKind) {
     after(async () => {
@@ -235,6 +248,8 @@ export async function POST(request: Request) {
         "`Vega, run specialists` - run copy, cadence, replies, booking, contact paths, and deliverability together.",
         "`Vega, closing sprint for 10 closes this week` - run Vega's close-this-week operating loop and report the bottleneck.",
         "`Vega, morning standup` - post the Stephen/Nova/Vega scoreboard, Nova directive, Vega orders, and today's lead targets.",
+        "`Vega, ops brief` - post the sub-agent chain-of-command report for Vega, Nova, and Stephen.",
+        "`Vega, run ops loop` - run Vega's safe autonomy lanes and post what each sub-agent did.",
         "`Vega, closing sprint approve 10` - run the sprint and approve a SendGrid-ready batch if available.",
         "`Vega, approve 10` - approve the next 10 SendGrid-ready outreach items without relying on Slack buttons.",
         "`digest` - post the current ops digest.",

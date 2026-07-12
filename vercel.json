@@ -19,6 +19,10 @@
       "schedule": "45 14 * * 1-5"
     },
     {
+      "path": "/api/agent/ops",
+      "schedule": "0 17 * * 1-5"
+    },
+    {
       "path": "/api/agent/specialists/full-team",
       "schedule": "30 15 * * 1-5"
     },

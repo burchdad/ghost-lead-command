@@ -556,6 +556,120 @@ export async function notifySlackDirectorNovaBrief(input: {
   };
 }
 
+export async function notifySlackVegaOpsBrief(input: {
+  summary: string;
+  bottleneck: string;
+  nextMove: string;
+  closeness: string;
+  metrics: {
+    targetCloses: number;
+    targetBooked: number;
+    leadsThisWeek: number;
+    sentThisWeek: number;
+    repliesThisWeek: number;
+    hotRepliesThisWeek: number;
+    bookedCalls: number;
+    wonDeals: number;
+    pendingApprovals: number;
+    sendgridReady: number;
+    manualTasks: number;
+    failedSends: number;
+    openSequenceSteps: number;
+    bookingTasksReady: number;
+    bookingTasksBlocked: number;
+  };
+  orders: { agent: string; status: string; report: string; order: string }[];
+  executed: { name: string; status: string; detail: string }[];
+  stephenAsk: string;
+  novaDirective: string;
+}) {
+  const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
+  const directorName = leadDirectorAgentName();
+  const orderLines = input.orders
+    .slice(0, 8)
+    .map((order) => `- *${order.agent}:* ${order.status} - ${order.report}\n  _Order:_ ${order.order}`)
+    .join("\n");
+  const executedLines = input.executed.length
+    ? input.executed.slice(0, 6).map((item) => `- *${item.name}:* ${item.status} - ${item.detail}`).join("\n")
+    : "No execution requested; brief only.";
+
+  const result = await postSlackPayload({
+    webhookUrl:
+      clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_EXECUTIVE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_WEBHOOK_URL),
+    botToken: clean(process.env.SLACK_BOT_TOKEN),
+    channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
+    payload: {
+      text: `Vega ops brief: ${input.bottleneck}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "Vega Lead Command Ops Brief", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Channel:* #${channelName}\n*From:* ${directorName}\n*Summary:* ${input.summary}\n*Bottleneck:* ${input.bottleneck}\n*Next move:* ${input.nextMove}\n*GojiBerry closeness:* ${input.closeness}`,
+          },
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Won / target*\n${input.metrics.wonDeals}/${input.metrics.targetCloses}` },
+            { type: "mrkdwn", text: `*Booked / target*\n${input.metrics.bookedCalls}/${input.metrics.targetBooked}` },
+            { type: "mrkdwn", text: `*Leads this week*\n${input.metrics.leadsThisWeek}` },
+            { type: "mrkdwn", text: `*Sent this week*\n${input.metrics.sentThisWeek}` },
+            { type: "mrkdwn", text: `*Replies / hot*\n${input.metrics.repliesThisWeek}/${input.metrics.hotRepliesThisWeek}` },
+            { type: "mrkdwn", text: `*SendGrid-ready*\n${input.metrics.sendgridReady}` },
+            { type: "mrkdwn", text: `*Manual tasks*\n${input.metrics.manualTasks}` },
+            { type: "mrkdwn", text: `*Failed sends*\n${input.metrics.failedSends}` },
+          ],
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Sub-agent reports to Vega*\n${orderLines.slice(0, 2900)}` },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Executed lanes*\n${executedLines.slice(0, 1800)}` },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Nova directive*\n${input.novaDirective}\n\n*Stephen ask*\n${input.stephenAsk}` },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Agents", emoji: false },
+              style: "primary",
+              url: appViewUrl("agents"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Queue", emoji: false },
+              url: appViewUrl("queue"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Source", emoji: false },
+              url: appViewUrl("source"),
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  return {
+    ...result,
+    message: result.sent ? `Vega ops brief sent to ${result.channel || channelName}.` : result.message,
+  };
+}
+
 export async function notifySlackLeadCommandAudit(input: {
   executiveSummary: string;
   bottleneck: string;
