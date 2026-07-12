@@ -925,8 +925,23 @@ export default function Home() {
         lead: reply.lead,
       }));
 
+    const bookingBlocked = bookingTasks
+      .filter((task) => task.status === "blocked")
+      .map<QueueBoardCard>((task) => ({
+        id: task.id,
+        kind: "booking",
+        title: boardLeadName(task.lead),
+        subtitle: task.meetingTitle,
+        detail: compactText(task.prepNotes || task.meetingLink || "Booking handoff is blocked."),
+        status: task.status,
+        meta: [task.calendarProvider || "booking", task.meetingLink ? "meeting link" : "link needed", cardTime(task.createdAt)].filter(Boolean),
+        createdAt: task.createdAt,
+        leadId: task.lead?.id,
+        lead: task.lead,
+      }));
+
     const appointmentCards = [
-      ...bookingTasks.map<QueueBoardCard>((task) => ({
+      ...bookingTasks.filter((task) => task.status !== "blocked").map<QueueBoardCard>((task) => ({
         id: task.id,
         kind: "booking",
         title: boardLeadName(task.lead),
@@ -974,14 +989,14 @@ export default function Home() {
       },
       {
         id: "follow-up-1",
-        title: "Follow-Up 1",
-        subtitle: "Step 2 next-touch lane",
+        title: "Follow-Up 1 Draft",
+        subtitle: "Step 2 prepared for due-time approval",
         cards: followUpOne,
       },
       {
         id: "follow-up-2",
-        title: "Follow-Up 2",
-        subtitle: "Step 3 and later close-loop touches",
+        title: "Follow-Up 2 Draft",
+        subtitle: "Step 3+ prepared for close-loop timing",
         cards: followUpTwo,
       },
       {
@@ -993,8 +1008,14 @@ export default function Home() {
       {
         id: "appointment",
         title: "Appointment Set",
-        subtitle: "Moves pipeline to Potential Client",
+        subtitle: "Confirmed handoffs and potential-client stage",
         cards: appointmentCards,
+      },
+      {
+        id: "booking-blocked",
+        title: "Booking Blocked",
+        subtitle: "Needs link, calendar, or operator help",
+        cards: bookingBlocked,
       },
       {
         id: "rejected",
