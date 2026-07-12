@@ -785,6 +785,7 @@ export default function Home() {
   const [approvalSubject, setApprovalSubject] = useState("");
   const [approvalBody, setApprovalBody] = useState("");
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const [queueActionId, setQueueActionId] = useState<string | null>(null);
   const [twilioTestBusy, setTwilioTestBusy] = useState(false);
   const [replyText, setReplyText] = useState("Sounds interesting. Can you send pricing and maybe book something this week?");
   const [replyClassification, setReplyClassification] = useState("");
@@ -1859,18 +1860,83 @@ export default function Home() {
     await refreshLeads();
   }
 
+  async function redoQueueItem(id: string) {
+    setQueueActionId(id);
+    setActionToast({
+      phase: "loading",
+      title: "Rewriting draft",
+      detail: "Vega is sharpening this queued outreach.",
+    });
+    const response = await fetch(`/api/outreach/queue/${encodeURIComponent(id)}/redo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok && payload.item) {
+      setQueueItems((current) => current.map((item) => (item.id === payload.item.id ? payload.item : item)));
+      setOperationStatus("Rewrote queued outreach draft.");
+      setActionToast({
+        phase: "success",
+        title: "Draft rewritten",
+        detail: payload.copyScore?.total ? `Offer-copy score ${payload.copyScore.total}.` : "The queue card is updated.",
+      });
+      addAutomationEvent({
+        title: "Outreach draft rewritten",
+        detail: "A queued email was rewritten from the approval queue.",
+        status: "done",
+      });
+      window.setTimeout(() => setActionToast(null), 2400);
+    } else {
+      setActionToast({
+        phase: "error",
+        title: "Redo blocked",
+        detail: payload.error || "The queued draft could not be rewritten.",
+      });
+    }
+    setQueueActionId(null);
+    await refreshOpsData();
+  }
+
   async function rejectQueueItem(id: string) {
-    await fetch(`/api/outreach/queue/${encodeURIComponent(id)}/reject`, {
+    setQueueActionId(id);
+    setActionToast({
+      phase: "loading",
+      title: "Rejecting queue item",
+      detail: "Removing this item from the pending send path.",
+    });
+    const response = await fetch(`/api/outreach/queue/${encodeURIComponent(id)}/reject`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason: "Rejected in approval queue." }),
     });
-    setOperationStatus("Rejected queue item.");
-    addAutomationEvent({
-      title: "Outreach rejected",
-      detail: "A queued draft was rejected before send.",
-      status: "done",
-    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok) {
+      if (payload.item) {
+        setQueueItems((current) => current.map((item) => (item.id === payload.item.id ? payload.item : item)));
+      } else {
+        setQueueItems((current) => current.filter((item) => item.id !== id));
+      }
+      setOperationStatus("Rejected queue item.");
+      setActionToast({
+        phase: "success",
+        title: "Queue item rejected",
+        detail: "This item is no longer pending approval.",
+      });
+      addAutomationEvent({
+        title: "Outreach rejected",
+        detail: "A queued draft was rejected before send.",
+        status: "done",
+      });
+      window.setTimeout(() => setActionToast(null), 2200);
+    } else {
+      setOperationStatus("Reject failed.");
+      setActionToast({
+        phase: "error",
+        title: "Reject blocked",
+        detail: payload.error || "The queue item could not be rejected.",
+      });
+    }
+    setQueueActionId(null);
     await refreshOpsData();
   }
 
@@ -3893,17 +3959,29 @@ export default function Home() {
                             </div>
                             {item.status === "pending" ? (
                               <div className="flex shrink-0 gap-2">
+                                {item.channel === "email" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => redoQueueItem(item.id)}
+                                    disabled={queueActionId === item.id}
+                                    className="rounded-md bg-white/[0.08] px-3 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    Redo
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => openApprovalReview(item)}
-                                  className="rounded-md bg-[#d8ff5f] px-3 py-2 text-xs font-semibold text-[#101417]"
+                                  disabled={queueActionId === item.id}
+                                  className="rounded-md bg-[#d8ff5f] px-3 py-2 text-xs font-semibold text-[#101417] disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   Review
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => rejectQueueItem(item.id)}
-                                  className="rounded-md bg-white/[0.08] px-3 py-2 text-xs font-semibold text-[#d6dfdc]"
+                                  disabled={queueActionId === item.id}
+                                  className="rounded-md bg-white/[0.08] px-3 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   Reject
                                 </button>

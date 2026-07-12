@@ -724,6 +724,7 @@ function classifySourceLeads(leads: SourceLead[]) {
 function isReviewReadySourceLead(lead: SourceLead, issues = sourceLeadIssues(lead)) {
   if (!lead.companyName || lead.companyName === "Unknown Company") return false;
   if (isInstitutionalCompany(lead.companyName)) return false;
+  if (issues.includes("institutional-company") || issues.includes("vendor-risk")) return false;
   if (isVendorCompany(lead.companyName) || lead.buyerFit === "Vendor risk") return false;
   if (!lead.email && !lead.phone && !lead.website) return false;
   if (lead.score < 45) return false;
@@ -739,7 +740,9 @@ function sourceLeadIssues(lead: SourceLead) {
   if (!lead.companyName || lead.companyName === "Unknown Company") issues.push("missing-company");
   if (!lead.name || lead.name === "Unknown Contact") issues.push("generic-contact");
   if (!lead.title || lead.title === "Decision maker") issues.push("generic-title");
-  if (isInstitutionalCompany(lead.companyName)) issues.push("institutional-company");
+  if (isInstitutionalCompany(lead.companyName) || isGovernmentWebsite(lead) || isBareMunicipalityLead(lead)) {
+    issues.push("institutional-company");
+  }
   if (isVendorCompany(lead.companyName) || lead.buyerFit === "Vendor risk") issues.push("vendor-risk");
   if (lead.buyerFit === "Unclear") issues.push("unclear-buyer-fit");
   if (lead.score < 60) issues.push("below-source-score");
@@ -776,7 +779,38 @@ function isInstitutionalCompany(companyName: string) {
     "foundation",
     "nonprofit",
     "non-profit",
+    "city of",
+    "county of",
+    "state of",
   ].some((term) => company.includes(term));
+}
+
+function isGovernmentWebsite(lead: SourceLead) {
+  const website = clean((lead as SourceLead & { website?: string }).website).toLowerCase();
+  if (!website) return false;
+  return (
+    /\.gov(\/|$)/.test(website) ||
+    /\b(cityof|city-of|county|municipal|txdot|texas\.gov|tx\.gov)\b/.test(website)
+  );
+}
+
+function isBareMunicipalityLead(lead: SourceLead) {
+  const company = clean(lead.companyName).toLowerCase();
+  const location = clean(lead.location).toLowerCase();
+  if (!company || !location) return false;
+  if (company.split(/\s+/).length > 3) return false;
+  if (
+    /\b(hvac|heating|air|cooling|roof|plumb|electric|service|services|contract|contractor|company|llc|inc|co)\b/.test(
+      company,
+    )
+  ) {
+    return false;
+  }
+  return (
+    location.includes(`${company},`) ||
+    location.includes(`${company} tx`) ||
+    location.includes(`${company} texas`)
+  );
 }
 
 function isNonBuyerTitle(title: string) {
