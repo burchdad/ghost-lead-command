@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getGhostCrmHealth } from "@/lib/ghostcrm";
+import { getLinkedInProductStatus } from "@/lib/linkedin-products";
 import { getOperatorCaps } from "@/lib/operator-policy";
 import { getOutreachStatus, getTwilioReadiness } from "@/lib/outreach";
 import { getSourcingStatus } from "@/lib/sourcing";
@@ -7,6 +8,7 @@ import { getSourcingStatus } from "@/lib/sourcing";
 export async function GET() {
   const outreach = getOutreachStatus();
   const sourcing = getSourcingStatus();
+  const linkedInProducts = getLinkedInProductStatus();
   const ghostUrl = process.env.GHOST_LEAD_AGENT_SEARCH_URL || "";
   let ghostLeadAgent = {
     configured: Boolean(ghostUrl),
@@ -44,10 +46,15 @@ export async function GET() {
       useCase: "Google search, Maps, and local/business intent collectors",
     },
     linkedin: {
-      configured: Boolean(process.env.LINKEDIN_ACCESS_TOKEN || (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET)),
-      accessToken: process.env.LINKEDIN_ACCESS_TOKEN ? "configured" : "missing",
+      configured: linkedInProducts.configured,
+      accessToken: linkedInProducts.accessToken,
       oauthClient: process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET ? "configured" : "missing",
       redirectUri: process.env.LINKEDIN_REDIRECT_URI ? "configured" : "missing",
+      organizationUrn: linkedInProducts.organizationUrn,
+      eventsManagement: linkedInProducts.products.eventsManagement,
+      eventsReady: linkedInProducts.ready.eventsManagement,
+      leadSync: linkedInProducts.products.leadSync,
+      leadSyncReady: linkedInProducts.ready.leadSync,
     },
     ghostLeadAgent,
     sendgrid: {

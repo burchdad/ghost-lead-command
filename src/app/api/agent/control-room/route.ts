@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBookingReadiness } from "@/lib/automation";
 import { getGhostCrmHealth } from "@/lib/ghostcrm";
+import { getLinkedInProductStatus } from "@/lib/linkedin-products";
 import { getMissionControlBridgeStatus } from "@/lib/mission-control-bridge";
 import { getOperatorCaps } from "@/lib/operator-policy";
 import { getOutreachStatus, getTwilioReadiness } from "@/lib/outreach";
@@ -81,6 +82,7 @@ export async function GET() {
     const twilio = getTwilioReadiness();
     const booking = getBookingReadiness();
     const missionControl = getMissionControlBridgeStatus();
+    const linkedInProducts = getLinkedInProductStatus();
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
@@ -212,20 +214,30 @@ export async function GET() {
       agentCard({
         id: "linkedin",
         name: "LinkedIn Sales Nav Agent",
-        role: "Convert Sales Navigator saved searches into enriched, scored, approval-ready GhostCRM leads.",
-        status: linkedinConfigured || sourceStatus.pdlConfigured ? "ready" : "needs-work",
-        health: linkedinConfigured ? "LinkedIn connected" : sourceStatus.pdlConfigured ? "Manual Sales Nav lane ready" : "Needs enrichment source",
+        role: "Convert Sales Navigator saved searches and LinkedIn product access into enriched, scored, approval-ready GhostCRM leads.",
+        status: linkedinConfigured || sourceStatus.pdlConfigured || linkedInProducts.ready.eventsManagement ? "ready" : "needs-work",
+        health: linkedInProducts.ready.eventsManagement
+          ? "Events Management provisioned"
+          : linkedinConfigured
+            ? "LinkedIn connected"
+            : sourceStatus.pdlConfigured
+              ? "Manual Sales Nav lane ready"
+              : "Needs enrichment source",
         detail:
-          "Paste Sales Navigator rows or CSV into the Source lane. Lead Command enriches contact paths, scores buying context, imports contactable leads, and queues first touches.",
+          "Paste Sales Navigator rows or CSV into the Source lane. Events Management can now supply event context; Lead Sync stays gated until LinkedIn approves it.",
         lastEvent: events.find((event) => /sales navigator|linkedin/i.test(`${event.title} ${event.detail}`)),
         actionLabel: "Open Sales Nav lane",
         actionView: "source",
         metrics: {
           "sales nav leads": linkedinLeads.length,
           "pdl enrich": sourceStatus.pdlConfigured ? "on" : "off",
-          "min score": "76+",
+          "events api": linkedInProducts.ready.eventsManagement ? "ready" : "pending",
+          "lead sync": linkedInProducts.products.leadSync,
         },
-        blockers: sourceStatus.pdlConfigured ? [] : ["Sales Nav paste works now, but PDL_API_KEY is needed to enrich missing emails/phones."],
+        blockers: [
+          ...(sourceStatus.pdlConfigured ? [] : ["Sales Nav paste works now, but PDL_API_KEY is needed to enrich missing emails/phones."]),
+          ...(linkedInProducts.ready.leadSync ? [] : ["LinkedIn Lead Sync is not approved yet; keep using Sales Nav paste/screenshots and Events Management."]),
+        ],
       }),
       agentCard({
         id: "linkedin-tasks",

@@ -391,6 +391,7 @@ type VegaSpecialistKind =
   | "copy-chief"
   | "cadence"
   | "intent-feed"
+  | "linkedin-events"
   | "linkedin-tasks"
   | "full-team";
 
@@ -3500,6 +3501,17 @@ export default function Home() {
                             >
                               {specialistBusy === "linkedin-tasks" ? <LoaderCircle className="animate-spin" size={16} /> : <MessageSquareText size={16} />}
                               Queue LinkedIn
+                            </button>
+                          ) : null}
+                          {agent.id === "linkedin" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaSpecialist("linkedin-events")}
+                              disabled={Boolean(specialistBusy)}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {specialistBusy === "linkedin-events" ? <LoaderCircle className="animate-spin" size={16} /> : <CalendarClock size={16} />}
+                              Check events
                             </button>
                           ) : null}
                           {agent.id === "copy-chief" ? (

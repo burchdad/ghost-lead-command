@@ -1,5 +1,6 @@
 import { createAutomationEvent, createBookingTaskForLead, runDueSequenceSteps } from "@/lib/automation";
 import { runIntentFeedScout } from "@/lib/intent-feed";
+import { listLinkedInEvents } from "@/lib/linkedin-products";
 import { runLinkedInTaskLane } from "@/lib/linkedin-task-lane";
 import { improveOfferCopy } from "@/lib/offer-copy-brain";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
@@ -16,6 +17,7 @@ export type VegaSpecialistKind =
   | "copy-chief"
   | "cadence"
   | "intent-feed"
+  | "linkedin-events"
   | "linkedin-tasks"
   | "full-team";
 
@@ -455,6 +457,28 @@ export async function runLinkedInTaskAgent(input: { limit?: number } = {}): Prom
   };
 }
 
+export async function runLinkedInEventsAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
+  const result = await listLinkedInEvents({ count: input.limit || 10, leadGenOnly: false });
+  const leadGen = result.ok ? await listLinkedInEvents({ count: input.limit || 10, leadGenOnly: true }).catch(() => null) : null;
+  return {
+    kind: "linkedin-events",
+    title: "LinkedIn Events Agent",
+    status: result.ok ? "done" : "blocked",
+    summary: result.ok
+      ? `Checked LinkedIn Events Management. Found ${result.events.length} organizer events and ${leadGen?.events.length || 0} lead-gen-enabled events.`
+      : result.message,
+    metrics: {
+      events: result.events.length,
+      leadGenEvents: leadGen?.events.length || 0,
+      eventsReady: result.status.ready.eventsManagement,
+      leadSyncReady: result.status.ready.leadSync,
+    },
+    nextMove: result.ok
+      ? "Use event topics and attendees/forms as intent context; keep Lead Sync pending until LinkedIn approves it."
+      : result.status.nextSteps.join(" ") || "Finish LinkedIn token and organization configuration.",
+  };
+}
+
 export async function runVegaSpecialist(kind: VegaSpecialistKind, input: { limit?: number } = {}) {
   if (kind === "contact-path") return runContactPathAgent(input);
   if (kind === "booking") return runBookingConciergeAgent(input);
@@ -462,6 +486,7 @@ export async function runVegaSpecialist(kind: VegaSpecialistKind, input: { limit
   if (kind === "copy-chief") return runCopyChiefAgent(input);
   if (kind === "cadence") return runCadenceOrchestrator(input);
   if (kind === "intent-feed") return runIntentFeedAgent({ ...input, enrich: true });
+  if (kind === "linkedin-events") return runLinkedInEventsAgent(input);
   if (kind === "linkedin-tasks") return runLinkedInTaskAgent(input);
   return runVegaSpecialistTeam(input);
 }
@@ -533,6 +558,7 @@ export function classifyVegaSpecialistRequest(text: string): VegaSpecialistKind 
   if (/\b(?:copy chief|rewrite|copy qa|improve emails?|offer copy|hormozi|nepq)\b/.test(normalized)) return "copy-chief";
   if (/\b(?:cadence|sequence|due follow[-\s]?ups?|follow[-\s]?up queue|next touches)\b/.test(normalized)) return "cadence";
   if (/\b(?:intent feed|signal feed|warm signals?|perplexity|web intel|sonar|research feed)\b/.test(normalized)) return "intent-feed";
+  if (/\b(?:linkedin events?|event management|events api|lead gen events?)\b/.test(normalized)) return "linkedin-events";
   if (/\b(?:linkedin tasks?|sales nav tasks?|linkedin lane|sales navigator tasks?|social dm|connection requests?)\b/.test(normalized)) return "linkedin-tasks";
   return null;
 }

@@ -224,6 +224,7 @@ export async function POST(request: Request) {
         "`Vega, need 10 new leads in HVAC between Tyler and Dallas, Texas` - run sourcing and queue approval-ready outreach.",
         "`Vega, work replies` - queue response drafts for hot/booked replies and prep bookings.",
         "`Vega, refresh intent feed` - rank warm buyer signals and public web context before choosing the next accounts.",
+        "`Vega, check LinkedIn events` - verify LinkedIn Events Management and lead-gen-enabled event availability.",
         "`Vega, queue LinkedIn tasks` - create manual Sales Navigator connection/DM tasks for social-fit leads.",
         "`Vega, push bookings` - work engaged replies toward calendar-ready follow-up.",
         "`Vega, work contact paths` - refresh manual phone/website tasks and blocked contact paths.",
