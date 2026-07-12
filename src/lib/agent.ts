@@ -142,6 +142,19 @@ function defaultNextAction(lead: SourceLead) {
   return `AI agent sourced ${lead.companyName}, scored ${lead.score}, and queued a first-touch opener for ${lead.name}. Buyer fit: ${lead.buyerFit}.${signals ? ` Signal: ${signals}.` : ""}`;
 }
 
+function manualContactBody(sourceLead: SourceLead) {
+  const website = clean((sourceLead as SourceLead & { website?: string }).website);
+  const phone = clean(sourceLead.phone);
+  const signals = sourceLead.signalSummary || sourceLead.intentSignals?.slice(0, 3).join("; ");
+  return [
+    `Manual contact path for ${sourceLead.companyName}.`,
+    phone ? `Call path: ${phone}` : "",
+    website ? `Website/contact form: ${website}` : "",
+    signals ? `Why this lead: ${signals}` : "",
+    "Operator move: find a direct email, call the business, or use the website contact form before adding this lead to email outreach.",
+  ].filter(Boolean).join("\n");
+}
+
 async function importSourceLead(sourceLead: SourceLead, workspaceId: string) {
   const prisma = getPrisma();
   const email = clean(sourceLead.email).toLowerCase();
@@ -330,7 +343,8 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     if (qualified.length >= queueLimit) break;
   }
 
-  const queued = [];
+  const queued: { lead: { companyName: string }; item: Prisma.OutreachQueueItemGetPayload<{ include: { lead: true } }>; slack: unknown; approval: unknown }[] = [];
+  const manualQueued: { lead: { companyName: string }; item: Prisma.OutreachQueueItemGetPayload<{ include: { lead: true } }>; slack: unknown }[] = [];
 
   for (const sourceLead of qualified) {
     const imported = await importSourceLead(sourceLead, workspace.id);
@@ -374,6 +388,44 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     queued.push({ lead: imported.lead, item, slack, approval });
   }
 
+  const manualCandidates = [
+    ...(sourceResult.leads as SourceLead[]),
+    ...((sourceResult.reviewLeads || []) as SourceLead[]),
+  ].filter((lead) => {
+    if (queued.some((entry) => entry.lead.companyName === lead.companyName)) return false;
+    if (lead.score < minScore) return false;
+    if (!lead.phone && !(lead as SourceLead & { website?: string }).website) return false;
+    if (lead.email) return false;
+    if (!lead.companyName?.trim() || !lead.name?.trim()) return false;
+    return true;
+  });
+
+  for (const sourceLead of manualCandidates) {
+    if (manualQueued.length >= Math.max(0, queueLimit - queued.length)) break;
+    const imported = await importSourceLead(sourceLead, workspace.id);
+    if (imported.skipped) {
+      skip(`manual-${imported.reason}`);
+      continue;
+    }
+
+    const item = await prisma.outreachQueueItem.create({
+      data: {
+        workspaceId: workspace.id,
+        leadId: imported.lead.id,
+        channel: "manual",
+        provider: "phone-website",
+        subject: `Manual contact path for ${imported.lead.companyName}`,
+        body: manualContactBody(sourceLead),
+        status: "pending",
+        reason: sanitizeInternalReason("Queued by Vega because this lead has phone/website context but no public email yet."),
+      },
+      include: { lead: true },
+    });
+
+    const slack = await notifySlackOutreachApproval(item);
+    manualQueued.push({ lead: imported.lead, item, slack });
+  }
+
   const diagnostics = {
     ...(sourceResult.diagnostics || {
       rawFound: sourceResult.leads.length,
@@ -396,7 +448,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       sourceMessage: sourceResult.message || null,
       found: sourceResult.leads.length,
       qualified: qualified.length,
-      queued: queued.length,
+      queued: queued.length + manualQueued.length,
       reviewReady: diagnostics.reviewReady,
       skipped,
       diagnostics,
@@ -410,17 +462,19 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     found: sourceResult.leads.length,
     rawFound: diagnostics.rawFound,
     qualified: qualified.length,
-    queued: queued.length,
+    queued: queued.length + manualQueued.length,
     reviewReady: diagnostics.reviewReady,
     skipped,
     diagnostics,
     guardrails: policy,
-    items: queued.map((entry) => entry.item),
+    items: [...queued.map((entry) => entry.item), ...manualQueued.map((entry) => entry.item)],
     message:
-      queued.length > 0
+      queued.length + manualQueued.length > 0
         ? autoSend
           ? `AI operator attempted ${queued.length} live sends.`
-          : `AI operator queued ${queued.length} approval-ready emails.`
+          : manualQueued.length
+            ? `AI operator queued ${queued.length} email approvals and ${manualQueued.length} manual contact tasks.`
+            : `AI operator queued ${queued.length} approval-ready emails.`
         : sourceResult.message ||
           (diagnostics.reviewReady > 0
             ? `AI operator found ${diagnostics.reviewReady} review-ready leads, but none passed the current email/score policy for outreach.`

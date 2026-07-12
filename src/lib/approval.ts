@@ -53,7 +53,15 @@ export async function approveOutreachQueueItem(
   const message = sanitizeCustomerMessage(String(input.body || item.body), { channel: item.channel });
   const subject = sanitizeSubject(input.subject ? String(input.subject) : item.subject || `Quick idea for ${item.lead.companyName}`);
   const delivery =
-    item.channel === "sms"
+    item.channel === "manual"
+      ? {
+          status: "queued" as const,
+          provider: item.provider || "operator",
+          channel: "manual" as const,
+          dryRun: true,
+          message: "Manual contact item approved. No external message was sent.",
+        }
+      : item.channel === "sms"
       ? await sendSms({ to: item.lead.contact?.phone || "", text: message })
       : await sendEmail({ to: item.lead.contact?.email || "", subject, text: message });
 
