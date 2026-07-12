@@ -4,6 +4,7 @@ import { approveOutreachQueueItem } from "@/lib/approval";
 import { getPrisma } from "@/lib/prisma";
 import { findSuppressionMatch } from "@/lib/suppression";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
+import { improveOfferCopy } from "@/lib/offer-copy-brain";
 import { notifySlackOutreachApproval } from "@/lib/slack";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -158,9 +159,13 @@ async function queueFirstTouch(input: {
 
   const trimmed = generated.text.trim();
   const subjectMatch = trimmed.match(/^Subject:\s*(.+)$/im);
-  const subject = sanitizeSubject(subjectMatch?.[1] || `Signal-to-meeting idea`);
-  const body = sanitizeCustomerMessage(trimmed.replace(/^Subject:\s*.+$/im, "").trim() || trimmed, {
-    channel: "email",
+  const copy = improveOfferCopy({
+    subject: subjectMatch?.[1] || `Signal-to-meeting idea`,
+    body: sanitizeCustomerMessage(trimmed.replace(/^Subject:\s*.+$/im, "").trim() || trimmed, {
+      channel: "email",
+    }),
+    lead: input.lead,
+    mode: "first-touch",
   });
 
   const item = await prisma.outreachQueueItem.create({
@@ -169,10 +174,10 @@ async function queueFirstTouch(input: {
       leadId: input.lead.id,
       channel: "email",
       provider: "sendgrid",
-      subject,
-      body,
+      subject: sanitizeSubject(copy.subject),
+      body: copy.body,
       status: "pending",
-      reason: sanitizeInternalReason(`Queued from external source intake via ${generated.provider}.`),
+      reason: sanitizeInternalReason(`${copy.reason} Queued from external source intake via ${generated.provider}.`),
     },
     include: { lead: true },
   });

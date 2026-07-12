@@ -3,6 +3,7 @@ import { approveOutreachQueueItem } from "@/lib/approval";
 import { generateSalesText } from "@/lib/ai";
 import { createAutomationEvent } from "@/lib/automation";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
+import { improveOfferCopy } from "@/lib/offer-copy-brain";
 import { evaluateSourceLead, prepareOperatorRun } from "@/lib/operator-policy";
 import { getPrisma } from "@/lib/prisma";
 import { searchFreshLeads, type SourceDiagnostics, type SourceLead, type SourceProvider } from "@/lib/sourcing";
@@ -135,6 +136,22 @@ function parseGeneratedOutreach(text: string, companyName: string) {
     channel: "email",
   });
   return { subject, body };
+}
+
+function improveGeneratedOutreach(copy: { subject: string; body: string }, lead: SourceLead) {
+  return improveOfferCopy({
+    subject: copy.subject,
+    body: copy.body,
+    lead: {
+      name: lead.name,
+      companyName: lead.companyName,
+      niche: lead.niche,
+      source: lead.source,
+      nextAction: defaultNextAction(lead),
+      score: lead.score,
+    },
+    mode: "first-touch",
+  });
 }
 
 function defaultNextAction(lead: SourceLead) {
@@ -368,7 +385,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       input: "Autonomous first-touch email. Keep it short, consultative, and approval-ready.",
     });
 
-    const copy = parseGeneratedOutreach(generated.text, imported.lead.companyName);
+    const copy = improveGeneratedOutreach(parseGeneratedOutreach(generated.text, imported.lead.companyName), sourceLead);
     const item = await prisma.outreachQueueItem.create({
       data: {
         workspaceId: workspace.id,
@@ -378,7 +395,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         subject: copy.subject,
         body: copy.body,
         status: "pending",
-        reason: sanitizeInternalReason(`Queued by AI operator via ${generated.provider}.`),
+        reason: sanitizeInternalReason(`${copy.reason} Generated via ${generated.provider}.`),
       },
       include: { lead: true },
     });

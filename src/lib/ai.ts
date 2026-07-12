@@ -1,4 +1,5 @@
 import { customerSignature, outreachBrandName, outreachSenderName, sanitizeCustomerMessage } from "@/lib/message-sanitizer";
+import { offerCopyPrompt } from "@/lib/offer-copy-brain";
 
 type GenerateArgs = {
   kind: "outreach" | "call-prep" | "proposal" | "classifier";
@@ -92,6 +93,7 @@ function buildPrompt({ kind, lead, input }: GenerateArgs) {
     "Every outbound message should diagnose before pitching, avoid hype, avoid fake familiarity, avoid guarantees, avoid pressure, and make one specific ask.",
     "Favor short consultative questions over claims. Make the buyer feel understood, not cornered.",
     "For cold email, keep it under 120 words. Use a specific subject under 45 characters. Make one ask: permission to show the exact signal-to-meeting workflow.",
+    offerCopyPrompt(lead),
     "Keep compliance in mind: no deceptive claims, no pressure language, and no misleading urgency.",
     `Customer-facing email signatures must be exactly:\n${customerSignature()}`,
     `Never include placeholders like [Your Name], internal tool names, OpenAI, AI operator, queue metadata, or ${outreachBrandName()} command-center status lines in customer-facing copy.`,

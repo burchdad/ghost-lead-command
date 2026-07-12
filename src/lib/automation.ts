@@ -1,5 +1,6 @@
 import { getPrisma } from "@/lib/prisma";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
+import { improveOfferCopy } from "@/lib/offer-copy-brain";
 import { getOperatorQueueCapacity } from "@/lib/operator-policy";
 import { notifySlackOutreachApproval } from "@/lib/slack";
 import { findSuppressionMatch } from "@/lib/suppression";
@@ -167,39 +168,59 @@ export async function createFollowUpSequenceForLead(input: {
   const firstName = lead.name.split(" ")[0] || "there";
   const niche = lead.niche || "business";
   const provider = input.provider || "sendgrid";
+  const improve = (subject: string, body: string) => {
+    const copy = improveOfferCopy({
+      subject,
+      body,
+      lead: {
+        name: lead.name,
+        companyName: lead.companyName,
+        niche: lead.niche,
+        source: lead.source,
+        nextAction: lead.nextAction,
+        score: lead.score,
+        value: lead.value,
+      },
+      mode: "follow-up",
+    });
+    return { subject: copy.subject, body: copy.body };
+  };
+  const step1 = improve(
+    input.seedSubject || `Quick follow-up for ${lead.companyName}`,
+    `${firstName}, quick follow-up on this.\n\nIf missed requests, slow follow-up, or old form fills are costing ${lead.companyName} opportunities, I can show the simple workflow I had in mind.\n\nWorth a quick look this week?`,
+  );
+  const step2 = improve(
+    `Missed ${niche.toLowerCase()} lead flow`,
+    `${firstName}, one more angle: most teams do not need a full CRM rebuild to recover missed conversations.\n\nThe useful part is a lightweight layer that catches stale requests, writes the follow-up, classifies replies, and routes the interested ones into booking.\n\nShould I send a quick example using ${lead.companyName}'s current lead flow?`,
+  );
+  const step3 = improve(
+    `Close the loop?`,
+    `${firstName}, closing the loop here.\n\nIf improving lead follow-up is not a priority right now, no worries. If it is, I can show where an AI follow-up workflow usually finds the fastest wins.\n\nWant me to leave this alone or send over a quick breakdown?`,
+  );
   const steps = [
     {
       stepNumber: 1,
       dayOffset: 2,
       channel: "email",
       provider,
-      subject: sanitizeSubject(input.seedSubject || `Quick follow-up for ${lead.companyName}`),
-      body: sanitizeCustomerMessage(
-        `${firstName}, quick follow-up on this.\n\nIf missed requests, slow follow-up, or old form fills are costing ${lead.companyName} opportunities, I can show the simple workflow I had in mind.\n\nWorth a quick look this week?`,
-        { channel: "email" },
-      ),
+      subject: sanitizeSubject(step1.subject),
+      body: sanitizeCustomerMessage(step1.body, { channel: "email" }),
     },
     {
       stepNumber: 2,
       dayOffset: 5,
       channel: "email",
       provider,
-      subject: sanitizeSubject(`Missed ${niche.toLowerCase()} lead flow`),
-      body: sanitizeCustomerMessage(
-        `${firstName}, one more angle: most teams do not need a full CRM rebuild to recover missed conversations.\n\nThe useful part is a lightweight layer that catches stale requests, writes the follow-up, classifies replies, and routes the interested ones into booking.\n\nShould I send a quick example using ${lead.companyName}'s current lead flow?`,
-        { channel: "email" },
-      ),
+      subject: sanitizeSubject(step2.subject),
+      body: sanitizeCustomerMessage(step2.body, { channel: "email" }),
     },
     {
       stepNumber: 3,
       dayOffset: 9,
       channel: "email",
       provider,
-      subject: sanitizeSubject(`Close the loop?`),
-      body: sanitizeCustomerMessage(
-        `${firstName}, closing the loop here.\n\nIf improving lead follow-up is not a priority right now, no worries. If it is, I can show where an AI follow-up workflow usually finds the fastest wins.\n\nWant me to leave this alone or send over a quick breakdown?`,
-        { channel: "email" },
-      ),
+      subject: sanitizeSubject(step3.subject),
+      body: sanitizeCustomerMessage(step3.body, { channel: "email" }),
     },
   ];
 

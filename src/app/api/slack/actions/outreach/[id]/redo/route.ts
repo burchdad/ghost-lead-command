@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateSalesText } from "@/lib/ai";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
+import { improveOfferCopy } from "@/lib/offer-copy-brain";
 import { getPrisma } from "@/lib/prisma";
 import { isSlackActionAuthorized, notifySlackOutreachApproval } from "@/lib/slack";
 
@@ -51,17 +52,31 @@ export async function GET(
 
   const text = generated.text.trim();
   const subjectMatch = text.match(/^Subject:\s*(.+)$/im);
-  const subject = sanitizeSubject(subjectMatch?.[1]?.trim() || item.subject);
-  const body = sanitizeCustomerMessage(text.replace(/^Subject:\s*.+$/im, "").trim() || item.body, {
-    channel: item.channel,
+  const copy = improveOfferCopy({
+    subject: subjectMatch?.[1]?.trim() || item.subject,
+    body: sanitizeCustomerMessage(text.replace(/^Subject:\s*.+$/im, "").trim() || item.body, {
+      channel: item.channel,
+    }),
+    lead: item.lead
+      ? {
+          name: item.lead.name,
+          companyName: item.lead.companyName,
+          niche: item.lead.niche,
+          source: item.lead.source,
+          nextAction: item.lead.nextAction,
+          score: item.lead.score,
+          value: item.lead.value,
+        }
+      : undefined,
+    mode: "rewrite",
   });
 
   const updated = await prisma.outreachQueueItem.update({
     where: { id },
     data: {
-      subject,
-      body,
-      reason: "Rewritten from Slack.",
+      subject: sanitizeSubject(copy.subject),
+      body: copy.body,
+      reason: `Rewritten from Slack. ${copy.reason}`,
     },
     include: { lead: true },
   });
