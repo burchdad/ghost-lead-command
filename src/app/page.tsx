@@ -412,7 +412,7 @@ type BookingTask = {
   scheduledFor?: string | null;
   prepNotes: string;
   createdAt: string;
-  lead?: Lead | null;
+  lead?: (Partial<Lead> & { companyName?: string; nextAction?: string }) | null;
 };
 
 function formatIntegrationValue(value: IntegrationPayloadValue): string {
@@ -456,7 +456,21 @@ type SequenceQueueStep = {
   body: string;
   status: string;
   createdAt: string;
-  lead?: Lead | null;
+  lead?: (Partial<Lead> & { companyName?: string; nextAction?: string }) | null;
+};
+
+type QueueBoardCard = {
+  id: string;
+  kind: "queue" | "sequence" | "reply" | "booking" | "lead";
+  title: string;
+  subtitle?: string;
+  detail: string;
+  status: string;
+  meta: string[];
+  createdAt?: string;
+  leadId?: string;
+  lead?: (Partial<Lead> & { companyName?: string; nextAction?: string }) | null;
+  queueItem?: QueueItem;
 };
 
 const seedLeads: Lead[] = [
@@ -656,6 +670,27 @@ function publicQueueReason(item: QueueItem) {
   return reason;
 }
 
+function boardLeadName(lead?: (Partial<Lead> & { companyName?: string }) | null) {
+  return lead?.company || lead?.companyName || "Unassigned lead";
+}
+
+function boardContactName(lead?: (Partial<Lead> & { companyName?: string }) | null) {
+  return lead?.name || "Unknown contact";
+}
+
+function compactText(value: string, maxLength = 260) {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trim()}...`;
+}
+
+function cardTime(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 function mapApiLead(lead: {
   id: string;
   name: string;
@@ -818,6 +853,149 @@ export default function Home() {
   const leads = liveLeads;
   const agentTemplates = liveAgents;
   const prompts = livePrompts;
+  const queueBoardColumns = useMemo(() => {
+    const pendingQueue = queueItems.filter((item) => item.status === "pending");
+    const nonPendingQueue = queueItems.filter((item) => item.status !== "pending");
+    const isFollowUpQueue = (item: QueueItem) =>
+      /follow-up sequence|sequence step|step \d|three-touch/i.test(`${item.reason || ""} ${item.subject || ""}`);
+
+    const initial = pendingQueue
+      .filter((item) => !isFollowUpQueue(item))
+      .map<QueueBoardCard>((item) => ({
+        id: item.id,
+        kind: "queue",
+        title: boardLeadName(item.lead),
+        subtitle: item.subject || boardContactName(item.lead),
+        detail: compactText(publicQueueReason(item) || item.body),
+        status: item.status,
+        meta: [item.channel, item.provider, cardTime(item.createdAt)].filter(Boolean),
+        createdAt: item.createdAt,
+        leadId: item.lead?.id,
+        lead: item.lead,
+        queueItem: item,
+      }));
+
+    const followUpQueue = pendingQueue
+      .filter(isFollowUpQueue)
+      .map<QueueBoardCard>((item) => ({
+        id: item.id,
+        kind: "queue",
+        title: boardLeadName(item.lead),
+        subtitle: item.subject || "Follow-up draft",
+        detail: compactText(publicQueueReason(item) || item.body),
+        status: item.status,
+        meta: [item.channel, item.provider, cardTime(item.createdAt)].filter(Boolean),
+        createdAt: item.createdAt,
+        leadId: item.lead?.id,
+        lead: item.lead,
+        queueItem: item,
+      }));
+
+    const sequenceCards = sequenceQueue
+      .filter((step) => !["sent", "skipped", "rejected"].includes(step.status))
+      .map<QueueBoardCard>((step) => ({
+        id: step.id,
+        kind: "sequence",
+        title: boardLeadName(step.lead),
+        subtitle: `Step ${step.stepNumber} - day ${step.dayOffset}`,
+        detail: compactText(step.subject ? `${step.subject}. ${step.body}` : step.body),
+        status: step.status,
+        meta: [step.channel, step.provider || "sequence", cardTime(step.createdAt)].filter(Boolean),
+        createdAt: step.createdAt,
+        leadId: step.lead?.id,
+        lead: step.lead,
+      }));
+
+    const replyCards = replyItems
+      .filter((reply) => ["hot", "booked", "objection", "nurture"].includes(reply.classification.toLowerCase()))
+      .map<QueueBoardCard>((reply) => ({
+        id: reply.id,
+        kind: "reply",
+        title: boardLeadName(reply.lead),
+        subtitle: reply.from,
+        detail: compactText(reply.body),
+        status: reply.classification,
+        meta: [reply.channel, reply.source, cardTime(reply.createdAt)].filter(Boolean),
+        createdAt: reply.createdAt,
+        leadId: reply.lead?.id,
+        lead: reply.lead,
+      }));
+
+    const appointmentCards = [
+      ...bookingTasks.map<QueueBoardCard>((task) => ({
+        id: task.id,
+        kind: "booking",
+        title: boardLeadName(task.lead),
+        subtitle: task.meetingTitle,
+        detail: compactText(task.prepNotes || task.meetingLink || "Booking handoff ready."),
+        status: task.status,
+        meta: [task.calendarProvider || "booking", task.meetingLink ? "meeting link" : "link needed", cardTime(task.createdAt)].filter(Boolean),
+        createdAt: task.createdAt,
+        leadId: task.lead?.id,
+        lead: task.lead,
+      })),
+      ...leads
+        .filter((lead) => lead.stage === "Potential Client" || lead.stage === "Call Booked")
+        .map<QueueBoardCard>((lead) => ({
+          id: lead.id || `${lead.company}-appointment`,
+          kind: "lead",
+          title: lead.company,
+          subtitle: lead.name,
+          detail: compactText(lead.next),
+          status: lead.stage,
+          meta: [lead.niche, String(lead.score), lead.lastTouch].filter(Boolean),
+          leadId: lead.id,
+          lead,
+        })),
+    ];
+
+    const done = nonPendingQueue.slice(0, 20).map<QueueBoardCard>((item) => ({
+      id: item.id,
+      kind: "queue",
+      title: boardLeadName(item.lead),
+      subtitle: item.subject || boardContactName(item.lead),
+      detail: compactText(publicQueueReason(item) || item.body),
+      status: item.status,
+      meta: [item.channel, item.provider, cardTime(item.createdAt)].filter(Boolean),
+      createdAt: item.createdAt,
+      leadId: item.lead?.id,
+      lead: item.lead,
+      queueItem: item,
+    }));
+
+    return [
+      {
+        id: "initial",
+        title: "Initial Outreach",
+        subtitle: "First touches needing review",
+        cards: initial,
+      },
+      {
+        id: "follow-up",
+        title: "Follow-Up",
+        subtitle: "Sequence steps and next touches",
+        cards: [...followUpQueue, ...sequenceCards],
+      },
+      {
+        id: "engaged",
+        title: "Engaged Reply",
+        subtitle: "Hot, booked, objection, nurture",
+        cards: replyCards,
+      },
+      {
+        id: "appointment",
+        title: "Appointment Set",
+        subtitle: "Moves pipeline to Potential Client",
+        cards: appointmentCards,
+      },
+      {
+        id: "done",
+        title: "Done / Rejected",
+        subtitle: "Recently completed queue items",
+        cards: done,
+      },
+    ];
+  }, [bookingTasks, leads, queueItems, replyItems, sequenceQueue]);
 
   function selectLead(lead: Lead) {
     setSelectedLead(lead);
@@ -1938,6 +2116,62 @@ export default function Home() {
     }
     setQueueActionId(null);
     await refreshOpsData();
+  }
+
+  async function markAppointmentSet(card: QueueBoardCard) {
+    const leadId = card.leadId || card.lead?.id;
+    if (!leadId) {
+      setActionToast({
+        phase: "error",
+        title: "Appointment blocked",
+        detail: "This card is not attached to a saved lead yet.",
+      });
+      return;
+    }
+    setQueueActionId(card.id);
+    setActionToast({
+      phase: "loading",
+      title: "Setting appointment stage",
+      detail: `${card.title} is moving into the Potential Client pipeline stage.`,
+    });
+    const response = await fetch(`/api/leads/${encodeURIComponent(leadId)}/interactions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "appointment",
+        direction: "operator",
+        classification: "appointment-set",
+        body: `Appointment set from Queue board. Source card: ${card.kind}.`,
+        nextStage: "Potential Client",
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok) {
+      const mapped = mapApiLead(payload.lead);
+      setLiveLeads((current) => current.map((lead) => (lead.id === mapped.id ? mapped : lead)));
+      if (selectedLead.id === mapped.id) selectLead(mapped);
+      setOperationStatus(`${mapped.company} moved to Potential Client.`);
+      setActionToast({
+        phase: "success",
+        title: "Appointment set",
+        detail: "Pipeline updated to Potential Client.",
+      });
+      addAutomationEvent({
+        title: "Appointment set",
+        detail: `${mapped.company} moved from queue operations into the Potential Client stage.`,
+        status: "done",
+      });
+      window.setTimeout(() => setActionToast(null), 2400);
+      await refreshLeads();
+      await refreshOpsData();
+    } else {
+      setActionToast({
+        phase: "error",
+        title: "Appointment blocked",
+        detail: payload.error || "Could not update the lead stage.",
+      });
+    }
+    setQueueActionId(null);
   }
 
   async function sendTwilioTest() {
@@ -3932,73 +4166,95 @@ export default function Home() {
             )}
 
             {active === "queue" && (
-              <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-                <Panel title="Outreach Approval Queue" icon={ClipboardList}>
-                  <div className="space-y-3">
-                    {queueItems.length ? (
-                      queueItems.map((item) => (
-                        <div key={item.id} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h3 className="font-semibold">
-                                  {item.lead?.company || item.lead?.companyName || "Queued outreach"}
-                                </h3>
-                                <span className="rounded-sm bg-[#283239] px-2 py-1 text-xs text-[#b7c8c1]">
-                                  {item.channel}:{item.provider}
-                                </span>
-                                <span className="rounded-sm bg-[#e2f0f0] px-2 py-1 text-xs font-semibold text-[#132322]">
-                                  {item.status}
-                                </span>
-                              </div>
-                              {item.subject && <p className="mt-2 text-sm text-[#eef5f1]">{item.subject}</p>}
-                              <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#b6c4bf]">{item.body}</p>
-                              {publicQueueReason(item) && (
-                                <p className="mt-2 text-xs text-[#9fb0a8]">{publicQueueReason(item)}</p>
-                              )}
-                            </div>
-                            {item.status === "pending" ? (
-                              <div className="flex shrink-0 gap-2">
-                                {item.channel === "email" && (
+              <div className="space-y-6">
+                <Panel title="Outreach Pipeline Board" icon={ClipboardList}>
+                  <div className="grid gap-3 md:grid-cols-5">
+                    {queueBoardColumns.map((column) => (
+                      <div key={column.id} className="rounded-md border border-white/10 bg-black/20 p-3">
+                        <div className="mb-3 flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="text-sm font-semibold text-white">{column.title}</h3>
+                            <p className="mt-1 text-xs leading-5 text-[#9fb0a8]">{column.subtitle}</p>
+                          </div>
+                          <span className="rounded-sm bg-[#d8ff5f]/15 px-2 py-1 font-mono text-xs text-[#d8ff5f]">
+                            {column.cards.length}
+                          </span>
+                        </div>
+                        <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+                          {column.cards.length ? (
+                            column.cards.map((card) => (
+                              <div key={`${card.kind}-${card.id}`} className="rounded-md border border-white/10 bg-white/[0.045] p-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <h4 className="truncate text-sm font-semibold text-white">{card.title}</h4>
+                                    {card.subtitle && (
+                                      <p className="mt-1 truncate text-xs text-[#b6c4bf]">{card.subtitle}</p>
+                                    )}
+                                  </div>
+                                  <span className="rounded-sm bg-[#283239] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#b7c8c1]">
+                                    {card.status}
+                                  </span>
+                                </div>
+                                <p className="mt-3 max-h-24 overflow-hidden text-xs leading-5 text-[#9fb0a8]">
+                                  {card.detail}
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-1">
+                                  {card.meta.map((meta) => (
+                                    <span key={meta} className="rounded-sm bg-[#101417] px-2 py-1 text-[10px] text-[#83d0c2]">
+                                      {meta}
+                                    </span>
+                                  ))}
+                                </div>
+                                {card.kind === "queue" && card.queueItem?.status === "pending" && (
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {card.queueItem.channel === "email" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => redoQueueItem(card.queueItem!.id)}
+                                        disabled={queueActionId === card.id}
+                                        className="rounded-md bg-white/[0.08] px-3 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        Redo
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => openApprovalReview(card.queueItem!)}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-[#d8ff5f] px-3 py-2 text-xs font-semibold text-[#101417] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Review
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => rejectQueueItem(card.queueItem!.id)}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-white/[0.08] px-3 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                )}
+                                {column.id !== "appointment" && card.leadId && (
                                   <button
                                     type="button"
-                                    onClick={() => redoQueueItem(item.id)}
-                                    disabled={queueActionId === item.id}
-                                    className="rounded-md bg-white/[0.08] px-3 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
+                                    onClick={() => markAppointmentSet(card)}
+                                    disabled={queueActionId === card.id}
+                                    className="mt-3 w-full rounded-md bg-[#83d0c2] px-3 py-2 text-xs font-semibold text-[#101417] disabled:cursor-not-allowed disabled:opacity-60"
                                   >
-                                    Redo
+                                    Appointment Set
                                   </button>
                                 )}
-                                <button
-                                  type="button"
-                                  onClick={() => openApprovalReview(item)}
-                                  disabled={queueActionId === item.id}
-                                  className="rounded-md bg-[#d8ff5f] px-3 py-2 text-xs font-semibold text-[#101417] disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  Review
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => rejectQueueItem(item.id)}
-                                  disabled={queueActionId === item.id}
-                                  className="rounded-md bg-white/[0.08] px-3 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  Reject
-                                </button>
                               </div>
-                            ) : (
-                              <span className="rounded-md bg-white/[0.05] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#9fb0a8]">
-                                Final
-                              </span>
-                            )}
-                          </div>
+                            ))
+                          ) : (
+                            <p className="rounded-md border border-dashed border-white/10 bg-white/[0.03] p-4 text-center text-xs leading-5 text-[#7f918b]">
+                              No records in this lane.
+                            </p>
+                          )}
                         </div>
-                      ))
-                    ) : (
-                      <p className="rounded-md border border-dashed border-white/15 bg-white/[0.03] p-8 text-center text-sm text-[#9fb0a8]">
-                        No queued outreach yet.
-                      </p>
-                    )}
+                      </div>
+                    ))}
                   </div>
                 </Panel>
 
