@@ -4,6 +4,7 @@ import { getGhostCrmHealth } from "@/lib/ghostcrm";
 import { getMissionControlBridgeStatus } from "@/lib/mission-control-bridge";
 import { getOperatorCaps } from "@/lib/operator-policy";
 import { getOutreachStatus, getTwilioReadiness } from "@/lib/outreach";
+import { getPerplexityStatus } from "@/lib/perplexity";
 import { getPrisma } from "@/lib/prisma";
 import { getSourcingStatus } from "@/lib/sourcing";
 import { getDefaultWorkspace } from "@/lib/workspace";
@@ -74,6 +75,7 @@ export async function GET() {
     ]);
 
     const sourceStatus = getSourcingStatus();
+    const perplexity = getPerplexityStatus();
     const outreach = getOutreachStatus();
     const caps = getOperatorCaps();
     const twilio = getTwilioReadiness();
@@ -103,12 +105,18 @@ export async function GET() {
     const recentContactPathEvent = events.find((event) => /contact path|manual/i.test(`${event.title} ${event.detail}`));
     const recentClosingSprintEvent = events.find((event) => /closing sprint/i.test(event.title));
     const recentStandupEvent = events.find((event) => /morning standup/i.test(event.title));
+    const recentIntentEvent = events.find((event) => /intent signal feed|intent-ranked|perplexity|web intel/i.test(`${event.title} ${event.detail}`));
+    const recentLinkedInTaskEvent = events.find((event) => /linkedin task|sales navigator task|sales nav/i.test(`${event.title} ${event.detail}`));
 
     const sourceConfigured = sourceStatus.pdlConfigured || sourceStatus.googleMapsConfigured || sourceStatus.ghostLeadAgentConfigured;
     const linkedinConfigured = Boolean(
       process.env.LINKEDIN_ACCESS_TOKEN || (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET),
     );
     const linkedinLeads = leads.filter((lead) => /linkedin|sales navigator/i.test(lead.source));
+    const linkedinTasks = queue.filter((item) => item.channel === "linkedin" && item.status === "pending").length;
+    const warmSignalPattern = /linkedin|sales navigator|social|post|comment|hiring|growth|review|missed|quote|booking/i;
+    const warmSignalLeads = leads.filter((lead) => warmSignalPattern.test(lead.nextAction)).length;
+    const emailReadyWarm = leads.filter((lead) => lead.score >= 75 && warmSignalPattern.test(lead.nextAction)).length;
     const canSend = outreach.mode === "live" && outreach.sendgridConfigured;
     const canBook = booking.calendarConfigured && booking.ownerEmail && (booking.meetingLink || booking.zoomConfigured);
     const weeklyCloseTarget = Math.max(1, Number(process.env.VEGA_WEEKLY_CLOSE_TARGET || 10));
@@ -183,6 +191,25 @@ export async function GET() {
         blockers: sourceConfigured ? [] : ["Missing PDL_API_KEY, SERPAPI_API_KEY, or GHOST_LEAD_AGENT_SEARCH_URL"],
       }),
       agentCard({
+        id: "intent-feed",
+        name: "Intent Signal Feed Agent",
+        role: "Rank warm buyer signals across LinkedIn, public web, Google Maps, replies, and existing GhostCRM context.",
+        status: leads.length ? "ready" : sourceConfigured ? "needs-work" : "blocked",
+        health: perplexity.configured ? "Perplexity web intel enabled" : "Local signal ranking enabled",
+        detail: perplexity.configured
+          ? "Uses local lead signals plus Perplexity-backed public company context to tell Vega which accounts deserve attention next."
+          : "Ranks current lead signals now; add PERPLEXITY_API_KEY to enrich with public web/company intelligence.",
+        lastEvent: recentIntentEvent,
+        actionLabel: "Refresh signals",
+        actionView: "agents",
+        metrics: {
+          "warm signals": warmSignalLeads,
+          "email-ready warm": emailReadyWarm,
+          perplexity: perplexity.configured ? "on" : "off",
+        },
+        blockers: leads.length ? [] : ["No active leads are available for signal ranking yet."],
+      }),
+      agentCard({
         id: "linkedin",
         name: "LinkedIn Sales Nav Agent",
         role: "Convert Sales Navigator saved searches into enriched, scored, approval-ready GhostCRM leads.",
@@ -199,6 +226,24 @@ export async function GET() {
           "min score": "76+",
         },
         blockers: sourceStatus.pdlConfigured ? [] : ["Sales Nav paste works now, but PDL_API_KEY is needed to enrich missing emails/phones."],
+      }),
+      agentCard({
+        id: "linkedin-tasks",
+        name: "LinkedIn Task Agent",
+        role: "Turn Sales Navigator/social-fit accounts into manual connection, DM, and follow-up tasks.",
+        status: linkedinConfigured || sourceStatus.pdlConfigured || linkedinLeads.length ? "ready" : "needs-work",
+        health: linkedinTasks ? "LinkedIn tasks waiting" : "Ready for Sales Nav paste or intent-ranked leads",
+        detail:
+          "Creates compliant manual LinkedIn task cards from Sales Navigator paste data and warm social signals, then keeps replies flowing back into Vega.",
+        lastEvent: recentLinkedInTaskEvent,
+        actionLabel: "Queue LinkedIn",
+        actionView: "queue",
+        metrics: {
+          "pending tasks": linkedinTasks,
+          "sales nav leads": linkedinLeads.length,
+          "manual lane": "on",
+        },
+        blockers: sourceStatus.pdlConfigured || linkedinLeads.length ? [] : ["Paste Sales Navigator rows or keep PDL enabled for enrichment."],
       }),
       agentCard({
         id: "web-helper",

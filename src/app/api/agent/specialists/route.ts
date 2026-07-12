@@ -7,6 +7,8 @@ const allowedKinds = new Set<VegaSpecialistKind>([
   "deliverability",
   "copy-chief",
   "cadence",
+  "intent-feed",
+  "linkedin-tasks",
   "full-team",
 ]);
 

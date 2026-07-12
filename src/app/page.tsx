@@ -384,7 +384,15 @@ type SignalCollectorResult = {
   skipped: Record<string, number>;
 };
 
-type VegaSpecialistKind = "contact-path" | "booking" | "deliverability" | "copy-chief" | "cadence" | "full-team";
+type VegaSpecialistKind =
+  | "contact-path"
+  | "booking"
+  | "deliverability"
+  | "copy-chief"
+  | "cadence"
+  | "intent-feed"
+  | "linkedin-tasks"
+  | "full-team";
 
 type VegaSpecialistResult = {
   kind: VegaSpecialistKind;
@@ -3471,6 +3479,28 @@ export default function Home() {
                                 Sprint + approve
                               </button>
                             </>
+                          ) : null}
+                          {agent.id === "intent-feed" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaSpecialist("intent-feed")}
+                              disabled={Boolean(specialistBusy)}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {specialistBusy === "intent-feed" ? <LoaderCircle className="animate-spin" size={16} /> : <Radar size={16} />}
+                              Refresh signals
+                            </button>
+                          ) : null}
+                          {agent.id === "linkedin-tasks" ? (
+                            <button
+                              type="button"
+                              onClick={() => runVegaSpecialist("linkedin-tasks")}
+                              disabled={Boolean(specialistBusy)}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {specialistBusy === "linkedin-tasks" ? <LoaderCircle className="animate-spin" size={16} /> : <MessageSquareText size={16} />}
+                              Queue LinkedIn
+                            </button>
                           ) : null}
                           {agent.id === "copy-chief" ? (
                             <button

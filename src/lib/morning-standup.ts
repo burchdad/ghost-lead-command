@@ -67,7 +67,9 @@ export async function runMorningStandup(input: MorningStandupInput = {}) {
   const nextMoves = getClosingSprintNextMoves(metrics, bottleneck);
   const targets = dailyTargets(metrics);
   const vegaOrders = [
+    "Vega, refresh intent feed",
     `Vega, need ${targets.sourceTarget} new HVAC leads between ${location} score 75`,
+    "Vega, queue LinkedIn tasks",
     "Vega, tune copy",
     metrics.sendgridReady >= 5
       ? `Vega, approve ${targets.approvalTarget}`

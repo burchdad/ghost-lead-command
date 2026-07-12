@@ -1,4 +1,6 @@
 import { createAutomationEvent, createBookingTaskForLead, runDueSequenceSteps } from "@/lib/automation";
+import { runIntentFeedScout } from "@/lib/intent-feed";
+import { runLinkedInTaskLane } from "@/lib/linkedin-task-lane";
 import { improveOfferCopy } from "@/lib/offer-copy-brain";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getOperatorQueueCapacity } from "@/lib/operator-policy";
@@ -13,6 +15,8 @@ export type VegaSpecialistKind =
   | "deliverability"
   | "copy-chief"
   | "cadence"
+  | "intent-feed"
+  | "linkedin-tasks"
   | "full-team";
 
 type SpecialistResult = {
@@ -403,17 +407,69 @@ export async function runCadenceOrchestrator(input: { limit?: number } = {}): Pr
   };
 }
 
+export async function runIntentFeedAgent(input: { limit?: number; enrich?: boolean } = {}): Promise<SpecialistResult> {
+  const result = await runIntentFeedScout({
+    limit: input.limit || 15,
+    enrich: input.enrich !== false,
+  });
+  const top = result.items[0];
+  const emailReady = result.items.filter((item) => item.contactability === "email").length;
+  const manualReady = result.items.filter((item) => item.contactability === "phone" || item.contactability === "website").length;
+  const linkedinSignals = result.items.filter((item) => item.signalType === "linkedin-social").length;
+  return {
+    kind: "intent-feed",
+    title: "Intent Signal Feed Agent",
+    status: result.items.length ? "done" : "blocked",
+    summary: result.items.length
+      ? `Ranked ${result.items.length} warm-signal leads. Top account: ${top?.companyName || "none"} at ${top?.signalScore || 0}.`
+      : "No active leads were available for intent ranking.",
+    metrics: {
+      ranked: result.items.length,
+      emailReady,
+      manualReady,
+      linkedinSignals,
+      perplexity: result.perplexity.configured,
+    },
+    nextMove: top
+      ? `${top.companyName}: ${top.nextMove} Signal: ${top.signalSummary.slice(0, 160)}`
+      : "Source fresh leads, then refresh the intent feed.",
+  };
+}
+
+export async function runLinkedInTaskAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
+  const result = await runLinkedInTaskLane({ limit: input.limit || 10 });
+  return {
+    kind: "linkedin-tasks",
+    title: "LinkedIn Task Agent",
+    status: result.queued ? "done" : result.reviewed ? "needs_review" : "blocked",
+    summary: result.message,
+    metrics: {
+      reviewed: result.reviewed,
+      queued: result.queued,
+      alreadyPending: result.alreadyPending,
+      skipped: result.skipped,
+    },
+    nextMove: result.queued
+      ? "Work the LinkedIn task cards manually from the Queue board, then record replies for Vega."
+      : "Paste more Sales Navigator rows or run the intent feed to surface social-fit accounts.",
+  };
+}
+
 export async function runVegaSpecialist(kind: VegaSpecialistKind, input: { limit?: number } = {}) {
   if (kind === "contact-path") return runContactPathAgent(input);
   if (kind === "booking") return runBookingConciergeAgent(input);
   if (kind === "deliverability") return runDeliverabilityGovernor(input);
   if (kind === "copy-chief") return runCopyChiefAgent(input);
   if (kind === "cadence") return runCadenceOrchestrator(input);
+  if (kind === "intent-feed") return runIntentFeedAgent({ ...input, enrich: true });
+  if (kind === "linkedin-tasks") return runLinkedInTaskAgent(input);
   return runVegaSpecialistTeam(input);
 }
 
 export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
-  const [copy, cadence, replies, booking, contact, deliverability] = await Promise.all([
+  const [intent, linkedin, copy, cadence, replies, booking, contact, deliverability] = await Promise.all([
+    runIntentFeedAgent({ limit: 10, enrich: false }),
+    runLinkedInTaskAgent({ limit: 5 }),
     runCopyChiefAgent({ limit: input.limit || 10 }),
     runCadenceOrchestrator({ limit: input.limit || 8 }),
     runReplyConversionSweep({ limit: input.limit || 10, lookbackHours: 168 }),
@@ -431,6 +487,8 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
     `Cadence queued ${queued}.`,
     `Reply drafts queued ${responseDrafts}.`,
     `Booking ready ${bookingReady}.`,
+    `Intent leads ranked ${intent.metrics.ranked}.`,
+    `LinkedIn tasks queued ${linkedin.metrics.queued}.`,
     `Manual paths refreshed ${contact.metrics.refreshed}.`,
     `Risky emails rejected ${deliverability.metrics.pendingRejected}.`,
   ].join(" ");
@@ -440,7 +498,7 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
     detail: summary,
     status,
     type: "agent",
-    payload: { copy, cadence, replies, booking, contact, deliverability },
+    payload: { intent, linkedin, copy, cadence, replies, booking, contact, deliverability },
   });
 
   return {
@@ -453,13 +511,15 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
       cadenceQueued: queued,
       replyDrafts: responseDrafts,
       bookingReady,
+      intentRanked: intent.metrics.ranked as number,
+      linkedinQueued: linkedin.metrics.queued as number,
       manualRefreshed: contact.metrics.refreshed as number,
       riskyRejected: deliverability.metrics.pendingRejected as number,
     },
     nextMove: bookingReady
       ? "Work booking-ready leads first, then approve reviewed drafts."
       : "Approve reviewed drafts, run a focused source sprint, and keep reply sweeps active.",
-    specialists: { copy, cadence, replies, booking, contact, deliverability },
+    specialists: { intent, linkedin, copy, cadence, replies, booking, contact, deliverability },
   };
 }
 
@@ -472,6 +532,8 @@ export function classifyVegaSpecialistRequest(text: string): VegaSpecialistKind 
   if (/\b(?:deliverability|bounces?|suppress|reputation|failed sends?|protect sending)\b/.test(normalized)) return "deliverability";
   if (/\b(?:copy chief|rewrite|copy qa|improve emails?|offer copy|hormozi|nepq)\b/.test(normalized)) return "copy-chief";
   if (/\b(?:cadence|sequence|due follow[-\s]?ups?|follow[-\s]?up queue|next touches)\b/.test(normalized)) return "cadence";
+  if (/\b(?:intent feed|signal feed|warm signals?|perplexity|web intel|sonar|research feed)\b/.test(normalized)) return "intent-feed";
+  if (/\b(?:linkedin tasks?|sales nav tasks?|linkedin lane|sales navigator tasks?|social dm|connection requests?)\b/.test(normalized)) return "linkedin-tasks";
   return null;
 }
 

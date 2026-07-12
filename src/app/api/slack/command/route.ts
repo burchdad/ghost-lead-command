@@ -223,6 +223,8 @@ export async function POST(request: Request) {
         "`run roofing in Texas score 85 limit 5` - propose a scoped sourcing plan.",
         "`Vega, need 10 new leads in HVAC between Tyler and Dallas, Texas` - run sourcing and queue approval-ready outreach.",
         "`Vega, work replies` - queue response drafts for hot/booked replies and prep bookings.",
+        "`Vega, refresh intent feed` - rank warm buyer signals and public web context before choosing the next accounts.",
+        "`Vega, queue LinkedIn tasks` - create manual Sales Navigator connection/DM tasks for social-fit leads.",
         "`Vega, push bookings` - work engaged replies toward calendar-ready follow-up.",
         "`Vega, work contact paths` - refresh manual phone/website tasks and blocked contact paths.",
         "`Vega, tune copy` - rewrite pending email drafts using the offer/copy scorecard.",
