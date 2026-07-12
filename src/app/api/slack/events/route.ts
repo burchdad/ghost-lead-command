@@ -10,6 +10,7 @@ import { approvePendingOutreachBatch } from "@/lib/approval";
 import { createAutomationEvent } from "@/lib/automation";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
+import { runMorningStandup } from "@/lib/morning-standup";
 import {
   isSlackEventAuthorized,
   notifySlackBatchApprovalResult,
@@ -51,6 +52,11 @@ function isDigestRequest(text: string) {
 function isNovaBriefRequest(text: string) {
   const normalized = normalizedInstruction(text);
   return /\b(?:nova|ceo|director brief|brief nova)\b/.test(normalized);
+}
+
+function isMorningStandupRequest(text: string) {
+  const normalized = normalizedInstruction(text);
+  return /\b(?:morning standup|morning meeting|daily standup|standup|c-suite meeting|nova and vega|nova x vega)\b/.test(normalized);
 }
 
 function isApprovalRequest(text: string) {
@@ -123,6 +129,7 @@ export async function POST(request: Request) {
   const isAuditInstruction = isAuditRequest(instruction);
   const isDigestInstruction = isDigestRequest(instruction);
   const isNovaInstruction = isNovaBriefRequest(instruction);
+  const isMorningStandupInstruction = isMorningStandupRequest(instruction);
   const isApprovalInstruction = isApprovalRequest(instruction);
   const isClosingInstruction = isClosingSprintRequest(instruction);
   const specialistKind = classifyVegaSpecialistRequest(instruction);
@@ -137,13 +144,15 @@ export async function POST(request: Request) {
             ? "Vega Slack digest request received"
             : isNovaInstruction
               ? "Vega Slack Nova brief request received"
-            : isApprovalInstruction
-              ? "Vega Slack batch approval received"
-              : isClosingInstruction
-                ? "Vega Slack closing sprint received"
-                : specialistKind
-                  ? "Vega Slack specialist request received"
-                  : "Vega Slack message ignored",
+              : isMorningStandupInstruction
+                ? "Vega Slack morning standup received"
+                : isApprovalInstruction
+                  ? "Vega Slack batch approval received"
+                  : isClosingInstruction
+                    ? "Vega Slack closing sprint received"
+                    : specialistKind
+                      ? "Vega Slack specialist request received"
+                      : "Vega Slack message ignored",
     detail: instruction || text || "No Slack text received.",
     status:
       isLeadInstruction ||
@@ -151,6 +160,7 @@ export async function POST(request: Request) {
       isAuditInstruction ||
       isDigestInstruction ||
       isNovaInstruction ||
+      isMorningStandupInstruction ||
       isApprovalInstruction ||
       isClosingInstruction ||
       specialistKind
@@ -168,6 +178,7 @@ export async function POST(request: Request) {
       isAuditInstruction,
       isDigestInstruction,
       isNovaInstruction,
+      isMorningStandupInstruction,
       isApprovalInstruction,
       isClosingInstruction,
       specialistKind,
@@ -180,6 +191,7 @@ export async function POST(request: Request) {
     !isAuditInstruction &&
     !isDigestInstruction &&
     !isNovaInstruction &&
+    !isMorningStandupInstruction &&
     !isApprovalInstruction &&
     !isClosingInstruction &&
     !specialistKind
@@ -191,6 +203,28 @@ export async function POST(request: Request) {
         "I heard Vega, but I could not detect a lead sourcing, closing sprint, approval, reply-work, audit, digest, or Nova brief request. Try: Vega, closing sprint. Or: Vega, approve 10.",
     });
     return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
+  }
+
+  if (isMorningStandupInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is preparing the Nova x Vega morning standup now.",
+    });
+
+    after(async () => {
+      try {
+        await runMorningStandup({ message: instruction });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown morning standup failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
   }
 
   if (isClosingInstruction) {

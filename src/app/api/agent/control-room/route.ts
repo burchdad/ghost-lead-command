@@ -102,6 +102,7 @@ export async function GET() {
     const recentCadenceEvent = events.find((event) => /cadence|follow-up|sequence/i.test(event.title));
     const recentContactPathEvent = events.find((event) => /contact path|manual/i.test(`${event.title} ${event.detail}`));
     const recentClosingSprintEvent = events.find((event) => /closing sprint/i.test(event.title));
+    const recentStandupEvent = events.find((event) => /morning standup/i.test(event.title));
 
     const sourceConfigured = sourceStatus.pdlConfigured || sourceStatus.googleMapsConfigured || sourceStatus.ghostLeadAgentConfigured;
     const linkedinConfigured = Boolean(
@@ -115,6 +116,25 @@ export async function GET() {
     const wonDeals = leads.filter((lead) => lead.stage === "Won").length;
 
     const agents = [
+      agentCard({
+        id: "morning-standup",
+        name: "Nova x Vega Morning Standup",
+        role: "Post the daily C-suite scoreboard, Nova directive, Vega execution orders, and Stephen's one required action.",
+        status: missionControl.configured ? "ready" : "needs-work",
+        health: missionControl.configured ? "C-suite standup route ready" : "Slack C-suite route needs configuration",
+        detail:
+          "Runs every weekday morning and turns the weekly close target into today's sourcing, approval, reply, and booking targets.",
+        lastEvent: recentStandupEvent,
+        nextRun: "Weekdays 8:30 AM CT via Vercel Cron",
+        actionLabel: "Run standup",
+        actionView: "agents",
+        metrics: {
+          "channel": missionControl.cSuiteChannel || "c-suite-talks",
+          "pending approvals": pending,
+          "booked calls": bookedCalls,
+          "hot replies": hotReplies,
+        },
+      }),
       agentCard({
         id: "closing-sprint",
         name: "Vega Closing Sprint Commander",

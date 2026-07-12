@@ -878,6 +878,7 @@ export default function Home() {
   const [tuningBusy, setTuningBusy] = useState(false);
   const [specialistBusy, setSpecialistBusy] = useState<VegaSpecialistKind | null>(null);
   const [closingSprintBusy, setClosingSprintBusy] = useState(false);
+  const [standupBusy, setStandupBusy] = useState(false);
   const [signalCollectorResult, setSignalCollectorResult] = useState<SignalCollectorResult | null>(null);
   const [specialistResult, setSpecialistResult] = useState<VegaSpecialistResult | null>(null);
   const [closingSprintResult, setClosingSprintResult] = useState<VegaClosingSprintResult | null>(null);
@@ -2041,6 +2042,42 @@ export default function Home() {
     if (["approvals", "follow-up-cadence", "contact-path", "outbound-volume", "fresh-sourcing"].includes(payload.bottleneck)) setActive("queue");
     if (["booking-handoff", "close-mode"].includes(payload.bottleneck)) setActive("proposal");
     setClosingSprintBusy(false);
+  }
+
+  async function runMorningStandup() {
+    if (standupBusy) return;
+    setStandupBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: "Morning standup running",
+      detail: "Posting the Stephen, Nova, and Vega lead-gen standup.",
+    });
+
+    const response = await fetch("/api/agent/morning-standup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Manual Nova x Vega morning standup" }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "Standup blocked",
+        detail: payload.detail || payload.error || "Morning standup could not post.",
+      });
+      setStandupBusy(false);
+      return;
+    }
+
+    setActionToast({
+      phase: "success",
+      title: "Standup posted",
+      detail: `Bottleneck: ${payload.bottleneck || "unknown"}.`,
+    });
+    setOperationStatus(payload.stephenAsk || "Morning standup posted to Slack.");
+    await refreshOpsData();
+    setStandupBusy(false);
   }
 
   async function ensureSelectedLeadRecord() {
@@ -3402,6 +3439,17 @@ export default function Home() {
                         ) : null}
 
                         <div className="mt-4 flex flex-wrap gap-2">
+                          {agent.id === "morning-standup" ? (
+                            <button
+                              type="button"
+                              onClick={runMorningStandup}
+                              disabled={standupBusy}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-[#c8ef4f] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {standupBusy ? <LoaderCircle className="animate-spin" size={16} /> : <MessageSquareText size={16} />}
+                              Run standup
+                            </button>
+                          ) : null}
                           {agent.id === "closing-sprint" ? (
                             <>
                               <button

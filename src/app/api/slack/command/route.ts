@@ -11,6 +11,7 @@ import { approvePendingOutreachBatch } from "@/lib/approval";
 import { createAutomationEvent } from "@/lib/automation";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
+import { runMorningStandup } from "@/lib/morning-standup";
 import { isSlackCommandAuthorized, notifySlackBatchApprovalResult, notifySlackClosingSprintResult } from "@/lib/slack";
 import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSprint } from "@/lib/vega-closing-sprint";
 import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
@@ -83,6 +84,11 @@ function isApprovalRequest(text: string) {
   return /\b(?:approve|send|release)\b/.test(normalized) && /\b(?:outreach|emails?|batch|\d+)\b/.test(normalized);
 }
 
+function isMorningStandupRequest(text: string) {
+  const normalized = text.trim().toLowerCase();
+  return /\b(?:morning standup|morning meeting|daily standup|standup|c-suite meeting|nova and vega|nova x vega)\b/.test(normalized);
+}
+
 function parseApprovalLimit(text: string) {
   const match =
     text.match(/\b(?:approve|send|release)\s+(\d+)\b/i) ||
@@ -110,6 +116,17 @@ export async function POST(request: Request) {
     type: "slack",
     payload: { text, userId: form.get("user_id"), channelId: form.get("channel_id") },
   });
+
+  if (isMorningStandupRequest(text)) {
+    after(async () => {
+      const result = await runMorningStandup({ message: text });
+      await postSlackCommandResponse(
+        responseUrl,
+        `Morning standup posted. Bottleneck: ${result.bottleneck}. Stephen ask: ${result.stephenAsk}`,
+      );
+    });
+    return slackText("Vega is preparing the Nova x Vega morning standup now.");
+  }
 
   if (isClosingSprintRequest(text)) {
     after(async () => {
@@ -212,6 +229,7 @@ export async function POST(request: Request) {
         "`Vega, protect deliverability` - suppress failed contacts and reject risky pending sends.",
         "`Vega, run specialists` - run copy, cadence, replies, booking, contact paths, and deliverability together.",
         "`Vega, closing sprint for 10 closes this week` - run Vega's close-this-week operating loop and report the bottleneck.",
+        "`Vega, morning standup` - post the Stephen/Nova/Vega scoreboard, Nova directive, Vega orders, and today's lead targets.",
         "`Vega, closing sprint approve 10` - run the sprint and approve a SendGrid-ready batch if available.",
         "`Vega, approve 10` - approve the next 10 SendGrid-ready outreach items without relying on Slack buttons.",
         "`digest` - post the current ops digest.",

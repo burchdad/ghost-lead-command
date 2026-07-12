@@ -154,7 +154,7 @@ export async function getClosingSprintMetrics(input: ClosingSprintInput = {}): P
   };
 }
 
-function bottleneck(metrics: ClosingSprintMetrics) {
+export function getClosingSprintBottleneck(metrics: ClosingSprintMetrics) {
   if (metrics.bookedCalls >= metrics.targetBooked || metrics.wonDeals >= metrics.targetCloses) {
     return "close-mode";
   }
@@ -168,7 +168,7 @@ function bottleneck(metrics: ClosingSprintMetrics) {
   return "fresh-sourcing";
 }
 
-function nextMoves(metrics: ClosingSprintMetrics, currentBottleneck: string) {
+export function getClosingSprintNextMoves(metrics: ClosingSprintMetrics, currentBottleneck: string) {
   if (currentBottleneck === "close-mode") {
     return ["Work booked calls, prep proposals, and push every warm opportunity toward a paid pilot."];
   }
@@ -193,7 +193,7 @@ function nextMoves(metrics: ClosingSprintMetrics, currentBottleneck: string) {
 export async function runVegaClosingSprint(input: ClosingSprintInput = {}) {
   const normalized = clean(input.instruction).toLowerCase();
   const before = await getClosingSprintMetrics(input);
-  const currentBottleneck = bottleneck(before);
+  const currentBottleneck = getClosingSprintBottleneck(before);
   const actions: { name: string; status: string; detail: string; metrics?: Record<string, unknown> }[] = [];
   const shouldApprove = Boolean(input.autoApprove);
 
@@ -239,8 +239,8 @@ export async function runVegaClosingSprint(input: ClosingSprintInput = {}) {
   }
 
   const after = await getClosingSprintMetrics(input);
-  const afterBottleneck = bottleneck(after);
-  const moves = nextMoves(after, afterBottleneck);
+  const afterBottleneck = getClosingSprintBottleneck(after);
+  const moves = getClosingSprintNextMoves(after, afterBottleneck);
 
   await createAutomationEvent({
     title: "Vega closing sprint finished",

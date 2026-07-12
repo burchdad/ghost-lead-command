@@ -964,6 +964,135 @@ export async function notifySlackClosingSprintResult(input: {
   };
 }
 
+export async function notifySlackMorningStandup(input: {
+  location: string;
+  bottleneck: string;
+  metrics: {
+    targetCloses: number;
+    targetBooked: number;
+    leadsThisWeek: number;
+    sentThisWeek: number;
+    repliesThisWeek: number;
+    hotRepliesThisWeek: number;
+    bookedCalls: number;
+    wonDeals: number;
+    pendingApprovals: number;
+    sendgridReady: number;
+    manualTasks: number;
+    failedSends: number;
+  };
+  targets: {
+    daysLeft: number;
+    bookedGap: number;
+    closeGap: number;
+    bookedToday: number;
+    closeToday: number;
+    sendTarget: number;
+    sourceTarget: number;
+    approvalTarget: number;
+  };
+  novaDirective: string;
+  vegaOrders: string[];
+  stephenAsk: string;
+  nextMoves: string[];
+}) {
+  const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
+  const directorName = leadDirectorAgentName();
+  const orders = input.vegaOrders.map((order) => `- \`${order}\``).join("\n");
+  const nextMoves = input.nextMoves.map((move) => `- ${move}`).join("\n");
+  const result = await postSlackPayload({
+    webhookUrl:
+      clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_EXECUTIVE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_WEBHOOK_URL),
+    botToken: clean(process.env.SLACK_BOT_TOKEN),
+    channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
+    payload: {
+      text: `Morning Lead Command standup: bottleneck ${input.bottleneck}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "Nova x Vega morning lead-gen standup", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Channel:* #${channelName}\n*Stephen + Nova + ${directorName}*\n*Market focus:* ${input.location}\n*Bottleneck:* ${input.bottleneck}`,
+          },
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Won / target*\n${input.metrics.wonDeals}/${input.metrics.targetCloses}` },
+            { type: "mrkdwn", text: `*Booked / target*\n${input.metrics.bookedCalls}/${input.metrics.targetBooked}` },
+            { type: "mrkdwn", text: `*Days left*\n${input.targets.daysLeft}` },
+            { type: "mrkdwn", text: `*Leads this week*\n${input.metrics.leadsThisWeek}` },
+            { type: "mrkdwn", text: `*Sent this week*\n${input.metrics.sentThisWeek}` },
+            { type: "mrkdwn", text: `*Replies / hot*\n${input.metrics.repliesThisWeek}/${input.metrics.hotRepliesThisWeek}` },
+            { type: "mrkdwn", text: `*Pending approvals*\n${input.metrics.pendingApprovals}` },
+            { type: "mrkdwn", text: `*SendGrid-ready*\n${input.metrics.sendgridReady}` },
+            { type: "mrkdwn", text: `*Manual tasks*\n${input.metrics.manualTasks}` },
+            { type: "mrkdwn", text: `*Failed sends*\n${input.metrics.failedSends}` },
+          ],
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Nova CEO directive*\n${input.novaDirective}\n\n*Stephen ask*\n${input.stephenAsk}`,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Vega execution orders for today*\n${orders}`,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Daily targets*\n- Source ${input.targets.sourceTarget} leads\n- Send/approve ${input.targets.sendTarget} touches\n- Book ${input.targets.bookedToday} call${input.targets.bookedToday === 1 ? "" : "s"}\n- Push ${input.targets.closeToday} close${input.targets.closeToday === 1 ? "" : "s"}\n\n*Next moves*\n${nextMoves}`,
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Agents", emoji: false },
+              style: "primary",
+              url: appViewUrl("agents"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Queue", emoji: false },
+              url: appViewUrl("queue"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Source", emoji: false },
+              url: appViewUrl("source"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Inbox", emoji: false },
+              url: appViewUrl("inbox"),
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  return {
+    ...result,
+    message: result.sent ? `Morning standup posted to ${result.channel || channelName}.` : result.message,
+  };
+}
+
 export async function notifySlackReplyWorkResult(input: {
   instruction: string;
   summary: string;
