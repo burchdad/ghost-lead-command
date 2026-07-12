@@ -99,6 +99,7 @@ export async function GET() {
     const recentDirectorEvent = events.find((event) => /lead gen director/i.test(event.title));
     const recentSourceEvent = events.find((event) => ["agent", "source", "sendgrid"].includes(event.type));
     const recentReplyEvent = events.find((event) => ["reply", "sendgrid", "twilio"].includes(event.type));
+    const recentRevenueWatchEvent = events.find((event) => /revenue watch|reply \+ booking watch|conversion watch/i.test(`${event.title} ${event.detail}`));
     const recentBookingEvent = events.find((event) => event.type === "booking" || /book/i.test(event.title));
     const recentCrmEvent = events.find((event) => event.type === "crm" || /crm/i.test(event.title));
     const recentSafetyEvent = events.find((event) => ["sendgrid", "suppression", "twilio"].includes(event.type));
@@ -433,6 +434,25 @@ export async function GET() {
           replies: replies.length,
           "hot/booked": hotReplies,
           "reply rate": `${Math.round((replies.length / Math.max(1, queuedOrSent)) * 100)}%`,
+        },
+      }),
+      agentCard({
+        id: "revenue-watch",
+        name: "Reply + Booking Watch Agent",
+        role: "Monitor SendGrid events, source performance, replies, bookings, and no-response risk after every send batch.",
+        status: outreach.sendgridConfigured ? "ready" : "needs-work",
+        health: hotReplies || bookedTasks ? "Conversion work available" : "Monitoring active",
+        detail:
+          "Escalates only the important stuff: hot replies, booking-ready leads, bounce spikes, no-response batches, and approval jams.",
+        lastEvent: recentRevenueWatchEvent,
+        nextRun: "Weekdays 11:00 AM and 3:00 PM CT via Vercel Cron",
+        actionLabel: "Open inbox",
+        actionView: "inbox",
+        metrics: {
+          "hot replies": hotReplies,
+          "booking ready": bookedTasks,
+          "failed sends": failed,
+          "pending approvals": pending,
         },
       }),
       agentCard({

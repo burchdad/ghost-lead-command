@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrisma } from "@/lib/prisma";
+import { getSourceScorecard } from "@/lib/source-scorecard";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export async function GET() {
@@ -10,7 +11,10 @@ export async function GET() {
     const queue = await prisma.outreachQueueItem.findMany({ where: { workspaceId: workspace.id } });
     const replies = await prisma.reply.findMany({ where: { workspaceId: workspace.id } });
     const proposals = await prisma.proposal.findMany({ where: { workspaceId: workspace.id } });
-    const opportunities = await prisma.opportunity.findMany({ where: { company: { is: { workspaceId: workspace.id } } } });
+    const [opportunities, sourceScorecard] = await Promise.all([
+      prisma.opportunity.findMany({ where: { company: { is: { workspaceId: workspace.id } } } }),
+      getSourceScorecard(),
+    ]);
 
     const sent = queue.filter((item) => ["sent", "queued"].includes(item.status)).length;
     const hotReplies = replies.filter((reply) => ["hot", "booked"].includes(reply.classification)).length;
@@ -70,6 +74,7 @@ export async function GET() {
         acc[reply.classification] = (acc[reply.classification] || 0) + 1;
         return acc;
       }, {}),
+      sourceScorecard,
     });
   } catch (error) {
     return NextResponse.json(

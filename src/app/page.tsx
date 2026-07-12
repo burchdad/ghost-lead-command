@@ -189,6 +189,39 @@ type AnalyticsPayload = {
   suppressedOrFailed?: number;
   queueByStatus: Record<string, number>;
   repliesByClass: Record<string, number>;
+  sourceScorecard?: {
+    summary: {
+      sources: number;
+      scaleReady: number;
+      needsFix: number;
+      topSource: string;
+      weakestSource: string;
+      recommendation: string;
+    };
+    rows: {
+      source: string;
+      leads: number;
+      pending: number;
+      sent: number;
+      delivered: number;
+      opened: number;
+      clicked: number;
+      failed: number;
+      replies: number;
+      hotReplies: number;
+      booked: number;
+      pipeline: number;
+      deliveryRate: number;
+      openRate: number;
+      clickRate: number;
+      replyRate: number;
+      hotRate: number;
+      failRate: number;
+      score: number;
+      verdict: string;
+      nextMove: string;
+    }[];
+  };
 };
 
 type IntegrationPayloadValue = string | number | boolean | null | undefined | Record<string, string | number | boolean | null | undefined>;
@@ -891,6 +924,7 @@ export default function Home() {
   const [closingSprintBusy, setClosingSprintBusy] = useState(false);
   const [standupBusy, setStandupBusy] = useState(false);
   const [opsLoopBusy, setOpsLoopBusy] = useState(false);
+  const [watchBusy, setWatchBusy] = useState(false);
   const [signalCollectorResult, setSignalCollectorResult] = useState<SignalCollectorResult | null>(null);
   const [specialistResult, setSpecialistResult] = useState<VegaSpecialistResult | null>(null);
   const [closingSprintResult, setClosingSprintResult] = useState<VegaClosingSprintResult | null>(null);
@@ -2131,6 +2165,43 @@ export default function Home() {
     await refreshOpsData();
     await refreshLeads();
     setOpsLoopBusy(false);
+  }
+
+  async function runVegaRevenueWatch() {
+    if (watchBusy) return;
+    setWatchBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: "Revenue watch running",
+      detail: "Vega is checking SendGrid, replies, booking tasks, and source performance.",
+    });
+
+    const response = await fetch("/api/agent/watch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction: "Manual Vega revenue watch from Mission Control", execute: true }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "Revenue watch blocked",
+        detail: payload.detail || payload.error || "Vega revenue watch could not finish.",
+      });
+      setWatchBusy(false);
+      return;
+    }
+
+    setActionToast({
+      phase: "success",
+      title: "Revenue watch complete",
+      detail: payload.summary || "Vega revenue watch finished.",
+    });
+    setOperationStatus(payload.nextMove || payload.summary || "Vega revenue watch finished.");
+    await refreshOpsData();
+    await refreshLeads();
+    setWatchBusy(false);
   }
 
   async function ensureSelectedLeadRecord() {
@@ -3635,6 +3706,17 @@ export default function Home() {
                               Push bookings
                             </button>
                           ) : null}
+                          {agent.id === "revenue-watch" ? (
+                            <button
+                              type="button"
+                              onClick={runVegaRevenueWatch}
+                              disabled={watchBusy}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#83d0c2] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {watchBusy ? <LoaderCircle className="animate-spin" size={16} /> : <MessageSquareText size={16} />}
+                              Run watch
+                            </button>
+                          ) : null}
                           {agent.id === "safety" ? (
                             <button
                               type="button"
@@ -4835,6 +4917,81 @@ export default function Home() {
                           <span className="font-mono text-[#d8ff5f]">{count}</span>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                  <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-semibold">Source Scorecard</h3>
+                        <p className="mt-1 text-sm text-[#aebbb7]">
+                          {analytics?.sourceScorecard?.summary.recommendation || "Vega is waiting for source performance data."}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-right text-xs">
+                        <div className="rounded-sm bg-white/[0.04] px-3 py-2">
+                          <p className="uppercase tracking-[0.12em] text-[#83d0c2]">Scale</p>
+                          <p className="font-mono text-lg text-[#d8ff5f]">{analytics?.sourceScorecard?.summary.scaleReady || 0}</p>
+                        </div>
+                        <div className="rounded-sm bg-white/[0.04] px-3 py-2">
+                          <p className="uppercase tracking-[0.12em] text-[#83d0c2]">Fix</p>
+                          <p className="font-mono text-lg text-[#ffb3b3]">{analytics?.sourceScorecard?.summary.needsFix || 0}</p>
+                        </div>
+                        <div className="rounded-sm bg-white/[0.04] px-3 py-2">
+                          <p className="uppercase tracking-[0.12em] text-[#83d0c2]">Sources</p>
+                          <p className="font-mono text-lg text-white">{analytics?.sourceScorecard?.summary.sources || 0}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="min-w-[980px] w-full text-left text-xs">
+                        <thead className="text-[#83d0c2]">
+                          <tr className="border-b border-white/10">
+                            <th className="py-2 pr-3 font-semibold">Source</th>
+                            <th className="py-2 pr-3 font-semibold">Verdict</th>
+                            <th className="py-2 pr-3 font-semibold">Leads</th>
+                            <th className="py-2 pr-3 font-semibold">Sent</th>
+                            <th className="py-2 pr-3 font-semibold">Delivered</th>
+                            <th className="py-2 pr-3 font-semibold">Open</th>
+                            <th className="py-2 pr-3 font-semibold">Click</th>
+                            <th className="py-2 pr-3 font-semibold">Reply</th>
+                            <th className="py-2 pr-3 font-semibold">Booked</th>
+                            <th className="py-2 pr-3 font-semibold">Fail</th>
+                            <th className="py-2 pr-3 font-semibold">Score</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(analytics?.sourceScorecard?.rows || []).slice(0, 8).map((row) => (
+                            <tr key={row.source} className="border-b border-white/5 align-top">
+                              <td className="py-3 pr-3">
+                                <p className="font-semibold text-white">{row.source}</p>
+                                <p className="mt-1 max-w-[280px] text-[#aebbb7]">{row.nextMove}</p>
+                              </td>
+                              <td className="py-3 pr-3">
+                                <span
+                                  className={`rounded-sm px-2 py-1 font-semibold ${
+                                    row.verdict === "scale"
+                                      ? "bg-[#d8ff5f] text-[#101417]"
+                                      : row.verdict === "fix"
+                                        ? "bg-[#ff6b6b]/20 text-[#ffb3b3]"
+                                        : "bg-white/[0.08] text-[#d6dfdc]"
+                                  }`}
+                                >
+                                  {row.verdict}
+                                </span>
+                              </td>
+                              <td className="py-3 pr-3 font-mono">{row.leads}</td>
+                              <td className="py-3 pr-3 font-mono">{row.sent}</td>
+                              <td className="py-3 pr-3 font-mono">{row.delivered}</td>
+                              <td className="py-3 pr-3 font-mono">{row.openRate}%</td>
+                              <td className="py-3 pr-3 font-mono">{row.clickRate}%</td>
+                              <td className="py-3 pr-3 font-mono">{row.replyRate}%</td>
+                              <td className="py-3 pr-3 font-mono">{row.booked}</td>
+                              <td className="py-3 pr-3 font-mono">{row.failRate}%</td>
+                              <td className="py-3 pr-3 font-mono text-[#d8ff5f]">{row.score}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                   <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">

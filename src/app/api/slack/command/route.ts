@@ -15,6 +15,7 @@ import { runMorningStandup } from "@/lib/morning-standup";
 import { isSlackCommandAuthorized, notifySlackBatchApprovalResult, notifySlackClosingSprintResult } from "@/lib/slack";
 import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSprint } from "@/lib/vega-closing-sprint";
 import { isVegaOpsRequest, runVegaOpsBrief, shouldExecuteOps } from "@/lib/vega-ops-brief";
+import { isRevenueWatchRequest, runVegaRevenueWatch } from "@/lib/vega-revenue-watch";
 import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
 
 function slackText(text: string) {
@@ -158,6 +159,14 @@ export async function POST(request: Request) {
     return slackText(execute ? "Vega is running the ops loop now." : "Vega is preparing the sub-agent ops brief now.");
   }
 
+  if (isRevenueWatchRequest(text)) {
+    after(async () => {
+      const result = await runVegaRevenueWatch({ instruction: text, execute: true });
+      await postSlackCommandResponse(responseUrl, `${result.summary}\nNext: ${result.nextMove}`);
+    });
+    return slackText("Vega is watching replies, SendGrid signals, bookings, and source performance now.");
+  }
+
   const specialistKind = classifyVegaSpecialistRequest(text);
   if (specialistKind) {
     after(async () => {
@@ -236,6 +245,7 @@ export async function POST(request: Request) {
         "`run roofing in Texas score 85 limit 5` - propose a scoped sourcing plan.",
         "`Vega, need 10 new leads in HVAC between Tyler and Dallas, Texas` - run sourcing and queue approval-ready outreach.",
         "`Vega, work replies` - queue response drafts for hot/booked replies and prep bookings.",
+        "`Vega, watch replies` - monitor SendGrid, replies, bookings, and source scorecard after sends.",
         "`Vega, refresh intent feed` - rank warm buyer signals and public web context before choosing the next accounts.",
         "`Vega, run learning loop` - tune source plays from live reply/send outcomes.",
         "`Vega, scout social intent` - run competitor/social-style signal plays and queue qualified leads.",

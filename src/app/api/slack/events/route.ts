@@ -20,6 +20,7 @@ import {
 } from "@/lib/slack";
 import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSprint } from "@/lib/vega-closing-sprint";
 import { isVegaOpsRequest, runVegaOpsBrief, shouldExecuteOps } from "@/lib/vega-ops-brief";
+import { isRevenueWatchRequest, runVegaRevenueWatch } from "@/lib/vega-revenue-watch";
 import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
 
 function isVegaAddressed(text: string) {
@@ -134,6 +135,7 @@ export async function POST(request: Request) {
   const isApprovalInstruction = isApprovalRequest(instruction);
   const isClosingInstruction = isClosingSprintRequest(instruction);
   const isOpsInstruction = isVegaOpsRequest(instruction);
+  const isRevenueWatchInstruction = isRevenueWatchRequest(instruction);
   const specialistKind = classifyVegaSpecialistRequest(instruction);
   await createAutomationEvent({
     title: isLeadInstruction
@@ -154,9 +156,11 @@ export async function POST(request: Request) {
                     ? "Vega Slack closing sprint received"
                     : isOpsInstruction
                       ? "Vega Slack ops brief received"
-                      : specialistKind
-                        ? "Vega Slack specialist request received"
-                        : "Vega Slack message ignored",
+                      : isRevenueWatchInstruction
+                        ? "Vega Slack revenue watch received"
+                        : specialistKind
+                          ? "Vega Slack specialist request received"
+                          : "Vega Slack message ignored",
     detail: instruction || text || "No Slack text received.",
     status:
       isLeadInstruction ||
@@ -168,6 +172,7 @@ export async function POST(request: Request) {
       isApprovalInstruction ||
       isClosingInstruction ||
       isOpsInstruction ||
+      isRevenueWatchInstruction ||
       specialistKind
         ? "running"
         : "blocked",
@@ -187,6 +192,7 @@ export async function POST(request: Request) {
       isApprovalInstruction,
       isClosingInstruction,
       isOpsInstruction,
+      isRevenueWatchInstruction,
       specialistKind,
     },
   });
@@ -201,6 +207,7 @@ export async function POST(request: Request) {
     !isApprovalInstruction &&
     !isClosingInstruction &&
     !isOpsInstruction &&
+    !isRevenueWatchInstruction &&
     !specialistKind
   ) {
     await notifySlackVegaLeadRequestResult({
@@ -281,6 +288,28 @@ export async function POST(request: Request) {
           instruction,
           status: "failed",
           summary: error instanceof Error ? error.message : "Unknown Vega ops brief failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
+  }
+
+  if (isRevenueWatchInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is watching reply, booking, SendGrid, and source performance signals now.",
+    });
+
+    after(async () => {
+      try {
+        await runVegaRevenueWatch({ instruction, execute: true });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Vega revenue watch failure.",
         });
       }
     });

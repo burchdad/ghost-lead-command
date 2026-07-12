@@ -670,6 +670,129 @@ export async function notifySlackVegaOpsBrief(input: {
   };
 }
 
+export async function notifySlackRevenueWatch(input: {
+  summary: string;
+  nextMove: string;
+  escalations: string[];
+  eventCounts: Record<string, number>;
+  pendingApprovals: number;
+  bookingReady: number;
+  bookingBlocked: number;
+  replies: number;
+  hotReplies: number;
+  topSources: {
+    source: string;
+    leads: number;
+    sent: number;
+    delivered: number;
+    opened: number;
+    clicked: number;
+    failed: number;
+    replies: number;
+    booked: number;
+    replyRate: number;
+    failRate: number;
+    verdict: string;
+    nextMove: string;
+  }[];
+  executed: { name: string; status: string; detail: string }[];
+}) {
+  const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
+  const eventLines = Object.entries(input.eventCounts)
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([event, count]) => `${event}: ${count}`)
+    .join(", ") || "No SendGrid events in the last 24h.";
+  const sourceLines = input.topSources.length
+    ? input.topSources
+        .map((source) =>
+          `- *${source.source}:* ${source.verdict} - ${source.leads} leads, ${source.sent} sent, ${source.replies} replies, ${source.booked} booked, ${source.replyRate}% reply, ${source.failRate}% fail`,
+        )
+        .join("\n")
+    : "No source rows available yet.";
+  const escalationLines = input.escalations.length
+    ? input.escalations.map((item) => `- ${item}`).join("\n")
+    : "No urgent escalations right now.";
+  const executedLines = input.executed.length
+    ? input.executed.slice(0, 6).map((item) => `- *${item.name}:* ${item.status} - ${item.detail}`).join("\n")
+    : "No lanes executed.";
+
+  const result = await postSlackPayload({
+    webhookUrl:
+      clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_EXECUTIVE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_WEBHOOK_URL),
+    botToken: clean(process.env.SLACK_BOT_TOKEN),
+    channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
+    payload: {
+      text: `Vega revenue watch: ${input.summary}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "Vega Reply + Booking Watch", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Channel:* #${channelName}\n*Summary:* ${input.summary}\n*Next move:* ${input.nextMove}`,
+          },
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Replies 24h*\n${input.replies}` },
+            { type: "mrkdwn", text: `*Hot replies 24h*\n${input.hotReplies}` },
+            { type: "mrkdwn", text: `*Booking ready*\n${input.bookingReady}` },
+            { type: "mrkdwn", text: `*Booking blocked*\n${input.bookingBlocked}` },
+            { type: "mrkdwn", text: `*Pending approvals*\n${input.pendingApprovals}` },
+            { type: "mrkdwn", text: `*SendGrid events*\n${eventLines.slice(0, 180)}` },
+          ],
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Escalations*\n${escalationLines.slice(0, 1800)}` },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Source scorecard*\n${sourceLines.slice(0, 2400)}` },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Executed lanes*\n${executedLines.slice(0, 1500)}` },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Inbox", emoji: false },
+              style: "primary",
+              url: appViewUrl("inbox"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Queue", emoji: false },
+              url: appViewUrl("queue"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Analytics", emoji: false },
+              url: appViewUrl("analytics"),
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  return {
+    ...result,
+    message: result.sent ? `Revenue watch posted to ${result.channel || channelName}.` : result.message,
+  };
+}
+
 export async function notifySlackLeadCommandAudit(input: {
   executiveSummary: string;
   bottleneck: string;
