@@ -1,6 +1,14 @@
 import { after, NextResponse } from "next/server";
-import { isLeadRequest, isReplyWorkRequest, runVegaLeadRequest, runVegaReplyWork } from "@/lib/autopilot";
+import {
+  isLeadRequest,
+  isReplyWorkRequest,
+  runVegaLeadRequest,
+  runVegaReplyWork,
+  sendDailyDigest,
+} from "@/lib/autopilot";
 import { createAutomationEvent } from "@/lib/automation";
+import { runLeadCommandAudit } from "@/lib/lead-command-audit";
+import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { isSlackEventAuthorized, notifySlackVegaLeadRequestResult, type SlackEventPayload } from "@/lib/slack";
 
 function isVegaAddressed(text: string) {
@@ -15,6 +23,25 @@ function stripVegaAddress(text: string) {
     cleaned = next;
   }
   return cleaned;
+}
+
+function normalizedInstruction(text: string) {
+  return text.trim().toLowerCase();
+}
+
+function isAuditRequest(text: string) {
+  const normalized = normalizedInstruction(text);
+  return /\b(?:audit|status|bottleneck|blocker|health|what'?s wrong)\b/.test(normalized);
+}
+
+function isDigestRequest(text: string) {
+  const normalized = normalizedInstruction(text);
+  return /\b(?:digest|summary|recap)\b/.test(normalized);
+}
+
+function isNovaBriefRequest(text: string) {
+  const normalized = normalizedInstruction(text);
+  return /\b(?:nova|ceo|director brief|brief nova)\b/.test(normalized);
 }
 
 export async function POST(request: Request) {
@@ -71,14 +98,23 @@ export async function POST(request: Request) {
   const instruction = stripVegaAddress(text);
   const isLeadInstruction = isLeadRequest(instruction) || isLeadRequest(text);
   const isReplyInstruction = isReplyWorkRequest(instruction) || isReplyWorkRequest(text);
+  const isAuditInstruction = isAuditRequest(instruction);
+  const isDigestInstruction = isDigestRequest(instruction);
+  const isNovaInstruction = isNovaBriefRequest(instruction);
   await createAutomationEvent({
     title: isLeadInstruction
       ? "Vega Slack lead request received"
       : isReplyInstruction
         ? "Vega Slack reply work received"
-        : "Vega Slack message ignored",
+        : isAuditInstruction
+          ? "Vega Slack audit request received"
+          : isDigestInstruction
+            ? "Vega Slack digest request received"
+            : isNovaInstruction
+              ? "Vega Slack Nova brief request received"
+              : "Vega Slack message ignored",
     detail: instruction || text || "No Slack text received.",
-    status: isLeadInstruction || isReplyInstruction ? "running" : "blocked",
+    status: isLeadInstruction || isReplyInstruction || isAuditInstruction || isDigestInstruction || isNovaInstruction ? "running" : "blocked",
     type: "slack",
     payload: {
       eventId: payload.event_id,
@@ -88,16 +124,87 @@ export async function POST(request: Request) {
       text,
       isLeadInstruction,
       isReplyInstruction,
+      isAuditInstruction,
+      isDigestInstruction,
+      isNovaInstruction,
     },
   });
 
-  if (!isLeadInstruction && !isReplyInstruction) {
+  if (!isLeadInstruction && !isReplyInstruction && !isAuditInstruction && !isDigestInstruction && !isNovaInstruction) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "failed",
-      summary: "I heard Vega, but I could not detect a lead sourcing or reply-work request. Try: Vega, need 10 new HVAC leads near Tyler, Texas. Or: Vega, work replies.",
+      summary: "I heard Vega, but I could not detect a lead sourcing, reply-work, audit, digest, or Nova brief request. Try: Vega, need 10 new HVAC leads near Tyler, Texas. Or: Vega, audit.",
     });
     return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
+  }
+
+  if (isAuditInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is running the Lead Command audit now.",
+    });
+
+    after(async () => {
+      try {
+        await runLeadCommandAudit({ postToSlack: true });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Vega audit failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
+  }
+
+  if (isDigestInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is posting the current Lead Command digest now.",
+    });
+
+    after(async () => {
+      try {
+        await sendDailyDigest();
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Vega digest failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
+  }
+
+  if (isNovaInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is briefing Nova from Lead Command now.",
+    });
+
+    after(async () => {
+      try {
+        await briefNovaCeoAgent({
+          message: instruction || "Slack requested a Vega Lead Command briefing for Nova.",
+        });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Nova brief failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
   }
 
   if (isReplyInstruction) {
