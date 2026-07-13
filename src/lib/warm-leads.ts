@@ -115,6 +115,8 @@ export async function getWarmLeadPriorityReport(input: { limit?: number; createE
             ? "Prep the scheduled call."
         : lead.replies.some((reply) => ["booked", "hot"].includes(reply.classification))
           ? "Work reply and push booking."
+          : clicked
+            ? "Review click-intent follow-up and push toward a call."
           : pending
             ? "Review/approve pending outreach."
             : bookingBlocked

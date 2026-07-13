@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAutomationEvent } from "@/lib/automation";
+import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
 import { addSuppressionRecord } from "@/lib/suppression";
 import { getDefaultWorkspace } from "@/lib/workspace";
@@ -47,6 +48,81 @@ function eventBody(event: SendGridEvent) {
   const detail = clean(event.reason) || clean(event.response) || clean(event.url);
   const messageId = clean(event.sg_message_id);
   return [`SendGrid ${type}`, detail, messageId ? `message ${messageId}` : ""].filter(Boolean).join(" - ").slice(0, 500);
+}
+
+async function queueClickIntentFollowUp(input: {
+  workspaceId: string;
+  lead: {
+    id: string;
+    name: string;
+    companyName: string;
+    niche: string;
+    stage: string;
+    contactId: string | null;
+  };
+  url?: string;
+}) {
+  const prisma = getPrisma();
+  const existing = await prisma.outreachQueueItem.findFirst({
+    where: {
+      workspaceId: input.workspaceId,
+      leadId: input.lead.id,
+      channel: "email",
+      status: "pending",
+      reason: { contains: "click intent" },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existing) return { queued: false, reason: "already-pending" };
+
+  const firstName = input.lead.name.split(" ")[0] || "there";
+  const niche = input.lead.niche || "business";
+  const clickedUrl = clean(input.url);
+  const body = sanitizeCustomerMessage(
+    [
+      `${firstName}, saw there may have been some interest in the workflow I sent over.`,
+      "",
+      `For ${input.lead.companyName}, the quick win is usually finding where ${niche.toLowerCase()} leads stall, then putting a lightweight follow-up and booking layer around that path.`,
+      "",
+      "Worth a quick look this week so I can show the exact flow I had in mind?",
+      clickedUrl ? `\nFor context, this is the link that got activity: ${clickedUrl}` : "",
+    ].join("\n"),
+    { channel: "email" },
+  );
+
+  const item = await prisma.outreachQueueItem.create({
+    data: {
+      workspaceId: input.workspaceId,
+      leadId: input.lead.id,
+      channel: "email",
+      provider: "sendgrid",
+      subject: sanitizeSubject(`Worth a quick look for ${input.lead.companyName}?`),
+      body,
+      status: "pending",
+      reason: "Vega click intent follow-up prepared after SendGrid click.",
+    },
+  });
+
+  await prisma.lead.update({
+    where: { id: input.lead.id },
+    data: {
+      stage: ["Call Booked", "Proposal Sent", "Won"].includes(input.lead.stage) ? input.lead.stage : "Potential Client",
+      lastTouch: "SendGrid click",
+      nextAction: "Clicked outbound email. Vega queued a warm click-intent follow-up for approval.",
+    },
+  });
+
+  await createAutomationEvent({
+    leadId: input.lead.id,
+    title: "Vega click intent follow-up queued",
+    detail: `${input.lead.companyName} clicked an outbound email. A warm follow-up is waiting for approval.`,
+    status: "done",
+    type: "sendgrid",
+    payload: { queueItemId: item.id, clickedUrl },
+  });
+
+  return { queued: true, queueItemId: item.id };
 }
 
 export async function POST(request: Request) {
@@ -98,6 +174,21 @@ export async function POST(request: Request) {
           where: { id: lead.id },
           data: { lastTouch: `SendGrid ${type}`, nextAction },
         });
+
+        if (type === "click") {
+          await queueClickIntentFollowUp({
+            workspaceId: workspace.id,
+            lead: {
+              id: lead.id,
+              name: lead.name,
+              companyName: lead.companyName,
+              niche: lead.niche,
+              stage: lead.stage,
+              contactId: lead.contactId,
+            },
+            url: event.url,
+          });
+        }
       }
     }
 
