@@ -34,7 +34,7 @@ function isAllowedPath(pathname: string) {
     pathname === "/api/automation/sequence/run" ||
     pathname.startsWith("/api/sendgrid/") ||
     pathname === "/api/source/intake" ||
-    pathname.startsWith("/api/waitlist") ||
+    pathname === "/api/waitlist" ||
     pathname.startsWith("/api/twilio/") ||
     pathname === "/api/webhooks/contact-card" ||
     pathname === "/api/slack/command" ||
