@@ -24,6 +24,7 @@ export type VegaSpecialistKind =
   | "social-intent"
   | "linkedin-events"
   | "linkedin-tasks"
+  | "waitlist"
   | "full-team";
 
 type SpecialistResult = {
@@ -484,6 +485,57 @@ export async function runLinkedInEventsAgent(input: { limit?: number } = {}): Pr
   };
 }
 
+export async function runWaitlistReviewAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
+  const prisma = getPrisma();
+  const workspace = await getDefaultWorkspace();
+  const limit = Math.min(25, Math.max(1, Number(input.limit || 10)));
+  const contestants = await prisma.lead.findMany({
+    where: { workspaceId: workspace.id, source: "vega-waitlist", status: "active" },
+    orderBy: [{ score: "desc" }, { updatedAt: "desc" }],
+    take: limit,
+    include: { contact: true, interactions: { orderBy: { createdAt: "desc" }, take: 1 } },
+  });
+
+  let flaggedIncomplete = 0;
+  let suspicious = 0;
+  let highPriority = 0;
+  const top = contestants.slice(0, 5).map((lead) => {
+    const fields = lead.customFields && typeof lead.customFields === "object" && !Array.isArray(lead.customFields)
+      ? lead.customFields as Record<string, unknown>
+      : {};
+    const missing = [lead.contact?.phone ? "" : "phone", fields.companyWebsite ? "" : "website"].filter(Boolean);
+    if (lead.score >= 80) highPriority += 1;
+    if (lead.score >= 80 && missing.length) flaggedIncomplete += 1;
+    if (!lead.contact?.email || lead.contact.email.includes("+")) suspicious += 1;
+    return `${lead.name} at ${lead.companyName} (${lead.score}, ${fields.qualificationSegment || lead.priority || "waitlist"})`;
+  });
+
+  const nextMove = highPriority
+    ? "Personally review the top founding design partner candidates before any product-update nurture."
+    : contestants.length
+      ? "Review private beta candidates and keep lower-score contestants in Vega product update nurture."
+      : "No Vega waitlist contestants are ready for review yet.";
+
+  await createAutomationEvent({
+    title: "Vega Waitlist Specialist review",
+    detail: contestants.length ? `Reviewed ${contestants.length} waitlist contestants. Top: ${top.join("; ")}` : "No active Vega waitlist contestants found.",
+    status: contestants.length ? "done" : "blocked",
+    type: "agent",
+    payload: { reviewed: contestants.length, highPriority, flaggedIncomplete, suspicious, top },
+  });
+
+  return {
+    kind: "waitlist",
+    title: "Waitlist Specialist",
+    status: contestants.length ? "done" : "blocked",
+    summary: contestants.length
+      ? `Reviewed ${contestants.length} Vega waitlist contestants. High priority ${highPriority}; incomplete high-value records ${flaggedIncomplete}; suspicious ${suspicious}.`
+      : "No Vega waitlist contestants are waiting yet.",
+    metrics: { reviewed: contestants.length, highPriority, flaggedIncomplete, suspicious, top: top.join(" | ") || "none" },
+    nextMove,
+  };
+}
+
 export async function runLearningLoopAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
   const result = await runAdaptiveLearningLoop({ activate: true, limit: input.limit || 3 });
   const topSource = result.learning.sources[0];
@@ -545,6 +597,7 @@ export async function runVegaSpecialist(kind: VegaSpecialistKind, input: { limit
   if (kind === "social-intent") return runSocialIntentAgent(input);
   if (kind === "linkedin-events") return runLinkedInEventsAgent(input);
   if (kind === "linkedin-tasks") return runLinkedInTaskAgent(input);
+  if (kind === "waitlist") return runWaitlistReviewAgent(input);
   return runVegaSpecialistTeam(input);
 }
 
@@ -623,6 +676,7 @@ export function classifyVegaSpecialistRequest(text: string): VegaSpecialistKind 
   if (/\b(?:social intent|competitor signals?|competitor engagement|scout social|social scout|linkedin signals?|social signals?)\b/.test(normalized)) return "social-intent";
   if (/\b(?:linkedin events?|event management|events api|lead gen events?)\b/.test(normalized)) return "linkedin-events";
   if (/\b(?:linkedin tasks?|sales nav tasks?|linkedin lane|sales navigator tasks?|social dm|connection requests?)\b/.test(normalized)) return "linkedin-tasks";
+  if (/\b(?:waitlist|early access|beta candidates?|contestants?|design partners?)\b/.test(normalized)) return "waitlist";
   return null;
 }
 

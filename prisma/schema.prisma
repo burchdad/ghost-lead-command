@@ -19,6 +19,7 @@ model Workspace {
   campaigns   Campaign[]
   sourcingCampaigns SourcingCampaign[]
   suppressionRecords SuppressionRecord[]
+  waitlistSubmissions WaitlistSubmission[]
   outreachQueue OutreachQueueItem[]
   replies     Reply[]
   integrationHealth IntegrationHealth[]
@@ -36,6 +37,7 @@ model Company {
   name        String
   niche       String
   website     String?
+  domain      String?
   crmSource   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -45,6 +47,7 @@ model Company {
   opportunities Opportunity[]
 
   @@index([workspaceId])
+  @@index([domain])
 }
 
 model Contact {
@@ -52,9 +55,13 @@ model Contact {
   workspaceId String
   companyId   String?
   name        String
+  firstName   String?
+  lastName    String?
   email       String?
   phone       String?
   role        String?
+  title       String?
+  source      String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -72,14 +79,22 @@ model Lead {
   companyId   String?
   contactId   String?
   name        String
+  title       String?
+  description String?
   companyName String
   niche       String
   stage       String
+  priority    String?
   score       Int      @default(0)
+  leadScore   Int?
   value       Int      @default(0)
   source      String
   lastTouch   String
   nextAction  String
+  tags        Json?
+  customFields Json?
+  crmSyncStatus String @default("pending")
+  crmSyncedAt DateTime?
   status      String   @default("active")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -97,6 +112,7 @@ model Lead {
   @@index([workspaceId])
   @@index([stage])
   @@index([score])
+  @@index([crmSyncStatus])
 }
 
 model Opportunity {
@@ -126,12 +142,32 @@ model Interaction {
   direction   String
   body        String
   classification String?
+  metadata    Json?
   createdAt   DateTime @default(now())
   lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
   contact     Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
   @@index([leadId])
   @@index([contactId])
+}
+
+model WaitlistSubmission {
+  id          String   @id @default(cuid())
+  workspaceId String
+  email       String
+  payload     Json
+  status      String   @default("received")
+  crmContactId String?
+  crmLeadId   String?
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  syncedAt    DateTime?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([email])
+  @@index([status])
 }
 
 model Campaign {

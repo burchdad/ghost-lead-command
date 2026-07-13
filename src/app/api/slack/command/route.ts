@@ -251,6 +251,7 @@ export async function POST(request: Request) {
         "`Vega, scout social intent` - run competitor/social-style signal plays and queue qualified leads.",
         "`Vega, check LinkedIn events` - verify LinkedIn Events Management and lead-gen-enabled event availability.",
         "`Vega, queue LinkedIn tasks` - create manual Sales Navigator connection/DM tasks for social-fit leads.",
+        "`Vega, review the waitlist` - review Vega early-access contestants and surface top beta/design-partner candidates.",
         "`Vega, push bookings` - work engaged replies toward calendar-ready follow-up.",
         "`Vega, work contact paths` - refresh manual phone/website tasks and blocked contact paths.",
         "`Vega, tune copy` - rewrite pending email drafts using the offer/copy scorecard.",

@@ -61,10 +61,18 @@ function normalizeUrl(url: string) {
 }
 
 export function mapLeadToGhostCrm(lead: Lead & { contact?: { email?: string | null; phone?: string | null } | null }) {
+  const customFields =
+    lead.customFields && typeof lead.customFields === "object" && !Array.isArray(lead.customFields)
+      ? lead.customFields
+      : {};
+  const tags = Array.isArray(lead.tags)
+    ? lead.tags.filter((tag): tag is string => typeof tag === "string")
+    : ["ghost-lead-command", lead.niche].filter(Boolean);
+
   return {
     externalId: lead.id,
     organizationId: clean(process.env.GHOSTCRM_ORGANIZATION_ID) || undefined,
-    title: lead.name || lead.companyName,
+    title: lead.title || lead.name || lead.companyName,
     firstName: lead.name.split(" ")[0] || "",
     lastName: lead.name.split(" ").slice(1).join(" ") || "",
     email: lead.contact?.email || undefined,
@@ -72,15 +80,16 @@ export function mapLeadToGhostCrm(lead: Lead & { contact?: { email?: string | nu
     company: lead.companyName,
     source: lead.source,
     stage: mapStage(lead.stage),
-    priority: lead.score >= 85 ? "high" : lead.score >= 70 ? "medium" : "low",
+    priority: lead.priority || (lead.score >= 85 ? "high" : lead.score >= 70 ? "medium" : "low"),
     value: lead.value,
-    leadScore: lead.score,
-    description: lead.nextAction,
-    tags: ["ghost-lead-command", lead.niche].filter(Boolean),
+    leadScore: lead.leadScore || lead.score,
+    description: lead.description || lead.nextAction,
+    tags,
     customFields: {
       niche: lead.niche,
       lastTouch: lead.lastTouch,
       commandStatus: lead.status,
+      ...customFields,
     },
   };
 }
@@ -149,5 +158,6 @@ function mapStage(stage: string) {
   if (normalized.includes("proposal")) return "proposal";
   if (normalized.includes("booked") || normalized.includes("replied")) return "qualified";
   if (normalized.includes("contacted")) return "contacted";
+  if (normalized.includes("waitlist")) return "waitlist";
   return "new";
 }

@@ -339,6 +339,71 @@ export async function notifySlackOutreachApproval(
   };
 }
 
+export async function notifySlackWaitlistCandidate(input: {
+  name: string;
+  company: string;
+  role: string;
+  score: number;
+  segment: string;
+  monthlyLeadVolume: string;
+  tools: string[];
+  challenge: string;
+  nextAction: string;
+}) {
+  const webhookUrl = clean(process.env.SLACK_WEBHOOK_URL);
+  if (!webhookUrl) {
+    return { configured: false, sent: false, message: "Missing SLACK_WEBHOOK_URL." };
+  }
+
+  const waitlistUrl = new URL("/?view=waitlist", appBaseUrl()).toString();
+  const challenge = input.challenge.length > 520 ? `${input.challenge.slice(0, 517)}...` : input.challenge;
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: `New high-priority Vega waitlist contestant: ${input.name}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "New high-priority Vega waitlist contestant", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${input.name}* - ${input.role} at *${input.company}*\n*Score:* ${input.score}\n*Segment:* ${input.segment}\n*Lead volume:* ${input.monthlyLeadVolume}/month\n*Tools:* ${input.tools.join(", ") || "None"}`,
+          },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Challenge:*\n${challenge}` },
+        },
+        {
+          type: "context",
+          elements: [{ type: "mrkdwn", text: `*Next move:* ${input.nextAction}` }],
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Vega Waitlist", emoji: false },
+              style: "primary",
+              url: waitlistUrl,
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  return {
+    configured: true,
+    sent: response.ok,
+    message: response.ok ? "Slack waitlist notification sent." : `Slack webhook returned ${response.status}.`,
+  };
+}
+
 export async function notifySlackAgentPlan(plan: AgentPlan) {
   const webhookUrl = clean(process.env.SLACK_WEBHOOK_URL);
   if (!webhookUrl) {

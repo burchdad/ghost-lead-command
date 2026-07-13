@@ -12,6 +12,7 @@ const allowedKinds = new Set<VegaSpecialistKind>([
   "social-intent",
   "linkedin-events",
   "linkedin-tasks",
+  "waitlist",
   "full-team",
 ]);
 

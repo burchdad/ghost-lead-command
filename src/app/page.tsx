@@ -25,6 +25,7 @@ import {
   Target,
   Upload,
   WalletCards,
+  Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -428,6 +429,7 @@ type VegaSpecialistKind =
   | "social-intent"
   | "linkedin-events"
   | "linkedin-tasks"
+  | "waitlist"
   | "full-team";
 
 type VegaSpecialistResult = {
@@ -492,6 +494,38 @@ type BookingTask = {
   prepNotes: string;
   createdAt: string;
   lead?: (Partial<Lead> & { companyName?: string; nextAction?: string }) | null;
+};
+
+type WaitlistContestant = {
+  id: string;
+  name: string;
+  companyName: string;
+  priority?: string | null;
+  score: number;
+  crmSyncStatus?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  contact?: {
+    email?: string | null;
+    phone?: string | null;
+    role?: string | null;
+    title?: string | null;
+  } | null;
+  waitlistTags: string[];
+  waitlistFields: Record<string, unknown>;
+  interactions?: { createdAt: string; body: string; classification?: string | null }[];
+};
+
+type WaitlistDashboard = {
+  summary: {
+    total: number;
+    founding: number;
+    privateBeta: number;
+    general: number;
+    activeBetaInterest: number;
+    addedLast7Days: number;
+  };
+  leads: WaitlistContestant[];
 };
 
 function formatIntegrationValue(value: IntegrationPayloadValue): string {
@@ -721,6 +755,7 @@ const nav = [
   { id: "agents", label: "Agents", icon: Bot },
   { id: "source", label: "Source", icon: Target },
   { id: "pipeline", label: "Pipeline", icon: Layers3 },
+  { id: "waitlist", label: "Vega Waitlist", icon: Users },
   { id: "relationships", label: "QR Relationships", icon: Radar },
   { id: "revival", label: "Revival", icon: Flame },
   { id: "outreach", label: "Outreach", icon: Send },
@@ -933,6 +968,9 @@ export default function Home() {
   const [leadCommandAudit, setLeadCommandAudit] = useState<LeadCommandAuditResult | null>(null);
   const [bookingTasks, setBookingTasks] = useState<BookingTask[]>([]);
   const [sequenceQueue, setSequenceQueue] = useState<SequenceQueueStep[]>([]);
+  const [waitlistDashboard, setWaitlistDashboard] = useState<WaitlistDashboard | null>(null);
+  const [waitlistFilter, setWaitlistFilter] = useState("all");
+  const [waitlistNow] = useState(() => Date.now());
   const [editScore, setEditScore] = useState(String(seedLeads[0].score));
   const [editValue, setEditValue] = useState(String(seedLeads[0].value));
   const [editNextAction, setEditNextAction] = useState(seedLeads[0].next);
@@ -1187,6 +1225,7 @@ export default function Home() {
         const sequenceResponse = await fetch("/api/automation/sequence");
         const agentControlResponse = await fetch("/api/agent/control-room");
         const learningResponse = await fetch("/api/agent/learning");
+        const waitlistResponse = await fetch("/api/waitlist/dashboard");
 
         if (!cancelled && leadsResponse.ok) {
           const payload = await leadsResponse.json();
@@ -1288,6 +1327,10 @@ export default function Home() {
 
         if (!cancelled && learningResponse.ok) {
           setLearningLoop(await learningResponse.json());
+        }
+
+        if (!cancelled && waitlistResponse.ok) {
+          setWaitlistDashboard(await waitlistResponse.json());
         }
       } catch (error) {
         if (!cancelled) {
@@ -2042,6 +2085,7 @@ export default function Home() {
     await refreshOpsData();
     await refreshLeads();
     if (["copy-chief", "cadence", "contact-path", "full-team"].includes(kind)) setActive("queue");
+    if (kind === "waitlist") setActive("waitlist");
     if (kind === "booking") setActive("proposal");
     setSpecialistBusy(null);
   }
@@ -2851,6 +2895,18 @@ export default function Home() {
   ];
   const sequenceSteps = buildOutreachSequence(selectedLead, sequenceMode);
   const automationLanes = buildAutomationLanes(integrations, outreachStatus);
+  const waitlistContestants = waitlistDashboard?.leads || [];
+  const filteredWaitlistContestants = waitlistContestants.filter((lead) => {
+    const tags = lead.waitlistTags || [];
+    const fields = lead.waitlistFields || {};
+    if (waitlistFilter === "all") return true;
+    if (waitlistFilter === "source") return Boolean(fields.signupSource);
+    if (waitlistFilter === "date") {
+      const joined = new Date(String(fields.originalJoinedAt || lead.createdAt));
+      return waitlistNow - joined.getTime() <= 7 * 24 * 60 * 60 * 1000;
+    }
+    return tags.includes(waitlistFilter);
+  });
 
   const readinessItems = [
     {
@@ -4392,6 +4448,105 @@ export default function Home() {
                   onSave={saveLeadEdits}
                   onStageChange={(stage) => updateLead(selectedLead.id, { stage })}
                 />
+              </div>
+            )}
+
+            {active === "waitlist" && (
+              <div className="grid gap-6">
+                <Panel title="Vega Waitlist" icon={Users}>
+                  <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                    <MetricCard title="Contestants" value={String(waitlistDashboard?.summary.total || 0)} detail="Total active" icon={Users} />
+                    <MetricCard title="Founding" value={String(waitlistDashboard?.summary.founding || 0)} detail="Design partner fit" icon={Sparkles} />
+                    <MetricCard title="Private Beta" value={String(waitlistDashboard?.summary.privateBeta || 0)} detail="Beta candidates" icon={Rocket} />
+                    <MetricCard title="General" value={String(waitlistDashboard?.summary.general || 0)} detail="Product updates" icon={Inbox} />
+                    <MetricCard title="Active Testers" value={String(waitlistDashboard?.summary.activeBetaInterest || 0)} detail="Wants to test" icon={CheckCircle2} />
+                    <MetricCard title="Last 7 Days" value={String(waitlistDashboard?.summary.addedLast7Days || 0)} detail="New contestants" icon={CalendarClock} />
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {[
+                      ["all", "All"],
+                      ["Founding Design Partner Candidate", "Founding"],
+                      ["Private Beta Candidate", "Private beta"],
+                      ["General Waitlist", "General"],
+                      ["Active Beta Interest", "Active beta"],
+                      ["High Lead Volume", "High volume"],
+                      ["source", "Signup source"],
+                      ["date", "Date joined"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setWaitlistFilter(id)}
+                        className={`rounded-md px-3 py-2 text-xs font-semibold transition ${
+                          waitlistFilter === id
+                            ? "bg-[#d8ff5f] text-[#101417]"
+                            : "bg-white/[0.06] text-[#d6dfdc] hover:bg-white/12"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 overflow-x-auto">
+                    <table className="min-w-[1180px] w-full border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-white/10 text-xs uppercase tracking-[0.12em] text-[#8fa09a]">
+                          <th className="py-3 pr-4">Contestant</th>
+                          <th className="py-3 pr-4">Company</th>
+                          <th className="py-3 pr-4">Role</th>
+                          <th className="py-3 pr-4">Email</th>
+                          <th className="py-3 pr-4">Phone</th>
+                          <th className="py-3 pr-4">Beta</th>
+                          <th className="py-3 pr-4">Volume</th>
+                          <th className="py-3 pr-4">Segment</th>
+                          <th className="py-3 pr-4">Score</th>
+                          <th className="py-3 pr-4">Priority</th>
+                          <th className="py-3 pr-4">Tools</th>
+                          <th className="py-3 pr-4">Source</th>
+                          <th className="py-3 pr-4">Signup</th>
+                          <th className="py-3 pr-4">Latest</th>
+                          <th className="py-3 pr-4">CRM</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredWaitlistContestants.length ? (
+                          filteredWaitlistContestants.map((lead) => {
+                            const fields = lead.waitlistFields || {};
+                            const tools = Array.isArray(fields.currentTools) ? fields.currentTools.join(", ") : "";
+                            const segment = String(fields.qualificationSegment || lead.waitlistTags.find((tag) => tag.includes("Candidate") || tag === "General Waitlist") || "");
+                            return (
+                              <tr key={lead.id} className="border-b border-white/5 text-[#d6dfdc]">
+                                <td className="py-3 pr-4 font-semibold text-white">{lead.name}</td>
+                                <td className="py-3 pr-4">{lead.companyName}</td>
+                                <td className="py-3 pr-4">{lead.contact?.title || lead.contact?.role || ""}</td>
+                                <td className="py-3 pr-4">{lead.contact?.email || ""}</td>
+                                <td className="py-3 pr-4">{lead.contact?.phone || ""}</td>
+                                <td className="py-3 pr-4">{String(fields.betaInterest || "")}</td>
+                                <td className="py-3 pr-4">{String(fields.monthlyLeadVolume || "")}</td>
+                                <td className="py-3 pr-4">{segment}</td>
+                                <td className="py-3 pr-4 font-mono text-[#d8ff5f]">{lead.score}</td>
+                                <td className="py-3 pr-4">{lead.priority || "low"}</td>
+                                <td className="py-3 pr-4">{tools}</td>
+                                <td className="py-3 pr-4">{String(fields.signupSource || "")}</td>
+                                <td className="py-3 pr-4">{cardTime(String(fields.originalJoinedAt || lead.createdAt))}</td>
+                                <td className="py-3 pr-4">{lead.interactions?.[0] ? cardTime(lead.interactions[0].createdAt) : cardTime(lead.updatedAt)}</td>
+                                <td className="py-3 pr-4">{lead.crmSyncStatus || "pending"}</td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={15} className="py-10 text-center text-[#9fb0a8]">
+                              No Vega waitlist contestants match this filter yet.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Panel>
               </div>
             )}
 
