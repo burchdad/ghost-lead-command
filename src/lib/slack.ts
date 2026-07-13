@@ -993,6 +993,12 @@ export async function notifySlackVegaLeadRequestResult(input: {
       missingContact?: number;
       suppressed?: Record<string, number>;
       policySkipped?: Record<string, number>;
+      searchRuns?: Array<{
+        query?: string;
+        found?: number;
+        strictQualified?: number;
+        reviewReady?: number;
+      }>;
     };
   };
 }) {
@@ -1016,6 +1022,12 @@ export async function notifySlackVegaLeadRequestResult(input: {
     ? [
         input.result.diagnostics.marketsSearched?.length
           ? `*Markets searched:* ${input.result.diagnostics.marketsSearched.slice(0, 8).join(", ")}`
+          : "",
+        input.result.diagnostics.searchRuns?.length
+          ? `*Search passes:* ${input.result.diagnostics.searchRuns
+              .slice(0, 4)
+              .map((run) => `${run.found || 0} found / ${run.strictQualified || 0} qualified (${clean(run.query).slice(0, 52)})`)
+              .join("; ")}`
           : "",
         compactReasonCounts("Source filters", input.result.diagnostics.suppressed),
         compactReasonCounts("Policy skips", input.result.diagnostics.policySkipped),

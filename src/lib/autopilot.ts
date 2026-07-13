@@ -104,6 +104,16 @@ function parseLeadCount(text: string) {
   return match ? Number(match[1]) : null;
 }
 
+function maxRequestedQueueLimit() {
+  const value = Number(process.env.AGENT_MAX_REQUEST_QUEUE_LIMIT || process.env.AGENT_DAILY_QUEUE_LIMIT || 40);
+  return Number.isFinite(value) && value > 0 ? value : 40;
+}
+
+function maxRequestedSourceSize() {
+  const value = Number(process.env.AGENT_MAX_REQUEST_SOURCE_SIZE || process.env.AGENT_DAILY_SOURCE_LIMIT || 150);
+  return Number.isFinite(value) && value > 0 ? value : 150;
+}
+
 function parseNumber(text: string, label: "score" | "limit" | "size", fallback: number) {
   const match = text.match(new RegExp(`\\b${label}\\s*(?:above|over|of|=|:)?\\s*(\\d+)`, "i"));
   return match ? Number(match[1]) : fallback;
@@ -144,8 +154,8 @@ export function createAgentPlan(input: {
     : recommended.industries;
   const minScore = parseNumber(text, "score", recommended.minScore);
   const requestedLeads = parseLeadCount(text);
-  const queueLimit = Math.min(10, Math.max(1, requestedLeads || parseNumber(text, "limit", recommended.queueLimit)));
-  const size = Math.min(50, Math.max(queueLimit, parseNumber(text, "size", Math.max(15, queueLimit * 3))));
+  const queueLimit = Math.min(maxRequestedQueueLimit(), Math.max(1, requestedLeads || parseNumber(text, "limit", recommended.queueLimit)));
+  const size = Math.min(maxRequestedSourceSize(), Math.max(queueLimit, parseNumber(text, "size", Math.max(30, queueLimit * 3))));
 
   return {
     provider,

@@ -29,6 +29,19 @@ type AgentSourceResult = Awaited<ReturnType<typeof searchFreshLeads>> & {
   reviewLeads?: SourceLead[];
 };
 
+type DeepSearchResult = AgentSourceResult & {
+  runs: {
+    provider: SourceProvider;
+    query: string;
+    location?: string;
+    locations?: string[];
+    found: number;
+    strictQualified: number;
+    reviewReady: number;
+    message?: string;
+  }[];
+};
+
 type NicheRecommendation = {
   niche: string;
   query: string;
@@ -117,6 +130,134 @@ function boolFromEnv(name: string, fallback = false) {
   if (["true", "1", "yes", "on"].includes(value)) return true;
   if (["false", "0", "no", "off"].includes(value)) return false;
   return fallback;
+}
+
+function sourceLeadKey(lead: SourceLead) {
+  const email = clean(lead.email).toLowerCase();
+  if (email) return `email:${email}`;
+  const phone = clean(lead.phone).replace(/\D/g, "");
+  if (phone) return `phone:${phone}`;
+  return `company:${clean(lead.companyName).toLowerCase()}:${clean(lead.location).toLowerCase()}`;
+}
+
+function mergeCounts(...items: Array<Record<string, number> | undefined>) {
+  const merged: Record<string, number> = {};
+  for (const item of items) {
+    for (const [key, count] of Object.entries(item || {})) {
+      merged[key] = (merged[key] || 0) + Number(count || 0);
+    }
+  }
+  return merged;
+}
+
+function mergeDiagnostics(results: AgentSourceResult[], fallbackMarkets?: string[]): SourceDiagnostics {
+  const markets = Array.from(new Set(results.flatMap((result) => result.diagnostics?.marketsSearched || fallbackMarkets || []).filter(Boolean)));
+  return {
+    marketsSearched: markets.length ? markets : fallbackMarkets,
+    rawFound: results.reduce((sum, result) => sum + Number(result.diagnostics?.rawFound || result.total || result.leads.length || 0), 0),
+    strictQualified: results.reduce((sum, result) => sum + Number(result.diagnostics?.strictQualified || result.leads.length || 0), 0),
+    reviewReady: results.reduce((sum, result) => sum + Number(result.diagnostics?.reviewReady || result.reviewLeads?.length || 0), 0),
+    contactable: results.reduce((sum, result) => sum + Number(result.diagnostics?.contactable || (result.leads as SourceLead[]).filter((lead) => lead.email || lead.phone).length), 0),
+    missingContact: results.reduce((sum, result) => sum + Number(result.diagnostics?.missingContact || (result.leads as SourceLead[]).filter((lead) => !lead.email && !lead.phone).length), 0),
+    suppressed: mergeCounts(...results.map((result) => result.diagnostics?.suppressed)),
+  };
+}
+
+function expandedQueries(baseQuery: string, niche: string, provider: SourceProvider) {
+  const base = clean(baseQuery);
+  const lowerNiche = clean(niche).toLowerCase();
+  if (provider !== "google-maps") return [base].filter(Boolean);
+  const service = lowerNiche || "local service";
+  const variants = [
+    base,
+    `${service} repair company owner`,
+    `${service} contractor owner`,
+    `${service} installation company`,
+    `${service} emergency service company`,
+    `${service} maintenance company`,
+    `${service} commercial service company`,
+  ];
+  return Array.from(new Set(variants.map(clean).filter(Boolean)));
+}
+
+async function searchFreshLeadsDeep(input: {
+  provider: SourceProvider;
+  query: string;
+  location?: string;
+  locations?: string[];
+  industries?: string[];
+  titles?: string[];
+  size: number;
+  queueLimit: number;
+  minScore: number;
+}): Promise<DeepSearchResult> {
+  const queryVariants = expandedQueries(input.query, input.industries?.[0] || input.query, input.provider);
+  const maxRuns = Math.min(
+    Number(process.env.AGENT_MAX_SOURCE_RUNS || 4),
+    input.queueLimit >= 20 ? 4 : input.queueLimit >= 10 ? 3 : 2,
+    queryVariants.length,
+  );
+  const perRunSize = Math.min(100, Math.max(input.size, Math.ceil(input.queueLimit * 2.5)));
+  const results: AgentSourceResult[] = [];
+  const leadMap = new Map<string, SourceLead>();
+  const reviewMap = new Map<string, SourceLead>();
+  const runs: DeepSearchResult["runs"] = [];
+
+  for (const query of queryVariants.slice(0, maxRuns)) {
+    const result = (await searchFreshLeads({
+      provider: input.provider,
+      query,
+      location: input.location,
+      locations: input.locations,
+      industries: input.industries,
+      titles: input.titles,
+      size: perRunSize,
+    })) as AgentSourceResult;
+    results.push(result);
+    runs.push({
+      provider: input.provider,
+      query,
+      location: input.location,
+      locations: input.locations,
+      found: result.leads.length,
+      strictQualified: Number(result.diagnostics?.strictQualified || result.leads.length || 0),
+      reviewReady: Number(result.diagnostics?.reviewReady || result.reviewLeads?.length || 0),
+      message: result.message || undefined,
+    });
+
+    for (const lead of result.leads || []) {
+      const key = sourceLeadKey(lead);
+      const existing = leadMap.get(key);
+      if (!existing || lead.score > existing.score) leadMap.set(key, lead);
+    }
+    for (const lead of result.reviewLeads || []) {
+      const key = sourceLeadKey(lead);
+      if (leadMap.has(key)) continue;
+      const existing = reviewMap.get(key);
+      if (!existing || lead.score > existing.score) reviewMap.set(key, lead);
+    }
+
+    const emailReady = [...leadMap.values()].filter((lead) => lead.score >= input.minScore && lead.email).length;
+    const contactReady = [...leadMap.values()].filter((lead) => lead.score >= input.minScore && (lead.email || lead.phone)).length;
+    if (emailReady >= input.queueLimit || contactReady >= Math.ceil(input.queueLimit * 1.2)) break;
+  }
+
+  const leads = [...leadMap.values()].sort((a, b) => b.score - a.score).slice(0, Math.max(input.size, input.queueLimit * 2));
+  const reviewLeads = [...reviewMap.values()].sort((a, b) => b.score - a.score).slice(0, Math.max(input.size, input.queueLimit * 2));
+  const diagnostics = mergeDiagnostics(results, input.locations || (input.location ? [input.location] : undefined));
+  return {
+    provider: input.provider,
+    dryRun: results.some((result) => result.dryRun),
+    total: results.reduce((sum, result) => sum + Number(result.total || 0), 0),
+    scrollToken: results.find((result) => result.scrollToken)?.scrollToken || null,
+    leads,
+    reviewLeads,
+    diagnostics,
+    runs,
+    message: leads.length
+      ? undefined
+      : results.find((result) => result.message)?.message || "Deep source search did not find qualified leads.",
+  };
 }
 
 function normalizeDomain(value: unknown) {
@@ -285,9 +426,14 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   const provider = input.provider || "pdl";
   const autoSend = input.autoSend ?? boolFromEnv("AGENT_AUTO_SEND", false);
   const requestedMinScore = Number(input.minScore || process.env.AGENT_MIN_CONTACT_SCORE || process.env.AGENT_MIN_LEAD_SCORE || 80);
-  const requestedQueueLimit = Math.min(10, Math.max(1, Number(input.queueLimit || process.env.AGENT_QUEUE_LIMIT || 5)));
+  const maxRequestedQueueLimit = Number(process.env.AGENT_MAX_REQUEST_QUEUE_LIMIT || process.env.AGENT_DAILY_QUEUE_LIMIT || 40);
+  const maxRequestedSourceSize = Number(process.env.AGENT_MAX_REQUEST_SOURCE_SIZE || process.env.AGENT_DAILY_SOURCE_LIMIT || 150);
+  const requestedQueueLimit = Math.min(
+    Number.isFinite(maxRequestedQueueLimit) && maxRequestedQueueLimit > 0 ? maxRequestedQueueLimit : 40,
+    Math.max(1, Number(input.queueLimit || process.env.AGENT_QUEUE_LIMIT || 5)),
+  );
   const requestedSize = Math.min(
-    50,
+    Number.isFinite(maxRequestedSourceSize) && maxRequestedSourceSize > 0 ? maxRequestedSourceSize : 150,
     Math.max(requestedQueueLimit, Number(input.size || process.env.AGENT_SOURCE_BATCH_SIZE || 15)),
   );
   const policy = await prepareOperatorRun({
@@ -330,7 +476,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     payload: { provider, minScore, queueLimit, size, policy, autoSend },
   });
 
-  const sourceResult = await searchFreshLeads({
+  const sourceResult: DeepSearchResult = await searchFreshLeadsDeep({
     provider,
     query:
       input.query ||
@@ -341,7 +487,9 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     industries: input.industries || (process.env.AGENT_SOURCE_INDUSTRIES || "Software, SaaS, Marketing, Consulting, B2B Services").split(","),
     titles: input.titles || ["Founder", "CEO", "Owner", "President", "Head of Growth", "VP Sales", "Revenue Operations", "General Manager"],
     size,
-  }) as AgentSourceResult;
+    queueLimit,
+    minScore,
+  });
 
   const skipped: Record<string, number> = {};
 
@@ -453,6 +601,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       suppressed: {},
     }),
     policySkipped: skipped,
+    searchRuns: sourceResult.runs,
   };
 
   await createAutomationEvent({
