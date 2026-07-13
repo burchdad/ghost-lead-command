@@ -1064,8 +1064,23 @@ export default function Home() {
         lead: task.lead,
       }));
 
+    const bookingHandoff = bookingTasks
+      .filter((task) => ["ready", "handoff_sent"].includes(task.status))
+      .map<QueueBoardCard>((task) => ({
+        id: task.id,
+        kind: "booking",
+        title: boardLeadName(task.lead),
+        subtitle: task.status === "handoff_sent" ? "Calendar handoff queued" : "Ready for booking handoff",
+        detail: compactText(task.prepNotes || task.meetingLink || "Booking handoff ready."),
+        status: task.status,
+        meta: [task.calendarProvider || "booking", task.meetingLink ? "meeting link" : "link needed", cardTime(task.createdAt)].filter(Boolean),
+        createdAt: task.createdAt,
+        leadId: task.lead?.id,
+        lead: task.lead,
+      }));
+
     const appointmentCards = [
-      ...bookingTasks.filter((task) => task.status !== "blocked").map<QueueBoardCard>((task) => ({
+      ...bookingTasks.filter((task) => task.status === "scheduled").map<QueueBoardCard>((task) => ({
         id: task.id,
         kind: "booking",
         title: boardLeadName(task.lead),
@@ -1078,7 +1093,7 @@ export default function Home() {
         lead: task.lead,
       })),
       ...leads
-        .filter((lead) => lead.stage === "Potential Client" || lead.stage === "Call Booked")
+        .filter((lead) => lead.stage === "Call Booked")
         .map<QueueBoardCard>((lead) => ({
           id: lead.id || `${lead.company}-appointment`,
           kind: "lead",
@@ -1130,9 +1145,15 @@ export default function Home() {
         cards: replyCards,
       },
       {
+        id: "booking-handoff",
+        title: "Booking Handoff",
+        subtitle: "Ready or queued for calendar follow-up",
+        cards: bookingHandoff,
+      },
+      {
         id: "appointment",
         title: "Appointment Set",
-        subtitle: "Confirmed handoffs and potential-client stage",
+        subtitle: "Confirmed scheduled calls only",
         cards: appointmentCards,
       },
       {

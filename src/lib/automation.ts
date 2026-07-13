@@ -152,6 +152,158 @@ export async function createBookingTaskForLead(input: {
   return { task, readiness, blocked };
 }
 
+export async function pushReadyBookingTasks(input: { limit?: number } = {}) {
+  const prisma = getPrisma();
+  const workspace = await getDefaultWorkspace();
+  const readiness = getBookingReadiness();
+  const limit = Math.min(25, Math.max(1, Number(input.limit || 10)));
+  const tasks = await prisma.bookingTask.findMany({
+    where: { workspaceId: workspace.id, status: "ready" },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "asc" }],
+    take: limit,
+    include: { lead: { include: { contact: true } } },
+  });
+
+  let queued = 0;
+  let scheduled = 0;
+  let blocked = 0;
+  let alreadyPending = 0;
+  const moved: Array<{ taskId: string; leadId: string | null; companyName: string; status: string }> = [];
+
+  for (const task of tasks) {
+    const lead = task.lead;
+    if (!lead) {
+      blocked += 1;
+      await prisma.bookingTask.update({ where: { id: task.id }, data: { status: "blocked" } });
+      continue;
+    }
+
+    if (task.scheduledFor) {
+      scheduled += 1;
+      await prisma.$transaction([
+        prisma.bookingTask.update({ where: { id: task.id }, data: { status: "scheduled" } }),
+        prisma.lead.update({
+          where: { id: lead.id },
+          data: {
+            stage: "Call Booked",
+            lastTouch: "Just now",
+            nextAction: "Calendar event is scheduled. Prep the discovery call and confirm meeting link.",
+          },
+        }),
+        prisma.interaction.create({
+          data: {
+            leadId: lead.id,
+            contactId: lead.contactId,
+            channel: "calendar",
+            direction: "internal",
+            classification: "appointment-set",
+            body: `Appointment set for ${lead.companyName}. ${task.meetingLink ? `Meeting link: ${task.meetingLink}` : ""}`.trim(),
+            metadata: { taskId: task.id, scheduledFor: task.scheduledFor.toISOString() },
+          },
+        }),
+      ]);
+      moved.push({ taskId: task.id, leadId: lead.id, companyName: lead.companyName, status: "scheduled" });
+      continue;
+    }
+
+    const email = lead.contact?.email || "";
+    const meetingLink = task.meetingLink || readiness.meetingLink || "";
+    if (!email || !meetingLink) {
+      blocked += 1;
+      await prisma.bookingTask.update({ where: { id: task.id }, data: { status: "blocked" } });
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          stage: lead.stage === "Imported" ? "Contacted" : lead.stage,
+          nextAction: !email
+            ? "Booking handoff blocked: no direct email is available for the reply follow-up."
+            : "Booking handoff blocked: meeting link is missing.",
+        },
+      });
+      continue;
+    }
+
+    const existingHandoff = await prisma.outreachQueueItem.findFirst({
+      where: {
+        workspaceId: workspace.id,
+        leadId: lead.id,
+        channel: "email",
+        status: "pending",
+        reason: { contains: "booking handoff" },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const hasPendingHandoff = Boolean(existingHandoff);
+
+    if (hasPendingHandoff) {
+      alreadyPending += 1;
+    } else {
+      const firstName = lead.name.split(" ")[0] || "there";
+      await prisma.outreachQueueItem.create({
+        data: {
+          workspaceId: workspace.id,
+          leadId: lead.id,
+          channel: "email",
+          provider: "sendgrid",
+          subject: sanitizeSubject(`Quick time for ${lead.companyName}?`),
+          body: sanitizeCustomerMessage(
+            `${firstName}, happy to show you what this would look like.\n\nHere is the quickest next step: grab a time that works here:\n${meetingLink}\n\nOn the call, I can map where leads are leaking, show the follow-up/booking workflow, and give you the simplest pilot path if it fits.\n\nBest,\nStephen Burch\nGhost AI Solutions`,
+            { channel: "email" },
+          ),
+          status: "pending",
+          reason: "Vega booking handoff prepared from a hot/booked reply.",
+        },
+      });
+      queued += 1;
+    }
+
+    await prisma.$transaction([
+      prisma.bookingTask.update({
+        where: { id: task.id },
+        data: {
+          status: "handoff_sent",
+          meetingLink,
+          ownerEmail: task.ownerEmail || readiness.ownerEmail || null,
+          calendarProvider: task.calendarProvider || readiness.calendarProvider || null,
+        },
+      }),
+      prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          stage: ["Call Booked", "Proposal Sent", "Won"].includes(lead.stage) ? lead.stage : "Potential Client",
+          lastTouch: "Just now",
+          nextAction: hasPendingHandoff
+            ? "Booking handoff already pending approval. Review/send the calendar follow-up."
+            : "Booking handoff queued. Approve/send the calendar follow-up and watch for scheduled time.",
+        },
+      }),
+      prisma.interaction.create({
+        data: {
+          leadId: lead.id,
+          contactId: lead.contactId,
+          channel: "email",
+          direction: "outbound",
+          classification: "booking-handoff",
+          body: `Vega prepared booking handoff for ${lead.companyName}. Calendar link: ${meetingLink}`,
+          metadata: { taskId: task.id, queueStatus: hasPendingHandoff ? "already-pending" : "queued" },
+        },
+      }),
+    ]);
+    moved.push({ taskId: task.id, leadId: lead.id, companyName: lead.companyName, status: "handoff_sent" });
+  }
+
+  await createAutomationEvent({
+    title: "Vega booking handoff push",
+    detail: `Reviewed ${tasks.length} ready booking tasks. Queued ${queued}, already pending ${alreadyPending}, scheduled ${scheduled}, blocked ${blocked}.`,
+    status: queued || scheduled || alreadyPending ? "done" : tasks.length ? "needs_review" : "blocked",
+    type: "booking",
+    payload: { reviewed: tasks.length, queued, alreadyPending, scheduled, blocked, moved },
+  });
+
+  return { reviewed: tasks.length, queued, alreadyPending, scheduled, blocked, moved };
+}
+
 export async function createFollowUpSequenceForLead(input: {
   leadId: string;
   provider?: string | null;

@@ -84,7 +84,9 @@ export async function getWarmLeadPriorityReport(input: { limit?: number; createE
       const failed = eventCount(lead.interactions, ["bounce", "dropped", "spamreport", "unsubscribe", "group_unsubscribe"]);
       const pending = lead.outreachQueue.filter((item) => item.status === "pending").length;
       const sent = lead.outreachQueue.filter((item) => ["sent", "queued"].includes(item.status)).length;
-      const bookingReady = lead.bookingTasks.filter((task) => task.status !== "blocked").length;
+      const bookingReady = lead.bookingTasks.filter((task) => task.status === "ready").length;
+      const bookingHandoff = lead.bookingTasks.filter((task) => task.status === "handoff_sent").length;
+      const bookingScheduled = lead.bookingTasks.filter((task) => task.status === "scheduled").length;
       const bookingBlocked = lead.bookingTasks.filter((task) => task.status === "blocked").length;
       const openFollowUps = lead.sequenceSteps.filter((step) => ["draft", "active"].includes(step.status)).length;
       const contactable = Boolean(lead.contact?.email || lead.contact?.phone);
@@ -99,12 +101,18 @@ export async function getWarmLeadPriorityReport(input: { limit?: number; createE
         sent * 3 +
         pending * 2 +
         bookingReady * 25 +
+        bookingHandoff * 18 +
+        bookingScheduled * 35 +
         bookingBlocked * 8 +
         openFollowUps * 4 -
         failed * 25 -
         Math.min(12, staleDays);
       const nextMove = bookingReady
         ? "Move booking task to calendar now."
+        : bookingHandoff
+          ? "Watch booking handoff and confirm appointment time."
+          : bookingScheduled
+            ? "Prep the scheduled call."
         : lead.replies.some((reply) => ["booked", "hot"].includes(reply.classification))
           ? "Work reply and push booking."
           : pending
@@ -123,6 +131,8 @@ export async function getWarmLeadPriorityReport(input: { limit?: number; createE
         clicked ? `${clicked} click${clicked === 1 ? "" : "s"}` : "",
         opened ? `${opened} open${opened === 1 ? "" : "s"}` : "",
         bookingReady ? `${bookingReady} booking task${bookingReady === 1 ? "" : "s"} ready` : "",
+        bookingHandoff ? `${bookingHandoff} booking handoff${bookingHandoff === 1 ? "" : "s"} queued` : "",
+        bookingScheduled ? `${bookingScheduled} appointment${bookingScheduled === 1 ? "" : "s"} scheduled` : "",
         bookingBlocked ? `${bookingBlocked} booking blocked` : "",
         pending ? `${pending} pending approval${pending === 1 ? "" : "s"}` : "",
         failed ? `${failed} failed send event${failed === 1 ? "" : "s"}` : "",
@@ -202,7 +212,7 @@ export async function getBookingDiagnosisReport(input: { createEvent?: boolean }
       },
     }),
     prisma.outreachQueueItem.count({ where: { workspaceId: workspace.id, status: "pending", channel: "manual" } }),
-    prisma.bookingTask.count({ where: { workspaceId: workspace.id, status: { not: "blocked" } } }),
+    prisma.bookingTask.count({ where: { workspaceId: workspace.id, status: "ready" } }),
     prisma.bookingTask.count({ where: { workspaceId: workspace.id, status: "blocked" } }),
     prisma.outreachQueueItem.count({ where: { workspaceId: workspace.id, status: "failed" } }),
     prisma.interaction.count({

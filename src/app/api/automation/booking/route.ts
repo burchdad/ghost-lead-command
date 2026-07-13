@@ -46,6 +46,7 @@ export async function POST(request: Request) {
       await prisma.bookingTask.update({
         where: { id: task.id },
         data: {
+          status: body.scheduledFor ? "scheduled" : task.status,
           meetingTitle: body.meetingTitle ? String(body.meetingTitle) : task.meetingTitle,
           scheduledFor: body.scheduledFor ? new Date(String(body.scheduledFor)) : task.scheduledFor,
           prepNotes: body.prepNotes ? String(body.prepNotes) : task.prepNotes,
@@ -57,11 +58,17 @@ export async function POST(request: Request) {
       await prisma.lead.update({
         where: { id: lead.id },
         data: {
-          stage: blocked ? lead.stage === "Imported" ? "Contacted" : lead.stage : "Call Booked",
+          stage: blocked
+            ? lead.stage === "Imported" ? "Contacted" : lead.stage
+            : body.scheduledFor
+              ? "Call Booked"
+              : "Potential Client",
           lastTouch: "Just now",
           nextAction: blocked
             ? "Booking task created, but calendar or meeting link config is missing."
-            : "Confirm calendar invite, meeting link, and call prep.",
+            : body.scheduledFor
+              ? "Calendar event is scheduled. Prep the discovery call and confirm meeting link."
+              : "Booking task is ready. Queue or send calendar handoff before marking appointment set.",
         },
       });
     }

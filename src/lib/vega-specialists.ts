@@ -1,4 +1,4 @@
-import { createAutomationEvent, createBookingTaskForLead, runDueSequenceSteps } from "@/lib/automation";
+import { createAutomationEvent, createBookingTaskForLead, pushReadyBookingTasks, runDueSequenceSteps } from "@/lib/automation";
 import { runAdaptiveLearningLoop } from "@/lib/adaptive-learning";
 import { computeConversionLearning } from "@/lib/conversion-learning";
 import { runIntentFeedScout } from "@/lib/intent-feed";
@@ -164,6 +164,7 @@ export async function runBookingConciergeAgent(input: { limit?: number } = {}): 
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const limit = Math.min(25, Math.max(1, Number(input.limit || 10)));
+  const handoff = await pushReadyBookingTasks({ limit });
   const replies = await prisma.reply.findMany({
     where: {
       workspaceId: workspace.id,
@@ -217,23 +218,35 @@ export async function runBookingConciergeAgent(input: { limit?: number } = {}): 
 
   await createAutomationEvent({
     title: "Vega Booking Concierge sweep",
-    detail: `Reviewed ${replies.length} hot/booked replies. Booking ready ${ready}, blocked ${blocked}.`,
-    status: ready ? "done" : replies.length ? "needs_review" : "blocked",
+    detail: `Pushed ${handoff.reviewed} ready booking tasks. Queued ${handoff.queued}, already pending ${handoff.alreadyPending}, scheduled ${handoff.scheduled}, blocked ${handoff.blocked}. Reviewed ${replies.length} hot/booked replies. Booking ready ${ready}, blocked ${blocked}.`,
+    status: handoff.queued || handoff.scheduled || handoff.alreadyPending || ready ? "done" : replies.length || handoff.reviewed ? "needs_review" : "blocked",
     type: "booking",
-    payload: { reviewed: replies.length, ready, blocked, potentialClients },
+    payload: { reviewed: replies.length, ready, blocked, potentialClients, handoff },
   });
 
   return {
     kind: "booking",
     title: "Booking Concierge Agent",
-    status: ready ? "done" : replies.length ? "needs_review" : "blocked",
-    summary: replies.length
-      ? `Reviewed ${replies.length} hot/booked replies. ${ready} booking tasks are ready; ${blocked} need config or operator help.`
-      : "No hot/booked replies are waiting for booking handoff.",
-    metrics: { reviewed: replies.length, ready, blocked, potentialClients },
+    status: handoff.queued || handoff.scheduled || handoff.alreadyPending || ready ? "done" : replies.length || handoff.reviewed ? "needs_review" : "blocked",
+    summary: handoff.reviewed || replies.length
+      ? `Pushed ${handoff.reviewed} ready booking tasks: ${handoff.queued} queued for approval, ${handoff.alreadyPending} already pending, ${handoff.scheduled} scheduled, ${handoff.blocked} blocked. Reviewed ${replies.length} hot/booked replies; ${ready} new booking tasks are ready.`
+      : "No ready booking tasks or hot/booked replies are waiting for booking handoff.",
+    metrics: {
+      reviewed: replies.length,
+      ready,
+      blocked,
+      potentialClients,
+      handoffReviewed: handoff.reviewed,
+      handoffQueued: handoff.queued,
+      handoffAlreadyPending: handoff.alreadyPending,
+      handoffScheduled: handoff.scheduled,
+      handoffBlocked: handoff.blocked,
+    },
     nextMove: blocked
       ? "Finish meeting-link/calendar config so booked replies stop getting stuck."
-      : "Use Vega, work replies after every send batch; booked replies should now move cleanly.",
+      : handoff.queued
+        ? "Approve/send the queued booking handoff emails, then watch replies for confirmed times."
+        : "Use Vega, work replies after every send batch; booked replies should now move cleanly.",
   };
 }
 
