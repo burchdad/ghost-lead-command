@@ -21,6 +21,8 @@ function isAllowedPath(pathname: string) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname === "/access" ||
+    pathname === "/waitlist" ||
+    pathname === "/privacy" ||
     pathname.startsWith("/proposals/") ||
     pathname === "/api/access" ||
     pathname === "/api/access/logout" ||
@@ -32,6 +34,7 @@ function isAllowedPath(pathname: string) {
     pathname === "/api/automation/sequence/run" ||
     pathname.startsWith("/api/sendgrid/") ||
     pathname === "/api/source/intake" ||
+    pathname.startsWith("/api/waitlist") ||
     pathname.startsWith("/api/twilio/") ||
     pathname === "/api/webhooks/contact-card" ||
     pathname === "/api/slack/command" ||
