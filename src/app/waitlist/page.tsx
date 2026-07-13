@@ -54,7 +54,7 @@ export default function WaitlistPage() {
   }
 
   async function track(event: string, metadata: Record<string, unknown> = {}) {
-    await fetch("/api/analytics", {
+    await fetch("/api/waitlist/analytics", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event, source: "vega-waitlist", metadata }),

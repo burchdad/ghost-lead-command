@@ -1305,6 +1305,18 @@ export async function notifySlackMorningStandup(input: {
     sourceTarget: number;
     approvalTarget: number;
   };
+  warmLeads?: Array<{
+    companyName: string;
+    name: string;
+    score: number;
+    signal: string;
+    nextMove: string;
+  }>;
+  bookingDiagnosis?: {
+    summary: string;
+    blockers: string[];
+    nextMoves: string[];
+  };
   novaDirective: string;
   vegaOrders: string[];
   stephenAsk: string;
@@ -1314,6 +1326,13 @@ export async function notifySlackMorningStandup(input: {
   const directorName = leadDirectorAgentName();
   const orders = input.vegaOrders.map((order) => `- \`${order}\``).join("\n");
   const nextMoves = input.nextMoves.map((move) => `- ${move}`).join("\n");
+  const warmLeadLines = (input.warmLeads || [])
+    .slice(0, 5)
+    .map((lead, index) => `${index + 1}. *${lead.companyName}* (${lead.score}) - ${lead.signal}. Next: ${lead.nextMove}`)
+    .join("\n");
+  const blockerLines = input.bookingDiagnosis?.blockers?.length
+    ? input.bookingDiagnosis.blockers.slice(0, 5).map((blocker) => `- ${blocker}`).join("\n")
+    : "- No urgent booking blocker detected.";
   const result = await postSlackPayload({
     webhookUrl:
       clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
@@ -1355,6 +1374,13 @@ export async function notifySlackMorningStandup(input: {
           text: {
             type: "mrkdwn",
             text: `*Nova CEO directive*\n${input.novaDirective}\n\n*Stephen ask*\n${input.stephenAsk}`,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Warmest accounts for Vega*\n${warmLeadLines || "No warm accounts found yet. Run a focused sourcing batch."}\n\n*Booking diagnosis*\n${input.bookingDiagnosis?.summary || "No diagnosis available."}\n${blockerLines}`,
           },
         },
         {

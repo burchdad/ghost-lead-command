@@ -1,20 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getLeadCommandAccessKey, hashLeadCommandAccessKey, LEAD_COMMAND_ACCESS_COOKIE } from "@/lib/access";
 
-const COOKIE_NAME = "ghost_lead_command_access";
 const PUBLIC_FILE = /\.(.*)$/;
-
-function getAccessKey() {
-  return (process.env.LEAD_COMMAND_ACCESS_KEY || "").trim();
-}
-
-async function accessHash(value: string) {
-  const data = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 function isAllowedPath(pathname: string) {
   return (
@@ -26,6 +13,7 @@ function isAllowedPath(pathname: string) {
     pathname.startsWith("/proposals/") ||
     pathname === "/api/access" ||
     pathname === "/api/access/logout" ||
+    pathname === "/api/waitlist/analytics" ||
     pathname === "/api/agent/digest" ||
     pathname === "/api/agent/director" ||
     pathname === "/api/agent/recommend" ||
@@ -46,13 +34,13 @@ function isAllowedPath(pathname: string) {
 }
 
 export async function middleware(request: NextRequest) {
-  const accessKey = getAccessKey();
+  const accessKey = getLeadCommandAccessKey();
   if (!accessKey || isAllowedPath(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
 
-  const cookieValue = request.cookies.get(COOKIE_NAME)?.value;
-  if (cookieValue && cookieValue === (await accessHash(accessKey))) {
+  const cookieValue = request.cookies.get(LEAD_COMMAND_ACCESS_COOKIE)?.value;
+  if (cookieValue && cookieValue === (await hashLeadCommandAccessKey(accessKey))) {
     return NextResponse.next();
   }
 

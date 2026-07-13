@@ -17,6 +17,12 @@ import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSp
 import { isVegaOpsRequest, runVegaOpsBrief, shouldExecuteOps } from "@/lib/vega-ops-brief";
 import { isRevenueWatchRequest, runVegaRevenueWatch } from "@/lib/vega-revenue-watch";
 import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
+import {
+  getBookingDiagnosisReport,
+  getWarmLeadPriorityReport,
+  isBookingDiagnosisRequest,
+  isWarmLeadRequest,
+} from "@/lib/warm-leads";
 
 function slackText(text: string) {
   return NextResponse.json({
@@ -167,6 +173,35 @@ export async function POST(request: Request) {
     return slackText("Vega is watching replies, SendGrid signals, bookings, and source performance now.");
   }
 
+  if (isWarmLeadRequest(text)) {
+    after(async () => {
+      const result = await getWarmLeadPriorityReport({ limit: 5 });
+      await postSlackCommandResponse(
+        responseUrl,
+        [
+          result.summary,
+          ...result.leads.map((lead, index) => `${index + 1}. ${lead.companyName} (${lead.score}) - ${lead.signal}. Next: ${lead.nextMove}`),
+        ].join("\n"),
+      );
+    });
+    return slackText("Vega is ranking the warmest accounts now.");
+  }
+
+  if (isBookingDiagnosisRequest(text)) {
+    after(async () => {
+      const result = await getBookingDiagnosisReport();
+      await postSlackCommandResponse(
+        responseUrl,
+        [
+          result.summary,
+          result.blockers.length ? `Blockers: ${result.blockers.join("; ")}` : "Blockers: none detected.",
+          result.nextMoves.length ? `Next moves: ${result.nextMoves.join("; ")}` : "Next moves: work warmest accounts.",
+        ].join("\n"),
+      );
+    });
+    return slackText("Vega is diagnosing the booking bottleneck now.");
+  }
+
   const specialistKind = classifyVegaSpecialistRequest(text);
   if (specialistKind) {
     after(async () => {
@@ -246,6 +281,8 @@ export async function POST(request: Request) {
         "`Vega, need 10 new leads in HVAC between Tyler and Dallas, Texas` - run sourcing and queue approval-ready outreach.",
         "`Vega, work replies` - queue response drafts for hot/booked replies and prep bookings.",
         "`Vega, watch replies` - monitor SendGrid, replies, bookings, and source scorecard after sends.",
+        "`Vega, show warmest leads` - rank the top accounts Vega should work next.",
+        "`Vega, why are we not booking calls today?` - diagnose booking blockers and next moves.",
         "`Vega, refresh intent feed` - rank warm buyer signals and public web context before choosing the next accounts.",
         "`Vega, run learning loop` - tune source plays from live reply/send outcomes.",
         "`Vega, scout social intent` - run competitor/social-style signal plays and queue qualified leads.",

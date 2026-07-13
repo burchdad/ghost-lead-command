@@ -22,6 +22,12 @@ import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSp
 import { isVegaOpsRequest, runVegaOpsBrief, shouldExecuteOps } from "@/lib/vega-ops-brief";
 import { isRevenueWatchRequest, runVegaRevenueWatch } from "@/lib/vega-revenue-watch";
 import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
+import {
+  getBookingDiagnosisReport,
+  getWarmLeadPriorityReport,
+  isBookingDiagnosisRequest,
+  isWarmLeadRequest,
+} from "@/lib/warm-leads";
 
 function isVegaAddressed(text: string) {
   return /^\s*(?:vega|<@[A-Z0-9]+>)\s*[,:\-]?\s+/i.test(text);
@@ -136,6 +142,8 @@ export async function POST(request: Request) {
   const isClosingInstruction = isClosingSprintRequest(instruction);
   const isOpsInstruction = isVegaOpsRequest(instruction);
   const isRevenueWatchInstruction = isRevenueWatchRequest(instruction);
+  const isWarmLeadInstruction = isWarmLeadRequest(instruction);
+  const isBookingDiagnosisInstruction = isBookingDiagnosisRequest(instruction);
   const specialistKind = classifyVegaSpecialistRequest(instruction);
   await createAutomationEvent({
     title: isLeadInstruction
@@ -158,9 +166,13 @@ export async function POST(request: Request) {
                       ? "Vega Slack ops brief received"
                       : isRevenueWatchInstruction
                         ? "Vega Slack revenue watch received"
-                        : specialistKind
-                          ? "Vega Slack specialist request received"
-                          : "Vega Slack message ignored",
+                        : isWarmLeadInstruction
+                          ? "Vega Slack warm-lead request received"
+                          : isBookingDiagnosisInstruction
+                            ? "Vega Slack booking diagnosis received"
+                            : specialistKind
+                              ? "Vega Slack specialist request received"
+                              : "Vega Slack message ignored",
     detail: instruction || text || "No Slack text received.",
     status:
       isLeadInstruction ||
@@ -193,6 +205,8 @@ export async function POST(request: Request) {
       isClosingInstruction,
       isOpsInstruction,
       isRevenueWatchInstruction,
+      isWarmLeadInstruction,
+      isBookingDiagnosisInstruction,
       specialistKind,
     },
   });
@@ -208,6 +222,8 @@ export async function POST(request: Request) {
     !isClosingInstruction &&
     !isOpsInstruction &&
     !isRevenueWatchInstruction &&
+    !isWarmLeadInstruction &&
+    !isBookingDiagnosisInstruction &&
     !specialistKind
   ) {
     await notifySlackVegaLeadRequestResult({
@@ -310,6 +326,67 @@ export async function POST(request: Request) {
           instruction,
           status: "failed",
           summary: error instanceof Error ? error.message : "Unknown Vega revenue watch failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
+  }
+
+  if (isWarmLeadInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is ranking the warmest accounts now.",
+    });
+
+    after(async () => {
+      try {
+        const result = await getWarmLeadPriorityReport({ limit: 5 });
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "finished",
+          summary: [
+            result.summary,
+            ...result.leads.map((lead, index) => `${index + 1}. ${lead.companyName} (${lead.score}) - ${lead.signal}. Next: ${lead.nextMove}`),
+          ].join("\n"),
+        });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown warm lead report failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
+  }
+
+  if (isBookingDiagnosisInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is diagnosing the booking bottleneck now.",
+    });
+
+    after(async () => {
+      try {
+        const result = await getBookingDiagnosisReport();
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "finished",
+          summary: [
+            result.summary,
+            result.blockers.length ? `Blockers: ${result.blockers.join("; ")}` : "Blockers: none detected.",
+            result.nextMoves.length ? `Next moves: ${result.nextMoves.join("; ")}` : "Next moves: work warmest accounts.",
+          ].join("\n"),
+        });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown booking diagnosis failure.",
         });
       }
     });

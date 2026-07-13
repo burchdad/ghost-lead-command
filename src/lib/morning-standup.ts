@@ -5,6 +5,7 @@ import {
   getClosingSprintNextMoves,
 } from "@/lib/vega-closing-sprint";
 import { notifySlackMorningStandup } from "@/lib/slack";
+import { getBookingDiagnosisReport, getWarmLeadPriorityReport } from "@/lib/warm-leads";
 
 type MorningStandupInput = {
   message?: string;
@@ -58,15 +59,20 @@ function defaultLocation(message?: string, explicit?: string) {
 
 export async function runMorningStandup(input: MorningStandupInput = {}) {
   const location = defaultLocation(input.message, input.location);
-  const metrics = await getClosingSprintMetrics({
-    instruction: input.message || "Morning lead-gen standup",
-    targetCloses: input.targetCloses,
-    location,
-  });
+  const [metrics, warmLeads, bookingDiagnosis] = await Promise.all([
+    getClosingSprintMetrics({
+      instruction: input.message || "Morning lead-gen standup",
+      targetCloses: input.targetCloses,
+      location,
+    }),
+    getWarmLeadPriorityReport({ limit: 5, createEvent: false }),
+    getBookingDiagnosisReport({ createEvent: false }),
+  ]);
   const bottleneck = getClosingSprintBottleneck(metrics);
   const nextMoves = getClosingSprintNextMoves(metrics, bottleneck);
   const targets = dailyTargets(metrics);
   const vegaOrders = [
+    warmLeads.leads[0] ? `Vega, work ${warmLeads.leads[0].companyName}` : "",
     "Vega, refresh intent feed",
     `Vega, need ${targets.sourceTarget} new HVAC leads between ${location} score 75`,
     "Vega, queue LinkedIn tasks",
@@ -76,7 +82,7 @@ export async function runMorningStandup(input: MorningStandupInput = {}) {
       : "Vega, run specialists",
     "Vega, work replies",
     "Vega, push bookings",
-  ];
+  ].filter(Boolean);
   const novaDirective =
     bottleneck === "booking-handoff"
       ? "Nova should pressure booking conversion first: every hot reply needs a calendar path or Stephen escalation."
@@ -96,6 +102,8 @@ export async function runMorningStandup(input: MorningStandupInput = {}) {
     bottleneck,
     nextMoves,
     targets,
+    warmLeads: warmLeads.leads,
+    bookingDiagnosis,
     novaDirective,
     vegaOrders,
     stephenAsk,
