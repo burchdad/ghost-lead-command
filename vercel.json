@@ -1,7 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "prisma migrate deploy && prisma generate && next build",
   "crons": [
     {
       "path": "/api/agent/recommend",
