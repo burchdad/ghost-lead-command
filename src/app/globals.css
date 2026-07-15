@@ -68,6 +68,18 @@ button {
   }
 }
 
+@keyframes vegaMetric {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .vega-float {
   animation: vegaFloat 6s ease-in-out infinite;
 }
@@ -85,4 +97,15 @@ button {
   background: linear-gradient(180deg, transparent, rgba(216, 180, 254, 0.36), transparent);
   mix-blend-mode: screen;
   animation: vegaScan 4.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

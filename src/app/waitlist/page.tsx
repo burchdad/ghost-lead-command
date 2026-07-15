@@ -2,7 +2,7 @@
 
 import { ArrowRight, Check, LoaderCircle, ShieldCheck, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import VegaAvatar from "@/components/VegaAvatar";
 
 type SubmitState = "idle" | "submitting" | "success" | "error";
@@ -61,6 +61,13 @@ export default function WaitlistPage() {
       body: JSON.stringify({ event, source: "vega-waitlist", metadata }),
     }).catch(() => undefined);
   }
+
+  useEffect(() => {
+    void track("waitlist route entered", {
+      search: window.location.search,
+      referrer: document.referrer,
+    });
+  }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -3,10 +3,19 @@ import { createAutomationEvent } from "@/lib/automation";
 
 const attempts = new Map<string, { count: number; resetAt: number }>();
 const allowedEvents = new Set([
+  "final CTA clicked",
+  "hero primary CTA clicked",
+  "hero secondary CTA clicked",
+  "integration section viewed",
+  "prospect journey viewed",
+  "specialist section viewed",
+  "waitlist route entered",
   "waitlist form started",
   "waitlist form submitted",
   "waitlist submission failed",
   "waitlist submission succeeded",
+  "workflow section viewed",
+  "faq opened",
 ]);
 
 function rateLimitKey(request: Request) {
