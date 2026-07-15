@@ -30,9 +30,9 @@ function AccessForm() {
         return;
       }
 
-      const next = searchParams.get("next") || "/";
+      const next = searchParams.get("next") || "/command";
       setStatus("Access granted. Opening command center...");
-      window.location.replace(next === "/access" ? "/" : next);
+      window.location.replace(next === "/access" ? "/command" : next);
     } catch {
       setLoading(false);
       setStatus("Access check failed. Try again in a moment.");

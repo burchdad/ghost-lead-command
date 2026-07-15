@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ghost Lead Command",
+  title: "Vega Lead Command | Ghost AI Solutions",
   description:
-    "AI consultant mission control for reviving leads, booking calls, building proposals, and closing AI service retainers.",
+    "Join the Vega private beta waitlist for Ghost AI Solutions' AI sales operating system.",
 };
 
 export default function RootLayout({

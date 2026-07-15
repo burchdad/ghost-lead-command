@@ -7,6 +7,7 @@ function isAllowedPath(pathname: string) {
   return (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
+    pathname === "/" ||
     pathname === "/access" ||
     pathname === "/waitlist" ||
     pathname === "/privacy" ||

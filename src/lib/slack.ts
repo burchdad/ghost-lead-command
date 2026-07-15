@@ -355,7 +355,7 @@ export async function notifySlackWaitlistCandidate(input: {
     return { configured: false, sent: false, message: "Missing SLACK_WEBHOOK_URL." };
   }
 
-  const waitlistUrl = new URL("/?view=waitlist", appBaseUrl()).toString();
+  const waitlistUrl = new URL("/command?view=waitlist", appBaseUrl()).toString();
   const challenge = input.challenge.length > 520 ? `${input.challenge.slice(0, 517)}...` : input.challenge;
   const response = await fetch(webhookUrl, {
     method: "POST",
