@@ -1,15 +1,25 @@
 ﻿import {
   ArrowRight,
+  BarChart3,
+  BrainCircuit,
+  CalendarCheck,
   CheckCircle2,
   Gauge,
+  Globe2,
   KeyRound,
   Layers3,
   LockKeyhole,
+  MailCheck,
+  MessageCircle,
   Radar,
+  Search,
   ShieldCheck,
   Sparkles,
+  Star,
   Target,
   Users,
+  Workflow,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import VegaAvatar from "@/components/VegaAvatar";
@@ -34,6 +44,70 @@ const lanes = [
   { name: "Founding fit", detail: "High urgency, active tester, real lead volume", count: "Priority" },
   { name: "Private beta", detail: "Strong workflow match and feedback appetite", count: "Next" },
   { name: "Product updates", detail: "Keep warm until the right access window opens", count: "Nurture" },
+];
+
+const storyLines = [
+  "Vega finds the right prospects before your calendar goes quiet.",
+  "Then she watches intent, writes outreach, and keeps follow-up moving.",
+  "Your team approves the work while Vega keeps the pipeline awake.",
+];
+
+const steps = [
+  {
+    title: "Join the waitlist",
+    detail: "Tell Vega your lead volume, current tools, sales motion, and where follow-up breaks.",
+    icon: Sparkles,
+  },
+  {
+    title: "Get scored by fit",
+    detail: "Vega segments founding, private-beta, and nurture candidates for operator review.",
+    icon: Target,
+  },
+  {
+    title: "Pilot the command loop",
+    detail: "Selected testers get a guided path for discovery, outreach, replies, booking, and CRM updates.",
+    icon: Workflow,
+  },
+];
+
+const commandSignals = [
+  { label: "Lead discovery", value: "PDL, Google, LinkedIn, web, social", icon: Search },
+  { label: "Intent intelligence", value: "Buying signals, competitor cues, profile activity", icon: Radar },
+  { label: "Account intelligence", value: "Research context and qualification notes", icon: BrainCircuit },
+  { label: "Outreach generation", value: "Personalized email, social, SMS-ready drafts", icon: MailCheck },
+  { label: "Reply conversion", value: "Classify replies, prep answers, route hot leads", icon: MessageCircle },
+  { label: "Booking handoff", value: "Tasks, calendar-ready next steps, follow-up prompts", icon: CalendarCheck },
+  { label: "Revenue ops", value: "CRM, pipeline, proposals, source attribution", icon: BarChart3 },
+  { label: "Always-on learning", value: "Performance signals improve the next play", icon: Zap },
+];
+
+const integrations = ["Google", "LinkedIn", "HubSpot", "Salesforce", "Apollo", "Clay", "GoHighLevel", "SendGrid"];
+
+const comparisonRows = [
+  ["Multi-source prospecting", "Included", "Manual or fragmented"],
+  ["Intent scoring", "Built in", "Usually separate"],
+  ["Human-approved outreach", "Native", "Requires workflow glue"],
+  ["Waitlist and beta qualification", "Native", "Usually forms only"],
+  ["CRM and revenue view", "Operator dashboard", "Often disconnected"],
+];
+
+const faqs = [
+  {
+    question: "Is Vega replacing my sales team?",
+    answer: "No. Vega does the lead-command work around the team: discovery, signal watching, drafts, follow-up prompts, and routing. Humans still approve strategy and relationships.",
+  },
+  {
+    question: "Who gets priority access?",
+    answer: "Teams with clear lead volume, active testing intent, and a sales motion where Vega can prove measurable lift get reviewed first.",
+  },
+  {
+    question: "Does joining guarantee beta access?",
+    answer: "No. The waitlist helps Vega qualify good testers, but invitations depend on fit, rollout capacity, and feedback potential.",
+  },
+  {
+    question: "Can Vega work with my existing stack?",
+    answer: "The product is designed around CRM, outreach, signal, and enrichment tools. Early access helps prioritize which integrations become first-class.",
+  },
 ];
 
 export default function LandingPage() {
@@ -139,7 +213,7 @@ export default function LandingPage() {
             </div>
           </header>
 
-          <div className="grid flex-1 items-center gap-10 py-14 lg:grid-cols-[0.88fr_1.12fr]">
+          <div className="grid flex-1 items-center gap-10 py-14 lg:grid-cols-[0.78fr_0.42fr_0.8fr]">
             <div className="max-w-3xl">
               <p className="inline-flex items-center gap-2 rounded-sm border border-[#8b5cf6]/45 bg-[#120822]/85 px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#c084fc]">
                 <ShieldCheck size={15} />
@@ -172,6 +246,10 @@ export default function LandingPage() {
               </p>
             </div>
 
+            <div className="relative z-20 hidden justify-center lg:flex">
+              <VegaAvatar size="lg" caption="I build your pipeline" />
+            </div>
+
             <div className="lg:hidden">
               <div className="rounded-md border border-[#8b5cf6]/30 bg-[#090713] p-4 shadow-2xl shadow-[#3b0764]/40">
                 <div className="mb-4 flex items-center gap-4">
@@ -195,6 +273,19 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section className="border-b border-[#7c3aed]/25 bg-[#05030b] px-5 py-16 sm:px-8 lg:px-10">
+        <div className="mx-auto grid max-w-5xl gap-8 text-center">
+          <VegaAvatar size="md" caption="Always learning" className="mx-auto" />
+          <div className="grid gap-4">
+            {storyLines.map((line) => (
+              <p key={line} className="text-xl font-semibold leading-8 text-[#f5f3ff] sm:text-2xl">
+                {line}
+              </p>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section id="system" className="border-b border-[#7c3aed]/25 bg-[#07040f] px-5 py-16 sm:px-8 lg:px-10">
         <div className="mx-auto max-w-7xl">
           <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
@@ -213,6 +304,118 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-[#7c3aed]/25 bg-[#03020a] px-5 py-16 sm:px-8 lg:px-10">
+        <div className="mx-auto max-w-7xl">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#c084fc]">3 steps to get started</p>
+            <h2 className="mt-3 text-3xl font-semibold text-[#f7f4ff] sm:text-4xl">From waitlist to working lead command.</h2>
+          </div>
+          <div className="mt-10 grid gap-4 md:grid-cols-3">
+            {steps.map(({ title, detail, icon: Icon }, index) => (
+              <div key={title} className="rounded-md border border-[#8b5cf6]/25 bg-[#10091f] p-5">
+                <div className="flex items-center justify-between">
+                  <Icon className="text-[#a855f7]" size={24} />
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#c4b5fd]">0{index + 1}</span>
+                </div>
+                <h3 className="mt-5 text-lg font-semibold text-[#f5f3ff]">{title}</h3>
+                <p className="mt-3 text-sm leading-6 text-[#b9afd3]">{detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-[#7c3aed]/25 bg-[#07040f] px-5 py-16 sm:px-8 lg:px-10">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#c084fc]">Command signals</p>
+            <h2 className="mt-3 text-3xl font-semibold text-[#f7f4ff] sm:text-4xl">Vega works the whole lead-to-revenue path.</h2>
+            <p className="mt-4 text-base leading-7 text-[#b9afd3]">
+              Like the Soro flow, the story should keep proving what happens after the first click. Vega follows the prospect from signal to outreach to reply to booked opportunity.
+            </p>
+            <VegaAvatar size="md" caption="Signal lock" className="mt-8" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {commandSignals.map(({ label, value, icon: Icon }) => (
+              <div key={label} className="rounded-md border border-[#8b5cf6]/25 bg-[#10091f] p-5">
+                <Icon className="text-[#a855f7]" size={22} />
+                <h3 className="mt-4 text-base font-semibold text-[#f5f3ff]">{label}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#b9afd3]">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-[#7c3aed]/25 bg-[#03020a] px-5 py-16 sm:px-8 lg:px-10">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#c084fc]">Works with your stack</p>
+              <h2 className="mt-3 text-3xl font-semibold text-[#f7f4ff] sm:text-4xl">Vega learns where your current tools stop.</h2>
+              <p className="mt-4 text-base leading-7 text-[#b9afd3]">
+                The waitlist helps prioritize the first-class integrations that matter most to real operators.
+              </p>
+              <div className="mt-6 inline-flex items-center gap-2 rounded-md border border-[#8b5cf6]/30 bg-[#10091f] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#c4b5fd]">
+                <Globe2 size={16} />
+                Integration requests shape the roadmap
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {integrations.map((integration) => (
+                <div key={integration} className="rounded-md border border-[#8b5cf6]/25 bg-[#10091f] px-4 py-5 text-center text-sm font-semibold text-[#ede9fe]">
+                  {integration}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-[#7c3aed]/25 bg-[#07040f] px-5 py-16 sm:px-8 lg:px-10">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#c084fc]">One operator, not another tab</p>
+            <h2 className="mt-3 text-3xl font-semibold text-[#f7f4ff] sm:text-4xl">Vega is the command layer across the sales workflow.</h2>
+            <p className="mt-4 text-base leading-7 text-[#b9afd3]">
+              The goal is not another dashboard to babysit. Vega helps decide who to pursue, what to say, and what needs action next.
+            </p>
+          </div>
+          <div className="overflow-hidden rounded-md border border-[#8b5cf6]/25 bg-[#10091f]">
+            {comparisonRows.map(([item, vega, other], index) => (
+              <div key={item} className={`grid gap-3 px-4 py-4 text-sm sm:grid-cols-[1.1fr_0.75fr_0.75fr] ${index ? "border-t border-[#8b5cf6]/20" : ""}`}>
+                <span className="font-semibold text-[#f5f3ff]">{item}</span>
+                <span className="inline-flex items-center gap-2 text-[#c4b5fd]">
+                  <CheckCircle2 size={16} className="text-[#a855f7]" />
+                  {vega}
+                </span>
+                <span className="text-[#8f83ad]">{other}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-[#7c3aed]/25 bg-[#03020a] px-5 py-16 sm:px-8 lg:px-10">
+        <div className="mx-auto max-w-4xl">
+          <div className="text-center">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#c084fc]">FAQ</p>
+            <h2 className="mt-3 text-3xl font-semibold text-[#f7f4ff] sm:text-4xl">Questions before Vega joins the team?</h2>
+          </div>
+          <div className="mt-10 divide-y divide-[#8b5cf6]/20 overflow-hidden rounded-md border border-[#8b5cf6]/25 bg-[#10091f]">
+            {faqs.map(({ question, answer }) => (
+              <details key={question} className="group p-5">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left text-base font-semibold text-[#f5f3ff]">
+                  {question}
+                  <Star className="shrink-0 text-[#a855f7] transition group-open:rotate-45" size={18} />
+                </summary>
+                <p className="mt-3 text-sm leading-6 text-[#b9afd3]">{answer}</p>
+              </details>
+            ))}
           </div>
         </div>
       </section>
