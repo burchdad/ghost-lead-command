@@ -1,6 +1,5 @@
 ﻿import {
   ArrowRight,
-  Bot,
   CheckCircle2,
   Gauge,
   KeyRound,
@@ -13,6 +12,7 @@
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import VegaAvatar from "@/components/VegaAvatar";
 
 const waitlistHref =
   "/waitlist?utm_source=site&utm_medium=landing&utm_campaign=vega_public_home&utm_content=primary_cta";
@@ -101,13 +101,18 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
+          <VegaAvatar
+            size="md"
+            caption="Vega watching"
+            className="absolute -left-16 bottom-[-3.5rem] rotate-[3deg]"
+          />
         </div>
 
         <div className="relative mx-auto flex min-h-[92vh] max-w-7xl flex-col px-5 py-6 sm:px-8 lg:px-10">
           <header className="flex items-center justify-between gap-4">
             <Link href="/" className="flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-md border border-[#c084fc]/50 bg-[#160a2d] text-[#c084fc] shadow-[0_0_24px_rgba(124,58,237,0.5)]">
-                <Bot size={22} />
+              <span className="grid size-11 place-items-center overflow-hidden rounded-md border border-[#c084fc]/50 bg-[#160a2d] shadow-[0_0_24px_rgba(124,58,237,0.5)]">
+                <VegaAvatar size="xs" showStatus={false} />
               </span>
               <span>
                 <span className="block text-sm font-semibold uppercase tracking-[0.18em] text-[#c084fc]">
@@ -169,7 +174,13 @@ export default function LandingPage() {
 
             <div className="lg:hidden">
               <div className="rounded-md border border-[#8b5cf6]/30 bg-[#090713] p-4 shadow-2xl shadow-[#3b0764]/40">
-                <p className="text-sm font-semibold text-[#f5f3ff]">Vega waitlist lanes</p>
+                <div className="mb-4 flex items-center gap-4">
+                  <VegaAvatar size="sm" showStatus={false} className="shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-[#f5f3ff]">Vega waitlist lanes</p>
+                    <p className="mt-1 text-xs leading-5 text-[#c4b5fd]">Your AI lead command teammate is sorting early access fit.</p>
+                  </div>
+                </div>
                 <div className="mt-4 space-y-3">
                   {lanes.map((lane) => (
                     <div key={lane.name} className="rounded-md border border-[#8b5cf6]/25 bg-[#120c22] p-3">
@@ -207,13 +218,16 @@ export default function LandingPage() {
       </section>
 
       <section className="bg-[#03020a] px-5 py-16 sm:px-8 lg:px-10">
-        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1fr_0.9fr] lg:items-center">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.9fr_0.55fr_0.75fr] lg:items-center">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#c084fc]">Early access</p>
             <h2 className="mt-3 text-3xl font-semibold text-[#f7f4ff] sm:text-4xl">Join the contestant pool for the private Vega rollout.</h2>
             <p className="mt-4 max-w-2xl text-base leading-7 text-[#b9afd3]">
               Tell Vega what your sales motion looks like, what tools you use now, and where your lead flow breaks. Strong matches are flagged for review in the operator dashboard.
             </p>
+          </div>
+          <div className="hidden justify-center lg:flex">
+            <VegaAvatar size="md" caption="Ready to qualify" />
           </div>
           <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
             <Link

@@ -23,6 +23,66 @@ button {
 }
 
 ::selection {
-  background: #d8ff5f;
-  color: #101417;
+  background: #8b5cf6;
+  color: #ffffff;
+}
+
+@keyframes vegaFloat {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-0.6deg);
+  }
+
+  50% {
+    transform: translateY(-10px) rotate(0.6deg);
+  }
+}
+
+@keyframes vegaPulse {
+  0%,
+  100% {
+    opacity: 0.42;
+    transform: scale(0.96);
+  }
+
+  50% {
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes vegaScan {
+  0% {
+    transform: translateY(-40%);
+    opacity: 0;
+  }
+
+  25%,
+  65% {
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: translateY(40%);
+    opacity: 0;
+  }
+}
+
+.vega-float {
+  animation: vegaFloat 6s ease-in-out infinite;
+}
+
+.vega-avatar-glow::before {
+  animation: vegaPulse 4.8s ease-in-out infinite;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.48), rgba(76, 29, 149, 0.12) 44%, transparent 70%);
+  border-radius: 999px;
+  content: "";
+  inset: 13% 4% 8%;
+  position: absolute;
+}
+
+.vega-scan {
+  background: linear-gradient(180deg, transparent, rgba(216, 180, 254, 0.36), transparent);
+  mix-blend-mode: screen;
+  animation: vegaScan 4.2s ease-in-out infinite;
 }

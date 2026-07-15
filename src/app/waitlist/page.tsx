@@ -3,6 +3,7 @@
 import { ArrowRight, Check, LoaderCircle, ShieldCheck, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
+import VegaAvatar from "@/components/VegaAvatar";
 
 type SubmitState = "idle" | "submitting" | "success" | "error";
 
@@ -121,16 +122,20 @@ export default function WaitlistPage() {
                 <Sparkles size={17} />
                 Vega
               </Link>
-              <div className="mt-16 max-w-2xl">
+              <div className="mt-10 grid max-w-2xl gap-8 sm:grid-cols-[1fr_auto] sm:items-end">
+                <div>
                 <p className="mb-4 inline-flex items-center gap-2 rounded-md border border-violet-300/20 bg-violet-300/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#ddd6fe]">
                   Private early access
                 </p>
-                <h1 className="text-4xl font-semibold leading-[1.05] tracking-normal text-white sm:text-6xl">
+                <h1 className="text-[0] font-semibold leading-[1.05] tracking-normal text-white">
                   Meet Vega — Your AI Lead Command Team
+                  <span className="block text-4xl sm:text-6xl">Meet Vega, your AI Lead Command Team</span>
                 </h1>
                 <p className="mt-6 max-w-xl text-base leading-7 text-[#d8d4e8] sm:text-lg">
                   Join the private waitlist for early access to an AI sales operating system that discovers prospects, identifies buying signals, creates personalized outreach, manages follow-ups, and helps turn replies into revenue.
                 </p>
+                </div>
+                <VegaAvatar size="md" caption="Intake online" className="hidden sm:inline-flex" />
               </div>
             </div>
 
@@ -149,9 +154,7 @@ export default function WaitlistPage() {
               {success ? (
                 <div className="grid min-h-[560px] place-items-center text-center">
                   <div className="max-w-md">
-                    <div className="mx-auto grid size-14 place-items-center rounded-full bg-[#7c3aed]">
-                      <Check size={28} />
-                    </div>
+                    <VegaAvatar size="md" caption="You are in" className="mx-auto" />
                     <h2 className="mt-6 text-3xl font-semibold">You&apos;re on the Vega waitlist.</h2>
                     <p className="mt-4 leading-7 text-[#d8d4e8]">
                       Your information has been received. Vega will review early-access contestants and prioritize businesses that can actively test the platform and provide meaningful feedback.
@@ -175,7 +178,10 @@ export default function WaitlistPage() {
                       <h2 className="text-2xl font-semibold">Early access intake</h2>
                       <p className="mt-1 text-sm text-[#aaa2c7]">Tell Vega where your lead engine needs leverage.</p>
                     </div>
-                    <ShieldCheck className="text-[#a78bfa]" />
+                    <div className="flex items-center gap-3">
+                      <VegaAvatar size="sm" showStatus={false} className="hidden sm:inline-flex" />
+                      <ShieldCheck className="text-[#a78bfa]" />
+                    </div>
                   </div>
 
                   <div className="hidden">
