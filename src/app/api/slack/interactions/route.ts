@@ -6,18 +6,20 @@ import {
   rejectOutreachQueueItem,
   suppressOutreachQueueItem,
 } from "@/lib/approval";
+import { approveAgentPlan, type AgentPlan } from "@/lib/autopilot";
 import { createAutomationEvent } from "@/lib/automation";
 import {
   isSlackInteractionAuthorized,
   notifySlackBatchApprovalResult,
   notifySlackOutreachApproval,
+  notifySlackVegaLeadRequestResult,
   type SlackInteractionPayload,
 } from "@/lib/slack";
 
 function parseActionValue(value?: string) {
-  if (!value) return {} as { action?: string; limit?: number; itemId?: string };
+  if (!value) return {} as { action?: string; limit?: number; itemId?: string; plan?: AgentPlan };
   try {
-    return JSON.parse(value) as { action?: string; limit?: number; itemId?: string };
+    return JSON.parse(value) as { action?: string; limit?: number; itemId?: string; plan?: AgentPlan };
   } catch {
     return {};
   }
@@ -98,6 +100,77 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
   return slackEphemeral("Vega received the Slack action, but this button is not mapped yet.");
 }
 
+async function handlePlanAction(actionName: string, plan: AgentPlan | undefined, payload: SlackInteractionPayload) {
+  if (actionName === "plan_deny") {
+    await createAutomationEvent({
+      title: "Vega plan declined",
+      detail: "Stephen asked Vega for a different Lead Command plan from Slack.",
+      status: "needs_review",
+      type: "slack",
+      payload: { userId: payload.user?.id, channelId: payload.channel?.id, plan },
+    });
+    return slackEphemeral("Got it. Vega will wait for a different plan or a direct sourcing command.");
+  }
+
+  if (actionName !== "plan_approve" || !plan) {
+    return slackEphemeral("Vega could not read the plan from that button.");
+  }
+
+  await createAutomationEvent({
+    title: "Vega plan auto-send approved",
+    detail: `${plan.niche} plan approved from Slack. Vega will source, clean copy, auto-send eligible emails, and report back.`,
+    status: "running",
+    type: "slack",
+    payload: { userId: payload.user?.id, channelId: payload.channel?.id, plan },
+  });
+
+  const result = await approveAgentPlan(plan, { autoSend: true });
+  const sent = result.autoSendSummary?.sentCompanies || [];
+  const blocked = result.autoSendSummary?.blockedCompanies || [];
+  const failed = result.autoSendSummary?.failedCompanies || [];
+  const manual = result.autoSendSummary?.manualCompanies || [];
+  const contactedLine = sent.length ? `Contacted: ${sent.slice(0, 10).join(", ")}${sent.length > 10 ? ` +${sent.length - 10} more` : ""}` : "Contacted: none yet.";
+  const skippedLine = [
+    blocked.length ? `Blocked by quality gate: ${blocked.slice(0, 6).join(", ")}` : "",
+    failed.length ? `Failed send: ${failed.slice(0, 6).join(", ")}` : "",
+    manual.length ? `Manual contact path: ${manual.slice(0, 6).join(", ")}` : "",
+  ].filter(Boolean).join(" | ");
+
+  await notifySlackVegaLeadRequestResult({
+    instruction: `Approve plan: ${plan.niche}`,
+    status: "finished",
+    summary: `Approved plan ran end-to-end. ${result.message}`,
+    plan: {
+      niche: plan.niche,
+      provider: plan.provider,
+      location: plan.location,
+      locations: plan.locations,
+    },
+    result: {
+      found: result.found,
+      rawFound: result.rawFound,
+      qualified: result.qualified,
+      queued: result.queued,
+      reviewReady: result.reviewReady,
+      message: [contactedLine, skippedLine].filter(Boolean).join("\n"),
+      guardrails: result.guardrails,
+      diagnostics: result.diagnostics,
+    },
+  });
+
+  await createAutomationEvent({
+    title: "Vega plan auto-send finished",
+    detail: `Sent ${result.autoSendSummary?.sent || 0}; blocked ${result.autoSendSummary?.blocked || 0}; failed ${result.autoSendSummary?.failed || 0}; manual ${result.autoSendSummary?.manualCompanies.length || 0}.`,
+    status: result.autoSendSummary?.sent ? "done" : "needs_review",
+    type: "slack",
+    payload: { result, userId: payload.user?.id, channelId: payload.channel?.id },
+  });
+
+  return slackEphemeral(
+    `Vega ran the plan end-to-end. Sent ${result.autoSendSummary?.sent || 0}, blocked ${result.autoSendSummary?.blocked || 0}, failed ${result.autoSendSummary?.failed || 0}.`,
+  );
+}
+
 export async function POST(request: Request) {
   const raw = await request.text();
   const form = new URLSearchParams(raw);
@@ -116,6 +189,10 @@ export async function POST(request: Request) {
   const actionName = value.action || action?.action_id || "";
   if (actionName.startsWith("outreach_")) {
     return handleOutreachAction(actionName, value.itemId, payload);
+  }
+
+  if (actionName.startsWith("plan_")) {
+    return handlePlanAction(actionName, value.plan, payload);
   }
 
   if (actionName !== "vega_batch_approve") {

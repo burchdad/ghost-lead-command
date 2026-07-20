@@ -614,6 +614,34 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     policySkipped: skipped,
     searchRuns: sourceResult.runs,
   };
+  const approvalResults = queued.map((entry) => entry.approval).filter(Boolean) as Array<
+    | { ok: true; body: { delivery: { status: string; dryRun?: boolean; message?: string }; item?: { lead?: { companyName?: string } | null } } }
+    | { ok: false; body: { error?: string; detail?: string; item?: { lead?: { companyName?: string } | null } } }
+  >;
+  const sentCompanies = queued
+    .filter((entry) => {
+      const approval = entry.approval as { ok?: boolean; body?: { delivery?: { status?: string; dryRun?: boolean } } } | null;
+      return Boolean(approval?.ok && approval.body?.delivery?.status === "sent" && !approval.body.delivery.dryRun);
+    })
+    .map((entry) => entry.lead.companyName);
+  const dryRunCompanies = queued
+    .filter((entry) => {
+      const approval = entry.approval as { ok?: boolean; body?: { delivery?: { dryRun?: boolean } } } | null;
+      return Boolean(approval?.ok && approval.body?.delivery?.dryRun);
+    })
+    .map((entry) => entry.lead.companyName);
+  const blockedCompanies = queued
+    .filter((entry) => {
+      const approval = entry.approval as { ok?: boolean } | null;
+      return autoSend && approval && !approval.ok;
+    })
+    .map((entry) => entry.lead.companyName);
+  const failedCompanies = queued
+    .filter((entry) => {
+      const approval = entry.approval as { ok?: boolean; body?: { delivery?: { status?: string } } } | null;
+      return Boolean(approval?.ok && approval.body?.delivery?.status === "failed");
+    })
+    .map((entry) => entry.lead.companyName);
 
   await createAutomationEvent({
     title: "AI operator finished",
@@ -631,6 +659,13 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       diagnostics,
       guardrails: policy,
       autoSend,
+      autoSendSummary: {
+        attempted: approvalResults.length,
+        sent: sentCompanies.length,
+        dryRunQueued: dryRunCompanies.length,
+        blocked: blockedCompanies.length,
+        failed: failedCompanies.length,
+      },
     },
   });
 
@@ -645,10 +680,22 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     diagnostics,
     guardrails: policy,
     items: [...queued.map((entry) => entry.item), ...manualQueued.map((entry) => entry.item)],
+    autoSendSummary: {
+      attempted: approvalResults.length,
+      sent: sentCompanies.length,
+      dryRunQueued: dryRunCompanies.length,
+      blocked: blockedCompanies.length,
+      failed: failedCompanies.length,
+      sentCompanies,
+      dryRunCompanies,
+      blockedCompanies,
+      failedCompanies,
+      manualCompanies: manualQueued.map((entry) => entry.lead.companyName),
+    },
     message:
       queued.length + manualQueued.length > 0
         ? autoSend
-          ? `AI operator attempted ${queued.length} live sends.`
+          ? `AI operator cleaned copy and attempted ${approvalResults.length} live sends: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued.`
           : manualQueued.length
             ? `AI operator queued ${queued.length} email approvals and ${manualQueued.length} manual contact tasks.`
             : `AI operator queued ${queued.length} approval-ready emails.`

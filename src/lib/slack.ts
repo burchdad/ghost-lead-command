@@ -48,6 +48,26 @@ function batchApproveValue(limit: number) {
   });
 }
 
+function planActionValue(action: "approve" | "deny", plan: AgentPlan) {
+  return JSON.stringify({
+    action: `plan_${action}`,
+    token: actionToken(),
+    plan: {
+      provider: plan.provider,
+      niche: plan.niche,
+      query: plan.query,
+      location: plan.location,
+      locations: plan.locations,
+      industries: plan.industries,
+      minScore: plan.minScore,
+      queueLimit: plan.queueLimit,
+      size: plan.size,
+      rationale: plan.rationale,
+      source: plan.source,
+    },
+  });
+}
+
 function appViewUrl(view: string) {
   const url = new URL("/", appBaseUrl());
   url.searchParams.set("view", view);
@@ -108,21 +128,6 @@ async function postSlackPayload(input: {
   }
 
   return { configured: false, sent: false, channel: "", message: "Missing Slack webhook or bot channel configuration." };
-}
-
-function planActionUrl(action: "approve" | "deny", plan: AgentPlan) {
-  const url = new URL(`/api/slack/actions/plan/${action}`, appBaseUrl());
-  const token = actionToken();
-  if (token) url.searchParams.set("token", token);
-  url.searchParams.set("provider", plan.provider);
-  url.searchParams.set("niche", plan.niche);
-  url.searchParams.set("query", plan.query);
-  url.searchParams.set("location", plan.location);
-  url.searchParams.set("minScore", String(plan.minScore));
-  url.searchParams.set("queueLimit", String(plan.queueLimit));
-  url.searchParams.set("size", String(plan.size));
-  plan.industries.forEach((industry) => url.searchParams.append("industries", industry));
-  return url.toString();
 }
 
 function nicheActionUrl(action: "approve" | "deny", params: Record<string, string | number | string[]>) {
@@ -476,12 +481,14 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
               type: "button",
               text: { type: "plain_text", text: "Approve Plan", emoji: false },
               style: "primary",
-              url: planActionUrl("approve", plan),
+              action_id: "plan_approve",
+              value: planActionValue("approve", plan),
             },
             {
               type: "button",
               text: { type: "plain_text", text: "Different Plan", emoji: false },
-              url: planActionUrl("deny", plan),
+              action_id: "plan_deny",
+              value: planActionValue("deny", plan),
             },
           ],
         },

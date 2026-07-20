@@ -199,13 +199,13 @@ export async function sendAgentPlan(input: {
   return { plan, slack };
 }
 
-export async function approveAgentPlan(plan: AgentPlan) {
+export async function approveAgentPlan(plan: AgentPlan, input: { autoSend?: boolean } = {}) {
   await createAutomationEvent({
     title: "AI operator plan approved",
-    detail: `${plan.niche} scan approved from Slack.`,
+    detail: `${plan.niche} scan approved from Slack. Auto-send ${input.autoSend ? "enabled" : "disabled"}.`,
     status: "running",
     type: "agent",
-    payload: { plan },
+    payload: { plan, autoSend: input.autoSend },
   });
 
   return runLeadCommandAgent({
@@ -217,6 +217,7 @@ export async function approveAgentPlan(plan: AgentPlan) {
     minScore: plan.minScore,
     queueLimit: plan.queueLimit,
     size: plan.size,
+    autoSend: input.autoSend,
   });
 }
 

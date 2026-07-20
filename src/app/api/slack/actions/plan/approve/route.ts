@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const result = await approveAgentPlan(planFromUrl(url));
+  const result = await approveAgentPlan(planFromUrl(url), { autoSend: true });
 
   const destination = new URL("/?view=queue", url.origin);
   destination.searchParams.set("slackAction", `plan_approved_${result.queued}_queued`);
