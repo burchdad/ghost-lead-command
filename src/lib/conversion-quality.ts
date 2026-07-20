@@ -15,8 +15,11 @@ function clean(value: unknown) {
 }
 
 function numberFromEnv(name: string, fallback: number) {
-  const value = Number(clean(process.env[name]));
-  return Number.isFinite(value) && value >= 0 ? value : fallback;
+  const raw = clean(process.env[name]);
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return fallback;
+  return fallback > 0 ? (value > 0 ? value : fallback) : Math.max(0, value);
 }
 
 function boolFromEnv(name: string, fallback: boolean) {

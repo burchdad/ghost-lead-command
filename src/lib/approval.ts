@@ -141,23 +141,6 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
   const maxLimit = Math.min(25, Math.max(1, Number(process.env.VEGA_APPROVAL_BATCH_LIMIT || 10)));
   const limit = Math.min(maxLimit, Math.max(1, Number(input.limit || maxLimit)));
   const health = await getSenderHealth({ workspaceId: workspace.id });
-  if (health.mode === "stop" && !["true", "1", "yes", "on"].includes(String(process.env.VEGA_ALLOW_HIGH_BOUNCE_SEND || "").toLowerCase())) {
-    return {
-      requested: limit,
-      attempted: 0,
-      approved: 0,
-      failed: 0,
-      blocked: true,
-      blockReason: `Sender health stop: ${health.bounceRate}% risky SendGrid events. Target is below ${health.targetBounceRate}%; hard stop is ${health.hardStopBounceRate}%.`,
-      health,
-      emailReadyBefore: 0,
-      manualPending: 0,
-      otherPending: 0,
-      sent: 0,
-      dryRunQueued: 0,
-      results: [],
-    };
-  }
   const [emailReady, manualPending, otherPending] = await Promise.all([
     prisma.outreachQueueItem.count({
       where: {
@@ -184,6 +167,25 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
       },
     }),
   ]);
+
+  if (health.mode === "stop" && !["true", "1", "yes", "on"].includes(String(process.env.VEGA_ALLOW_HIGH_BOUNCE_SEND || "").toLowerCase())) {
+    return {
+      requested: limit,
+      attempted: 0,
+      approved: 0,
+      failed: 0,
+      blocked: true,
+      blockReason: `Sender health stop: ${health.bounceRate}% risky SendGrid events. Target is below ${health.targetBounceRate}%; hard stop is ${health.hardStopBounceRate}%.`,
+      health,
+      emailReadyBefore: emailReady,
+      manualPending,
+      otherPending,
+      sent: 0,
+      dryRunQueued: 0,
+      results: [],
+    };
+  }
+
   const items = await prisma.outreachQueueItem.findMany({
     where: {
       workspaceId: workspace.id,
