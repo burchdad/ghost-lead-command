@@ -1,4 +1,5 @@
 import { createAutomationEvent } from "@/lib/automation";
+import { buildSignalScoreboard } from "@/lib/intent-scoreboard";
 import { selectOfferAngle } from "@/lib/offer-copy-brain";
 import { buildCompanyAccountBrief, findPublicCompanySignals, getPerplexityStatus } from "@/lib/perplexity";
 import { getPrisma } from "@/lib/prisma";
@@ -97,6 +98,21 @@ export async function getIntentFeed(input: { limit?: number; enrich?: boolean } 
       replies: lead.replies.length,
       sent,
     });
+    const scoreboard = buildSignalScoreboard({
+      companyName: lead.companyName,
+      name: lead.name,
+      title: lead.contact?.role || "",
+      email: lead.contact?.email || "",
+      phone: lead.contact?.phone || "",
+      website: lead.company?.website || "",
+      niche: lead.niche,
+      source: lead.source,
+      score: lead.score,
+      signalSummary,
+      nextAction: lead.nextAction,
+      stage: lead.stage,
+      value: lead.value,
+    });
     let publicSignals: string[] = [];
     let sources: IntentFeedItem["sources"] = [];
 
@@ -129,7 +145,7 @@ export async function getIntentFeed(input: { limit?: number; enrich?: boolean } 
 
     const mergedSignal = [signalSummary, ...publicSignals].filter(Boolean).slice(0, 5).join("; ");
     const finalSignalType = signalType(mergedSignal);
-    const signalScore = Math.min(100, base + Math.min(15, publicSignals.length * 5));
+    const signalScore = Math.min(100, Math.max(base, scoreboard.total) + Math.min(15, publicSignals.length * 5));
     const angle = selectOfferAngle({
       name: lead.name,
       companyName: lead.companyName,
@@ -158,9 +174,9 @@ export async function getIntentFeed(input: { limit?: number; enrich?: boolean } 
         lead.replies.length > 0
           ? "Work reply and push booking."
           : contact === "email"
-            ? "Run Copy Chief, then approve outreach."
+            ? scoreboard.nextMove
             : contact === "phone" || contact === "website"
-              ? "Move through Contact Path Agent."
+              ? scoreboard.nextMove
               : "Enrich before outreach.",
       sources,
     });

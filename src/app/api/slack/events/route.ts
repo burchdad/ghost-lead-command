@@ -19,6 +19,7 @@ import {
   type SlackEventPayload,
 } from "@/lib/slack";
 import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSprint } from "@/lib/vega-closing-sprint";
+import { isDominanceLoopRequest, runVegaDominanceLoop } from "@/lib/vega-dominance-loop";
 import { isVegaOpsRequest, runVegaOpsBrief, shouldExecuteOps } from "@/lib/vega-ops-brief";
 import { isRevenueWatchRequest, runVegaRevenueWatch } from "@/lib/vega-revenue-watch";
 import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
@@ -140,6 +141,7 @@ export async function POST(request: Request) {
   const isMorningStandupInstruction = isMorningStandupRequest(instruction);
   const isApprovalInstruction = isApprovalRequest(instruction);
   const isClosingInstruction = isClosingSprintRequest(instruction);
+  const isDominanceInstruction = isDominanceLoopRequest(instruction);
   const isOpsInstruction = isVegaOpsRequest(instruction);
   const isRevenueWatchInstruction = isRevenueWatchRequest(instruction);
   const isWarmLeadInstruction = isWarmLeadRequest(instruction);
@@ -162,17 +164,19 @@ export async function POST(request: Request) {
                   ? "Vega Slack batch approval received"
                   : isClosingInstruction
                     ? "Vega Slack closing sprint received"
-                    : isOpsInstruction
-                      ? "Vega Slack ops brief received"
-                      : isRevenueWatchInstruction
-                        ? "Vega Slack revenue watch received"
-                        : isWarmLeadInstruction
-                          ? "Vega Slack warm-lead request received"
-                          : isBookingDiagnosisInstruction
-                            ? "Vega Slack booking diagnosis received"
-                            : specialistKind
-                              ? "Vega Slack specialist request received"
-                              : "Vega Slack message ignored",
+                    : isDominanceInstruction
+                      ? "Vega Slack dominance loop received"
+                      : isOpsInstruction
+                        ? "Vega Slack ops brief received"
+                        : isRevenueWatchInstruction
+                          ? "Vega Slack revenue watch received"
+                          : isWarmLeadInstruction
+                            ? "Vega Slack warm-lead request received"
+                            : isBookingDiagnosisInstruction
+                              ? "Vega Slack booking diagnosis received"
+                              : specialistKind
+                                ? "Vega Slack specialist request received"
+                                : "Vega Slack message ignored",
     detail: instruction || text || "No Slack text received.",
     status:
       isLeadInstruction ||
@@ -183,6 +187,7 @@ export async function POST(request: Request) {
       isMorningStandupInstruction ||
       isApprovalInstruction ||
       isClosingInstruction ||
+      isDominanceInstruction ||
       isOpsInstruction ||
       isRevenueWatchInstruction ||
       specialistKind
@@ -203,6 +208,7 @@ export async function POST(request: Request) {
       isMorningStandupInstruction,
       isApprovalInstruction,
       isClosingInstruction,
+      isDominanceInstruction,
       isOpsInstruction,
       isRevenueWatchInstruction,
       isWarmLeadInstruction,
@@ -220,6 +226,7 @@ export async function POST(request: Request) {
     !isMorningStandupInstruction &&
     !isApprovalInstruction &&
     !isClosingInstruction &&
+    !isDominanceInstruction &&
     !isOpsInstruction &&
     !isRevenueWatchInstruction &&
     !isWarmLeadInstruction &&
@@ -230,7 +237,7 @@ export async function POST(request: Request) {
       instruction,
       status: "failed",
       summary:
-        "I heard Vega, but I could not detect a lead sourcing, closing sprint, approval, reply-work, audit, digest, or Nova brief request. Try: Vega, closing sprint. Or: Vega, approve 10.",
+        "I heard Vega, but I could not detect a lead sourcing, dominance loop, closing sprint, approval, reply-work, audit, digest, or Nova brief request. Try: Vega, dominance loop. Or: Vega, approve 10.",
     });
     return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
   }
@@ -281,6 +288,43 @@ export async function POST(request: Request) {
           instruction,
           status: "failed",
           summary: error instanceof Error ? error.message : "Unknown Vega closing sprint failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
+  }
+
+  if (isDominanceInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is running the dominance loop across source, signal, specialists, booking, and deliverability now.",
+    });
+
+    after(async () => {
+      try {
+        const result = await runVegaDominanceLoop({ instruction });
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "finished",
+          summary: [
+            result.summary,
+            `Bottleneck: ${result.bottleneck}`,
+            result.nextMoves.length ? `Next moves: ${result.nextMoves.slice(0, 4).join("; ")}` : "Next moves: continue controlled sourcing and reply watch.",
+          ].join("\n"),
+          result: {
+            found: result.metrics.found,
+            qualified: result.metrics.qualified,
+            queued: result.metrics.queued,
+            message: `Pending ${result.metrics.pendingApprovals}; SendGrid-ready ${result.metrics.sendgridReady}; booked ${result.metrics.bookedCalls}; closeness ${result.metrics.gojiBerryCloseness}.`,
+          },
+        });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Vega dominance loop failure.",
         });
       }
     });

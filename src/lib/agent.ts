@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { approveOutreachQueueItem } from "@/lib/approval";
 import { generateSalesText } from "@/lib/ai";
 import { createAutomationEvent } from "@/lib/automation";
+import { buildSignalScoreboard, signalScoreboardSummary } from "@/lib/intent-scoreboard";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
 import { improveOfferCopy } from "@/lib/offer-copy-brain";
 import { evaluateSourceLead, prepareOperatorRun } from "@/lib/operator-policy";
@@ -280,6 +281,7 @@ function parseGeneratedOutreach(text: string, companyName: string) {
 }
 
 function improveGeneratedOutreach(copy: { subject: string; body: string }, lead: SourceLead) {
+  const scoreboard = buildSignalScoreboard(lead);
   return improveOfferCopy({
     subject: copy.subject,
     body: copy.body,
@@ -288,8 +290,8 @@ function improveGeneratedOutreach(copy: { subject: string; body: string }, lead:
       companyName: lead.companyName,
       niche: lead.niche,
       source: lead.source,
-      nextAction: defaultNextAction(lead),
-      score: lead.score,
+      nextAction: `${defaultNextAction(lead)} ${signalScoreboardSummary(scoreboard)}`,
+      score: Math.max(lead.score, scoreboard.total),
     },
     mode: "first-touch",
   });
@@ -297,18 +299,26 @@ function improveGeneratedOutreach(copy: { subject: string; body: string }, lead:
 
 function defaultNextAction(lead: SourceLead) {
   const signals = lead.signalSummary || lead.intentSignals?.slice(0, 3).join("; ");
-  return `AI agent sourced ${lead.companyName}, scored ${lead.score}, and queued a first-touch opener for ${lead.name}. Buyer fit: ${lead.buyerFit}.${signals ? ` Signal: ${signals}.` : ""}`;
+  const scoreboard = buildSignalScoreboard(lead);
+  return [
+    `AI agent sourced ${lead.companyName}, scored ${Math.max(lead.score, scoreboard.total)}, and queued a first-touch opener for ${lead.name}.`,
+    `Buyer fit: ${lead.buyerFit}.`,
+    signals ? `Signal: ${signals}.` : "",
+    `Vega read: ${signalScoreboardSummary(scoreboard)} Next: ${scoreboard.nextMove}`,
+  ].filter(Boolean).join(" ");
 }
 
 function manualContactBody(sourceLead: SourceLead) {
   const website = clean((sourceLead as SourceLead & { website?: string }).website);
   const phone = clean(sourceLead.phone);
   const signals = sourceLead.signalSummary || sourceLead.intentSignals?.slice(0, 3).join("; ");
+  const scoreboard = buildSignalScoreboard(sourceLead);
   return [
     `Manual contact path for ${sourceLead.companyName}.`,
     phone ? `Call path: ${phone}` : "",
     website ? `Website/contact form: ${website}` : "",
     signals ? `Why this lead: ${signals}` : "",
+    `Vega read: ${signalScoreboardSummary(scoreboard)}`,
     "Operator move: find a direct email, call the business, or use the website contact form before adding this lead to email outreach.",
   ].filter(Boolean).join("\n");
 }
@@ -388,7 +398,8 @@ async function importSourceLead(sourceLead: SourceLead, workspaceId: string) {
     },
   });
 
-  const score = Number(sourceLead.score || 50);
+  const scoreboard = buildSignalScoreboard(sourceLead);
+  const score = Math.max(Number(sourceLead.score || 50), scoreboard.total);
   const value = score >= 95 ? 7500 : score >= 85 ? 5000 : 3500;
   const lead = await prisma.lead.create({
     data: {
@@ -543,7 +554,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         subject: copy.subject,
         body: copy.body,
         status: "pending",
-        reason: sanitizeInternalReason(`${copy.reason} Generated via ${generated.provider}.`),
+        reason: sanitizeInternalReason(`${copy.reason} ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))} Generated via ${generated.provider}.`),
       },
       include: { lead: true },
     });
@@ -582,7 +593,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         subject: `Manual contact path for ${imported.lead.companyName}`,
         body: manualContactBody(sourceLead),
         status: "pending",
-        reason: sanitizeInternalReason("Queued by Vega because this lead has phone/website context but no public email yet."),
+        reason: sanitizeInternalReason(`Queued by Vega because this lead has phone/website context but no public email yet. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`),
       },
       include: { lead: true },
     });

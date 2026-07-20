@@ -1,6 +1,7 @@
 import type { Lead, OutreachQueueItem } from "@prisma/client";
 import { createHmac, timingSafeEqual } from "crypto";
 import type { AgentPlan } from "@/lib/autopilot";
+import { buildSignalScoreboard, signalScoreboardSummary } from "@/lib/intent-scoreboard";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getOperatorCaps } from "@/lib/operator-policy";
 
@@ -264,6 +265,20 @@ export async function notifySlackOutreachApproval(
   const subject = sanitizeSubject(item.subject || `Quick idea for ${title}`);
   const body = sanitizeCustomerMessage(item.body, { channel: item.channel });
   const preview = body.length > 420 ? `${body.slice(0, 417)}...` : body;
+  const scoreboard = lead
+    ? buildSignalScoreboard({
+        companyName: lead.companyName,
+        name: lead.name,
+        niche: lead.niche,
+        source: lead.source,
+        score: lead.score,
+        nextAction: `${lead.nextAction} ${item.reason || ""}`,
+        stage: lead.stage,
+        value: lead.value,
+      })
+    : null;
+  const signalSummary = scoreboard ? signalScoreboardSummary(scoreboard) : clean(item.reason || undefined);
+  const signalPreview = signalSummary.length > 620 ? `${signalSummary.slice(0, 617)}...` : signalSummary;
   const queueUrl = new URL("/?view=queue", appBaseUrl()).toString();
 
   const response = await fetch(webhookUrl, {
@@ -287,6 +302,14 @@ export async function notifySlackOutreachApproval(
           type: "section",
           text: { type: "mrkdwn", text: `\`\`\`${preview}\`\`\`` },
         },
+        ...(signalPreview
+          ? [
+              {
+                type: "section",
+                text: { type: "mrkdwn", text: `*Vega signal read:*\n${signalPreview}` },
+              },
+            ]
+          : []),
         {
           type: "context",
           elements: [

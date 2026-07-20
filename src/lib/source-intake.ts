@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { generateSalesText } from "@/lib/ai";
 import { approveOutreachQueueItem } from "@/lib/approval";
+import { buildSignalScoreboard, signalScoreboardSummary } from "@/lib/intent-scoreboard";
 import { getPrisma } from "@/lib/prisma";
 import { findSuppressionMatch } from "@/lib/suppression";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
@@ -130,9 +131,28 @@ function buildNextAction(input: {
   niche: string;
   source: string;
   signalSummary: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  score?: number;
 }) {
   const role = input.title ? `${input.contactName} (${input.title})` : input.contactName;
-  return `External signal intake from ${input.source}. Queue signal-to-meeting opener to ${role} at ${input.companyName} for ${input.niche}. Buyer fit: ${classifyBuyerFit(input.title)}. Signal: ${input.signalSummary}.`;
+  const scoreboard = buildSignalScoreboard({
+    companyName: input.companyName,
+    name: input.contactName,
+    title: input.title,
+    niche: input.niche,
+    source: input.source,
+    signalSummary: input.signalSummary,
+    email: input.email || "",
+    phone: input.phone || "",
+    website: input.website || "",
+    score: input.score || 0,
+    buyerFit: classifyBuyerFit(input.title),
+    intentSignals: input.signalSummary ? [input.signalSummary] : [],
+    confidence: input.email ? "email-ready" : input.phone || input.website ? "manual-contact-path" : "needs-enrichment",
+  });
+  return `External signal intake from ${input.source}. Queue signal-to-meeting opener to ${role} at ${input.companyName} for ${input.niche}. Buyer fit: ${classifyBuyerFit(input.title)}. Signal: ${input.signalSummary}. Vega read: ${signalScoreboardSummary(scoreboard)} Next: ${scoreboard.nextMove}`;
 }
 
 async function queueFirstTouch(input: {
@@ -151,10 +171,11 @@ async function queueFirstTouch(input: {
   autoSend: boolean;
 }) {
   const prisma = getPrisma();
+  const scoreboard = buildSignalScoreboard(input.lead);
   const generated = await generateSalesText({
     kind: "outreach",
     lead: input.lead,
-    input: "External buyer-signal intake. Write a short signal-to-meeting first-touch email.",
+    input: `External buyer-signal intake. Write a short signal-to-meeting first-touch email. Use this Vega signal read for context: ${signalScoreboardSummary(scoreboard)}`,
   });
 
   const trimmed = generated.text.trim();
@@ -177,7 +198,7 @@ async function queueFirstTouch(input: {
       subject: sanitizeSubject(copy.subject),
       body: copy.body,
       status: "pending",
-      reason: sanitizeInternalReason(`${copy.reason} Queued from external source intake via ${generated.provider}.`),
+      reason: sanitizeInternalReason(`${copy.reason} ${signalScoreboardSummary(scoreboard)} Queued from external source intake via ${generated.provider}.`),
     },
     include: { lead: true },
   });
@@ -214,7 +235,23 @@ export async function ingestExternalSourceLeads(leads: IntakeLead[], options: In
     const domain = normalizeDomain(clean(leadInput.domain) || website);
     const signals = normalizeSignals(leadInput);
     const signalSummary = inferSignalSummary(leadInput, signals);
-    const score = scoreIntakeLead(leadInput, signals);
+    const rawScore = scoreIntakeLead(leadInput, signals);
+    const scoreboard = buildSignalScoreboard({
+      companyName,
+      name: contactName,
+      title,
+      email,
+      phone,
+      website,
+      niche,
+      source,
+      score: rawScore,
+      buyerFit: clean(leadInput.buyerFit) || classifyBuyerFit(title),
+      confidence: clean(leadInput.confidence) || (email ? "email-ready" : phone || website ? "manual-contact-path" : "needs-enrichment"),
+      intentSignals: signals,
+      signalSummary,
+    });
+    const score = Math.max(rawScore, scoreboard.total);
     const value = Number(leadInput.value || (score >= 90 ? 7500 : score >= 82 ? 5000 : 2500));
 
     if (!companyName || !contactName) {
@@ -298,7 +335,7 @@ export async function ingestExternalSourceLeads(leads: IntakeLead[], options: In
         value,
         source,
         lastTouch: "Never",
-        nextAction: buildNextAction({ companyName, contactName, title, niche, source, signalSummary }),
+        nextAction: buildNextAction({ companyName, contactName, title, niche, source, signalSummary, email, phone, website, score }),
         opportunities: {
           create: {
             companyId: company.id,

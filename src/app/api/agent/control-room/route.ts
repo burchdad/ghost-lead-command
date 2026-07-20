@@ -107,6 +107,7 @@ export async function GET() {
     const recentCadenceEvent = events.find((event) => /cadence|follow-up|sequence/i.test(event.title));
     const recentContactPathEvent = events.find((event) => /contact path|manual/i.test(`${event.title} ${event.detail}`));
     const recentClosingSprintEvent = events.find((event) => /closing sprint/i.test(event.title));
+    const recentDominanceEvent = events.find((event) => /dominance loop/i.test(event.title));
     const recentStandupEvent = events.find((event) => /morning standup/i.test(event.title));
     const recentOpsEvent = events.find((event) => /vega ops|ops loop|sub-agent command/i.test(`${event.title} ${event.detail}`));
     const recentIntentEvent = events.find((event) => /intent signal feed|intent-ranked|perplexity|web intel/i.test(`${event.title} ${event.detail}`));
@@ -152,6 +153,28 @@ export async function GET() {
           "booked calls": bookedCalls,
           "hot replies": hotReplies,
         },
+      }),
+      agentCard({
+        id: "dominance-loop",
+        name: "Vega Dominance Loop",
+        role: "Run source, signal, specialists, booking, deliverability, and close-this-week logic in one controlled command pass.",
+        status: sourceConfigured && canSend ? "ready" : sourceConfigured ? "needs-work" : "blocked",
+        health: recentDominanceEvent ? "Full revenue loop has run" : "Ready for command",
+        detail:
+          "Use this when Stephen or Nova says Vega should push past GojiBerry: it ranks intent, sources new accounts, tunes copy/cadence, protects deliverability, pushes bookings, and reports the bottleneck.",
+        lastEvent: recentDominanceEvent,
+        actionLabel: "Run dominance loop",
+        actionView: "agents",
+        metrics: {
+          "pending approvals": pending,
+          "sendgrid-ready": pendingEmail,
+          "hot replies": hotReplies,
+          "booked calls": bookedCalls,
+        },
+        blockers: [
+          ...(sourceConfigured ? [] : ["No source provider is configured for dominance-loop sourcing."]),
+          ...(canSend ? [] : ["SendGrid live sending is not fully ready; dominance loop will stay approval-first."]),
+        ],
       }),
       agentCard({
         id: "ops-loop",

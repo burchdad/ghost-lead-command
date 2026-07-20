@@ -956,6 +956,7 @@ export default function Home() {
   const [collectorBusy, setCollectorBusy] = useState(false);
   const [tuningBusy, setTuningBusy] = useState(false);
   const [specialistBusy, setSpecialistBusy] = useState<VegaSpecialistKind | null>(null);
+  const [dominanceBusy, setDominanceBusy] = useState(false);
   const [closingSprintBusy, setClosingSprintBusy] = useState(false);
   const [standupBusy, setStandupBusy] = useState(false);
   const [opsLoopBusy, setOpsLoopBusy] = useState(false);
@@ -2153,6 +2154,44 @@ export default function Home() {
     if (["approvals", "follow-up-cadence", "contact-path", "outbound-volume", "fresh-sourcing"].includes(payload.bottleneck)) setActive("queue");
     if (["booking-handoff", "close-mode"].includes(payload.bottleneck)) setActive("proposal");
     setClosingSprintBusy(false);
+  }
+
+  async function runVegaDominanceLoop() {
+    if (dominanceBusy) return;
+    setDominanceBusy(true);
+    setActionToast({
+      phase: "loading",
+      title: "Dominance loop running",
+      detail: "Vega is running source, signal, specialist, booking, deliverability, and closing lanes.",
+    });
+
+    const response = await fetch("/api/agent/dominance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction: "Vega dominance loop from Mission Control" }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setActionToast({
+        phase: "error",
+        title: "Dominance loop blocked",
+        detail: payload.detail || payload.error || "Vega dominance loop could not finish.",
+      });
+      setDominanceBusy(false);
+      return;
+    }
+
+    setActionToast({
+      phase: "success",
+      title: "Dominance loop complete",
+      detail: payload.bottleneck ? `Bottleneck: ${payload.bottleneck}` : payload.summary || "Vega dominance loop finished.",
+    });
+    setOperationStatus(payload.nextMoves?.[0] || payload.summary || "Vega dominance loop finished.");
+    await refreshOpsData();
+    await refreshLeads();
+    setActive(payload.metrics?.bookedCalls || payload.metrics?.pendingApprovals ? "queue" : "agents");
+    setDominanceBusy(false);
   }
 
   async function runMorningStandup() {
@@ -3649,6 +3688,17 @@ export default function Home() {
                             >
                               {standupBusy ? <LoaderCircle className="animate-spin" size={16} /> : <MessageSquareText size={16} />}
                               Run standup
+                            </button>
+                          ) : null}
+                          {agent.id === "dominance-loop" ? (
+                            <button
+                              type="button"
+                              onClick={runVegaDominanceLoop}
+                              disabled={dominanceBusy}
+                              className="inline-flex items-center gap-2 rounded-md bg-[#d8ff5f] px-3 py-2 text-sm font-semibold text-[#101417] transition hover:bg-[#c8ef4f] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {dominanceBusy ? <LoaderCircle className="animate-spin" size={16} /> : <Rocket size={16} />}
+                              Run dominance
                             </button>
                           ) : null}
                           {agent.id === "ops-loop" ? (

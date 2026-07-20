@@ -14,6 +14,7 @@ import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { runMorningStandup } from "@/lib/morning-standup";
 import { isSlackCommandAuthorized, notifySlackBatchApprovalResult, notifySlackClosingSprintResult } from "@/lib/slack";
 import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSprint } from "@/lib/vega-closing-sprint";
+import { isDominanceLoopRequest, runVegaDominanceLoop } from "@/lib/vega-dominance-loop";
 import { isVegaOpsRequest, runVegaOpsBrief, shouldExecuteOps } from "@/lib/vega-ops-brief";
 import { isRevenueWatchRequest, runVegaRevenueWatch } from "@/lib/vega-revenue-watch";
 import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
@@ -151,6 +152,21 @@ export async function POST(request: Request) {
       await postSlackCommandResponse(responseUrl, `${result.summary}\nNext: ${result.nextMoves.join(" ")}`);
     });
     return slackText("Vega is running the weekly closing sprint now. I'll post the bottleneck and next moves when it finishes.");
+  }
+
+  if (isDominanceLoopRequest(text)) {
+    after(async () => {
+      const result = await runVegaDominanceLoop({ instruction: text });
+      await postSlackCommandResponse(
+        responseUrl,
+        [
+          result.summary,
+          `Bottleneck: ${result.bottleneck}`,
+          result.nextMoves.length ? `Next moves: ${result.nextMoves.slice(0, 4).join("; ")}` : "",
+        ].filter(Boolean).join("\n"),
+      );
+    });
+    return slackText("Vega is running the dominance loop across source, signal, specialists, booking, and deliverability now.");
   }
 
   if (isVegaOpsRequest(text)) {
@@ -295,6 +311,7 @@ export async function POST(request: Request) {
         "`Vega, protect deliverability` - suppress failed contacts and reject risky pending sends.",
         "`Vega, run specialists` - run copy, cadence, replies, booking, contact paths, and deliverability together.",
         "`Vega, closing sprint for 10 closes this week` - run Vega's close-this-week operating loop and report the bottleneck.",
+        "`Vega, dominance loop` - run the full source, signal, specialist, booking, deliverability, and closing loop.",
         "`Vega, morning standup` - post the Stephen/Nova/Vega scoreboard, Nova directive, Vega orders, and today's lead targets.",
         "`Vega, ops brief` - post the sub-agent chain-of-command report for Vega, Nova, and Stephen.",
         "`Vega, run ops loop` - run Vega's safe autonomy lanes and post what each sub-agent did.",
