@@ -1,4 +1,5 @@
 import { getPerplexityStatus } from "@/lib/perplexity";
+import { getSenderHealth } from "@/lib/conversion-quality";
 import { getPrisma } from "@/lib/prisma";
 import { signalPlays } from "@/lib/signal-plays";
 import { getDefaultWorkspace } from "@/lib/workspace";
@@ -29,6 +30,8 @@ export type ConversionLearning = {
     overallReplyRate: number;
     gojiBerryCloseness: string;
     socialSignalCoverage: number;
+    senderHealth: string;
+    bounceRate: number;
     recommendedPlayIds: string[];
   };
   sources: LearningRow[];
@@ -147,7 +150,7 @@ function closenessScore(input: {
 export async function computeConversionLearning(): Promise<ConversionLearning> {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
-  const [leads, queue, replies] = await Promise.all([
+  const [leads, queue, replies, senderHealth] = await Promise.all([
     prisma.lead.findMany({
       where: { workspaceId: workspace.id },
       include: { contact: true },
@@ -156,6 +159,7 @@ export async function computeConversionLearning(): Promise<ConversionLearning> {
     }),
     prisma.outreachQueueItem.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 1000 }),
     prisma.reply.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 1000 }),
+    getSenderHealth({ workspaceId: workspace.id }),
   ]);
 
   const queueByLead = new Map<string, typeof queue>();
@@ -232,6 +236,9 @@ export async function computeConversionLearning(): Promise<ConversionLearning> {
     failed > 0
       ? `Review ${failed} failed sends and suppress repeated bounce domains before increasing volume.`
       : "Deliverability is clean enough for a cautious volume increase.",
+    senderHealth.mode !== "clear"
+      ? `Hold or reduce auto-send volume: sender health is ${senderHealth.mode} with ${senderHealth.bounceRate}% risky SendGrid events.`
+      : `Sender health is clear at ${senderHealth.bounceRate}% risky SendGrid events.`,
     overallReplyRate < 3
       ? "Keep daily volume moderate and test sharper signal-first copy before scaling auto-send."
       : "Reply rate is viable; increase queue cap only on the top-performing source/signal pair.",
@@ -240,7 +247,7 @@ export async function computeConversionLearning(): Promise<ConversionLearning> {
   const nextActions = [
     recommendedPlayIds.length ? `Activate or refresh these source plays: ${recommendedPlayIds.join(", ")}.` : "",
     socialSignalCoverage < 25 ? "Run Vega social intent scout to add LinkedIn/competitor-style trigger evidence." : "",
-    failed ? "Run Vega protect deliverability before increasing send volume." : "",
+    failed || senderHealth.mode !== "clear" ? "Run Vega protect deliverability before increasing send volume." : "",
     replies.length ? "Run Vega work replies and push bookings after each send batch." : "Approve a small reviewed batch, then watch SendGrid events before adding more volume.",
   ].filter(Boolean);
 
@@ -264,6 +271,8 @@ export async function computeConversionLearning(): Promise<ConversionLearning> {
         booked,
       }),
       socialSignalCoverage,
+      senderHealth: senderHealth.mode,
+      bounceRate: senderHealth.bounceRate,
       recommendedPlayIds,
     },
     sources: sources.slice(0, 8),

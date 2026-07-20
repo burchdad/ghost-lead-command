@@ -33,6 +33,7 @@ type Stage =
   | "Imported"
   | "Contacted"
   | "Networking Contact"
+  | "Confirmed Opportunity"
   | "Potential Client"
   | "Referral Partner"
   | "Vendor"
@@ -400,6 +401,8 @@ type LearningLoop = {
     failed: number;
     overallReplyRate: number;
     gojiBerryCloseness: string;
+    senderHealth?: string;
+    bounceRate?: number;
   };
   sources: LearningRow[];
   niches: LearningRow[];
@@ -669,6 +672,7 @@ const stages: Stage[] = [
   "Imported",
   "Contacted",
   "Networking Contact",
+  "Confirmed Opportunity",
   "Potential Client",
   "Referral Partner",
   "Vendor",

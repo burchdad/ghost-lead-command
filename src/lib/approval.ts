@@ -3,6 +3,7 @@ import { generateSalesText } from "@/lib/ai";
 import { sendEmail, sendSms } from "@/lib/outreach";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { improveOfferCopy } from "@/lib/offer-copy-brain";
+import { evaluateQueueItemForConversionSend, getSenderHealth } from "@/lib/conversion-quality";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 import { findSuppressionMatch } from "@/lib/suppression";
@@ -53,6 +54,27 @@ export async function approveOutreachQueueItem(
       ok: false as const,
       status: 409,
       body: { error: "Suppressed lead", suppression, item: rejected },
+    };
+  }
+
+  const quality = await evaluateQueueItemForConversionSend(item);
+  if (!quality.ok) {
+    await prisma.outreachQueueItem.update({
+      where: { id },
+      data: {
+        reason: `Vega conversion quality gate paused this send: ${quality.reasons.join(" ")}`,
+      },
+    });
+    return {
+      ok: false as const,
+      status: 409,
+      body: {
+        error: "Conversion quality gate paused this send",
+        detail: quality.reasons.join(" "),
+        health: quality.health,
+        warnings: quality.warnings,
+        item,
+      },
     };
   }
 
@@ -110,7 +132,7 @@ export async function approveOutreachQueueItem(
           seedBody: message,
         });
 
-  return { ok: true as const, status: 200, body: { item: updated, delivery, sequence } };
+  return { ok: true as const, status: 200, body: { item: updated, delivery, sequence, quality } };
 }
 
 export async function approvePendingOutreachBatch(input: { limit?: number } = {}) {
@@ -118,6 +140,24 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
   const workspace = await getDefaultWorkspace();
   const maxLimit = Math.min(25, Math.max(1, Number(process.env.VEGA_APPROVAL_BATCH_LIMIT || 10)));
   const limit = Math.min(maxLimit, Math.max(1, Number(input.limit || maxLimit)));
+  const health = await getSenderHealth({ workspaceId: workspace.id });
+  if (health.mode === "stop" && !["true", "1", "yes", "on"].includes(String(process.env.VEGA_ALLOW_HIGH_BOUNCE_SEND || "").toLowerCase())) {
+    return {
+      requested: limit,
+      attempted: 0,
+      approved: 0,
+      failed: 0,
+      blocked: true,
+      blockReason: `Sender health stop: ${health.bounceRate}% risky SendGrid events. Target is below ${health.targetBounceRate}%; hard stop is ${health.hardStopBounceRate}%.`,
+      health,
+      emailReadyBefore: 0,
+      manualPending: 0,
+      otherPending: 0,
+      sent: 0,
+      dryRunQueued: 0,
+      results: [],
+    };
+  }
   const [emailReady, manualPending, otherPending] = await Promise.all([
     prisma.outreachQueueItem.count({
       where: {
@@ -175,8 +215,10 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
       ok: result.ok,
       status: result.status,
       error: result.ok ? null : result.body.error || "Approval failed",
+      detail: result.ok ? null : "detail" in result.body ? result.body.detail || null : null,
       delivery: result.ok ? result.body.delivery : null,
     })),
+    health,
   };
 }
 

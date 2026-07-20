@@ -191,11 +191,11 @@ export async function runBookingConciergeAgent(input: { limit?: number } = {}): 
 
     if (booking.blocked) {
       blocked += 1;
-      if (!["Potential Client", "Call Booked", "Proposal Sent", "Won"].includes(reply.lead.stage)) {
+      if (!["Confirmed Opportunity", "Potential Client", "Call Booked", "Proposal Sent", "Won"].includes(reply.lead.stage)) {
         await prisma.lead.update({
           where: { id: reply.leadId },
           data: {
-            stage: "Potential Client",
+            stage: "Confirmed Opportunity",
             nextAction: "Hot reply needs booking handoff, but calendar or meeting-link config is incomplete.",
           },
         });
@@ -206,10 +206,10 @@ export async function runBookingConciergeAgent(input: { limit?: number } = {}): 
       await prisma.lead.update({
         where: { id: reply.leadId },
         data: {
-          stage: reply.classification === "booked" ? "Call Booked" : "Potential Client",
+          stage: "Confirmed Opportunity",
           nextAction:
             reply.classification === "booked"
-              ? "Confirm calendar invite, meeting link, and call prep."
+              ? "Prospect asked for time. Push booking handoff; move to Call Booked only after calendar is scheduled."
               : "Send booking options and move to Call Booked after a time is confirmed.",
         },
       });
@@ -560,6 +560,8 @@ export async function runLearningLoopAgent(input: { limit?: number } = {}): Prom
     summary: `Tuned source plays from live outcomes. GojiBerry gap estimate now ${result.learning.summary.gojiBerryCloseness}.`,
     metrics: {
       replyRate: `${result.learning.summary.overallReplyRate}%`,
+      senderHealth: result.learning.summary.senderHealth,
+      bounceRate: `${result.learning.summary.bounceRate}%`,
       socialCoverage: `${result.learning.summary.socialSignalCoverage}%`,
       recommendedPlays: result.recommendedPlayIds.length,
       created: result.created.length,

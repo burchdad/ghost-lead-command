@@ -991,11 +991,16 @@ export async function notifySlackBatchApprovalResult(input: {
   emailReadyBefore: number;
   manualPending: number;
   otherPending: number;
+  blocked?: boolean;
+  blockReason?: string;
+  health?: { mode?: string; bounceRate?: number; targetBounceRate?: number };
 }) {
   const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
-  const summary = input.attempted
-    ? `Approved ${input.approved}/${input.attempted}. Sent ${input.sent}. Dry-run queued ${input.dryRunQueued}. Failed ${input.failed}.`
-    : `No SendGrid-ready email approvals found. Manual pending ${input.manualPending}; other pending ${input.otherPending}.`;
+  const summary = input.blocked
+    ? `Paused by Vega quality gate: ${input.blockReason || "sender health or contact quality needs review."}`
+    : input.attempted
+      ? `Approved ${input.approved}/${input.attempted}. Sent ${input.sent}. Dry-run queued ${input.dryRunQueued}. Failed ${input.failed}.`
+      : `No SendGrid-ready email approvals found. Manual pending ${input.manualPending}; other pending ${input.otherPending}.`;
   const result = await postSlackPayload({
     webhookUrl:
       clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
@@ -1028,6 +1033,7 @@ export async function notifySlackBatchApprovalResult(input: {
             { type: "mrkdwn", text: `*Failed*\n${input.failed}` },
             { type: "mrkdwn", text: `*Manual tasks pending*\n${input.manualPending}` },
             { type: "mrkdwn", text: `*Other pending*\n${input.otherPending}` },
+            { type: "mrkdwn", text: `*Sender health*\n${input.health?.mode || "unknown"}${input.health?.bounceRate != null ? ` · ${input.health.bounceRate}%` : ""}` },
           ],
         },
         {

@@ -271,7 +271,7 @@ export async function pushReadyBookingTasks(input: { limit?: number } = {}) {
       prisma.lead.update({
         where: { id: lead.id },
         data: {
-          stage: ["Call Booked", "Proposal Sent", "Won"].includes(lead.stage) ? lead.stage : "Potential Client",
+          stage: ["Call Booked", "Proposal Sent", "Won"].includes(lead.stage) ? lead.stage : "Confirmed Opportunity",
           lastTouch: "Just now",
           nextAction: hasPendingHandoff
             ? "Booking handoff already pending approval. Review/send the calendar follow-up."
@@ -475,7 +475,7 @@ export async function runDueSequenceSteps(input: { limit?: number } = {}) {
       }),
     ]);
 
-    if (recentReply || suppression || existingQueueItem || ["Call Booked", "Proposal Sent", "Won"].includes(lead.stage)) {
+    if (recentReply || suppression || existingQueueItem || ["Confirmed Opportunity", "Call Booked", "Proposal Sent", "Won"].includes(lead.stage)) {
       skipped += 1;
       await prisma.sequenceStep.update({
         where: { id: step.id },

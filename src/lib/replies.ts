@@ -1,4 +1,5 @@
 import { createAutomationEvent, createBookingTaskForLead, getBookingReadiness } from "@/lib/automation";
+import { ensureConfirmedOpportunity } from "@/lib/conversion-quality";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
 import { notifySlackOutreachApproval, notifySlackReplyAlert } from "@/lib/slack";
@@ -21,9 +22,10 @@ function clean(value: string | null | undefined) {
 
 export function classifyReply(body: string) {
   const text = body.toLowerCase();
-  if (/\bstop\b|unsubscribe|do not contact/.test(text)) return "stop";
-  if (/book|calendar|meeting|schedule|available|tomorrow|this week/.test(text)) return "booked";
-  if (/pricing|price|cost|send|info|details|interested|tell me more|learn more/.test(text)) return "hot";
+  if (/\bstop\b|unsubscribe|do not contact|remove me|take me off/.test(text)) return "stop";
+  if (/wrong person|not the right person|not my area|no longer with|left the company/.test(text)) return "wrong-person";
+  if (/book|calendar|meeting|schedule|available|tomorrow|this week|next week|send times|what times/.test(text)) return "booked";
+  if (/pricing|price|cost|send|info|details|interested|tell me more|learn more|sounds good|worth a look|curious/.test(text)) return "hot";
   if (/too expensive|budget|can't afford|not in budget/.test(text)) return "objection";
   if (/not now|later|next month|follow up|circle back|check back/.test(text)) return "nurture";
   if (/no thanks|not interested|wrong person|don't need|do not need/.test(text)) return "dead";
@@ -33,14 +35,14 @@ export function classifyReply(body: string) {
 export function routeReply(classification: string, companyName: string) {
   if (classification === "booked") {
     return {
-      stage: "Call Booked",
+      stage: "Confirmed Opportunity",
       scoreDelta: 14,
-      nextAction: `Prep the discovery call for ${companyName}, confirm the calendar time, and bring a simple AI follow-up demo.`,
+      nextAction: `Prospect asked about booking. Send calendar handoff, then move to Call Booked only after the appointment is scheduled.`,
     };
   }
   if (classification === "hot") {
     return {
-      stage: "Replied",
+      stage: "Confirmed Opportunity",
       scoreDelta: 10,
       nextAction: `Send pricing, offer two meeting windows, and ask what lead source ${companyName} wants fixed first.`,
     };
@@ -57,6 +59,13 @@ export function routeReply(classification: string, companyName: string) {
       stage: "Contacted",
       scoreDelta: 0,
       nextAction: "Set a nurture reminder and send a short proof point before the requested follow-up window.",
+    };
+  }
+  if (classification === "wrong-person") {
+    return {
+      stage: "Contacted",
+      scoreDelta: -8,
+      nextAction: `Find the correct decision-maker at ${companyName} before any additional outreach.`,
     };
   }
   if (classification === "stop" || classification === "dead") {
@@ -113,11 +122,15 @@ function draftReplyResponse(input: {
     return `${name}, sounds good.\n\nI will circle back then. Before I do, I can send a quick example of the workflow so you have the idea in front of you: missed request comes in, AI writes the follow-up, replies get classified, and hot ones go to booking.\n\nWould that be useful?`;
   }
 
+  if (input.classification === "wrong-person") {
+    return `${name}, thanks for letting me know.\n\nWho would be the right person to ask about improving lead follow-up and booking flow for ${input.companyName}?`;
+  }
+
   return "";
 }
 
 async function pauseOpenSequenceSteps(input: { leadId: string; classification: string }) {
-  if (!["hot", "booked", "objection", "stop", "dead"].includes(input.classification)) {
+  if (!["hot", "booked", "objection", "stop", "dead", "wrong-person"].includes(input.classification)) {
     return { count: 0 };
   }
 
@@ -152,7 +165,7 @@ async function queueReplyResponse(input: {
   replyBody: string;
   nextAction: string;
 }) {
-  if (!["booked", "hot", "objection", "nurture"].includes(input.classification)) {
+  if (!["booked", "hot", "objection", "nurture", "wrong-person"].includes(input.classification)) {
     return { queued: false, reason: "No response draft needed for this classification." };
   }
 
@@ -254,7 +267,7 @@ export async function findLeadForInboundReply(input: { from?: string | null; cha
         contact: { email: { equals: email, mode: "insensitive" } },
       },
       orderBy: { updatedAt: "desc" },
-      include: { contact: true, company: true },
+      include: { contact: true, company: true, opportunities: true },
     });
   }
 
@@ -264,7 +277,7 @@ export async function findLeadForInboundReply(input: { from?: string | null; cha
     where: { workspaceId: workspace.id, contact: { phone: { not: null } } },
     orderBy: { updatedAt: "desc" },
     take: 200,
-    include: { contact: true, company: true },
+    include: { contact: true, company: true, opportunities: true },
   });
 
   return leads.find((lead) => normalizePhone(lead.contact?.phone || "").endsWith(phone.slice(-10))) || null;
@@ -275,7 +288,7 @@ export async function recordInboundReply(input: RecordInboundReplyInput) {
   const workspace = await getDefaultWorkspace();
   const replyBody = clean(input.body);
   const matchedLead = input.leadId
-    ? await prisma.lead.findUnique({ where: { id: input.leadId }, include: { contact: true, company: true } })
+    ? await prisma.lead.findUnique({ where: { id: input.leadId }, include: { contact: true, company: true, opportunities: true } })
     : await findLeadForInboundReply({ from: input.from, channel: input.channel });
   const leadId = matchedLead?.id || null;
   const classification = input.classification || classifyReply(replyBody);
@@ -309,6 +322,11 @@ export async function recordInboundReply(input: RecordInboundReplyInput) {
   }
 
   const route = routeReply(classification, matchedLead.companyName);
+  const opportunity = await ensureConfirmedOpportunity({
+    lead: matchedLead,
+    classification,
+    replyBody,
+  });
   const pausedSequence = await pauseOpenSequenceSteps({ leadId, classification });
   await prisma.interaction.create({
     data: {
@@ -361,7 +379,7 @@ export async function recordInboundReply(input: RecordInboundReplyInput) {
     responseNote: responseDraft.reason,
   });
 
-  return { reply, lead: updatedLead, route, booking, responseDraft, pausedSequence, slack, matched: true };
+  return { reply, lead: updatedLead, route, opportunity, booking, responseDraft, pausedSequence, slack, matched: true };
 }
 
 export async function runReplyConversionSweep(input: { limit?: number; lookbackHours?: number } = {}) {
@@ -375,7 +393,7 @@ export async function runReplyConversionSweep(input: { limit?: number; lookbackH
     where: {
       workspaceId: workspace.id,
       leadId: { not: null },
-      classification: { in: ["booked", "hot", "objection", "nurture"] },
+      classification: { in: ["booked", "hot", "objection", "nurture", "wrong-person"] },
       createdAt: { gte: since },
     },
     orderBy: { createdAt: "desc" },
@@ -387,7 +405,18 @@ export async function runReplyConversionSweep(input: { limit?: number; lookbackH
   for (const reply of replies) {
     if (!reply.leadId || !reply.lead) continue;
 
+    const freshLead = await prisma.lead.findUnique({
+      where: { id: reply.leadId },
+      include: { contact: true, company: true, opportunities: true },
+    });
+    if (!freshLead) continue;
+
     const route = routeReply(reply.classification, reply.lead.companyName);
+    const opportunity = await ensureConfirmedOpportunity({
+      lead: freshLead,
+      classification: reply.classification,
+      replyBody: reply.body,
+    });
     const pausedSequence = await pauseOpenSequenceSteps({
       leadId: reply.leadId,
       classification: reply.classification,
@@ -419,6 +448,7 @@ export async function runReplyConversionSweep(input: { limit?: number; lookbackH
       queueItemId: "item" in responseDraft ? responseDraft.item?.id || null : null,
       bookingStatus: booking?.blocked === false ? "ready" : booking?.blocked ? "blocked" : "n/a",
       pausedSteps: pausedSequence.count,
+      opportunityId: opportunity.opportunity?.id || null,
     });
   }
 

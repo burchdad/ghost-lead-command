@@ -255,9 +255,12 @@ export async function POST(request: Request) {
     after(async () => {
       const result = await approvePendingOutreachBatch({ limit: parseApprovalLimit(text) });
       await notifySlackBatchApprovalResult(result);
+      const blocked = "blocked" in result && result.blocked;
       await postSlackCommandResponse(
         responseUrl,
-        `Vega approval complete: approved ${result.approved}/${result.attempted}; sent ${result.sent}; dry-run ${result.dryRunQueued}; failed ${result.failed}.`,
+        blocked
+          ? `Vega paused approval: ${"blockReason" in result ? result.blockReason : "conversion quality gate blocked it."}`
+          : `Vega approval complete: approved ${result.approved}/${result.attempted}; sent ${result.sent}; dry-run ${result.dryRunQueued}; failed ${result.failed}.`,
       );
     });
     return slackText("Vega is approving the next SendGrid-ready outreach batch now. I'll post the result when it finishes.");

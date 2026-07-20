@@ -124,10 +124,13 @@ export async function POST(request: Request) {
 
   const result = await approvePendingOutreachBatch({ limit: value.limit });
   await notifySlackBatchApprovalResult(result);
+  const blocked = "blocked" in result && result.blocked;
   await createAutomationEvent({
     title: "Vega Slack batch approval",
-    detail: `Stephen approved ${result.approved} outreach items from Slack. Sent ${result.sent}; dry-run ${result.dryRunQueued}; failed ${result.failed}.`,
-    status: result.failed ? "needs_review" : "done",
+    detail: blocked
+      ? `Vega paused Slack batch approval. ${"blockReason" in result ? result.blockReason : "Sender health or quality gate blocked the batch."}`
+      : `Stephen approved ${result.approved} outreach items from Slack. Sent ${result.sent}; dry-run ${result.dryRunQueued}; failed ${result.failed}.`,
+    status: blocked || result.failed ? "needs_review" : "done",
     type: "slack",
     payload: {
       requested: result.requested,
@@ -145,6 +148,9 @@ export async function POST(request: Request) {
   });
 
   return slackEphemeral(
+    blocked
+      ? `Vega paused batch approval: ${"blockReason" in result ? result.blockReason : "conversion quality gate blocked it."}`
+      :
     result.attempted
       ? `Vega approved ${result.approved}/${result.attempted} outreach items. Failed: ${result.failed}. No browser detour needed.`
       : "Vega found no pending email outreach items ready for batch approval.",
