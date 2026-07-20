@@ -149,9 +149,22 @@ type QueueItem = {
   body: string;
   status: string;
   reason?: string | null;
+  scheduledFor?: string | null;
   createdAt: string;
   lead?: (Partial<Lead> & { companyName?: string }) | null;
 };
+
+type CallAssistOutcome =
+  | "no_answer"
+  | "voicemail_left"
+  | "gatekeeper"
+  | "wrong_person"
+  | "callback_requested"
+  | "interested"
+  | "send_information"
+  | "meeting_requested"
+  | "not_interested"
+  | "suppress";
 
 type ReplyItem = {
   id: string;
@@ -239,7 +252,7 @@ type AutomationEvent = {
   id: string;
   title: string;
   detail: string;
-  status: "done" | "blocked" | "planned";
+  status: "done" | "blocked" | "planned" | "needs_review";
   type?: string;
   createdAt: string;
 };
@@ -809,6 +822,26 @@ function cardTime(value?: string) {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function dueLabel(value?: string | null) {
+  if (!value) return "due now";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "due now";
+  return date <= new Date()
+    ? "due now"
+    : `due ${date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
+}
+
+function isPhoneAssistItem(item?: QueueItem | null) {
+  return Boolean(item && item.channel === "manual" && ["phone-after-email", "phone-website"].includes(item.provider));
+}
+
+function isPhoneAssistDue(item: QueueItem) {
+  if (item.status !== "pending") return false;
+  if (!item.scheduledFor) return true;
+  const due = new Date(item.scheduledFor);
+  return Number.isNaN(due.getTime()) || due <= new Date();
+}
+
 function mapApiLead(lead: {
   id: string;
   name: string;
@@ -983,9 +1016,11 @@ export default function Home() {
   const agentTemplates = liveAgents;
   const prompts = livePrompts;
   const queueBoardColumns = useMemo(() => {
-    const pendingQueue = queueItems.filter((item) => item.status === "pending");
+    const phoneAssistQueue = queueItems.filter((item) => isPhoneAssistItem(item));
+    const standardQueue = queueItems.filter((item) => !isPhoneAssistItem(item));
+    const pendingQueue = standardQueue.filter((item) => item.status === "pending");
     const rejectedQueue = queueItems.filter((item) => item.status === "rejected");
-    const finishedQueue = queueItems.filter((item) => item.status !== "pending" && item.status !== "rejected");
+    const finishedQueue = standardQueue.filter((item) => item.status !== "pending" && item.status !== "rejected");
     const isFollowUpQueue = (item: QueueItem) =>
       /follow-up sequence|sequence step|step \d|three-touch/i.test(`${item.reason || ""} ${item.subject || ""}`);
 
@@ -996,7 +1031,12 @@ export default function Home() {
       subtitle: item.subject || boardContactName(item.lead),
       detail: compactText(publicQueueReason(item) || item.body),
       status: item.status,
-      meta: [item.channel, item.provider, cardTime(item.createdAt)].filter(Boolean),
+      meta: [
+        item.channel,
+        item.provider,
+        isPhoneAssistItem(item) ? dueLabel(item.scheduledFor) : "",
+        cardTime(item.createdAt),
+      ].filter(Boolean),
       createdAt: item.createdAt,
       leadId: item.lead?.id,
       lead: item.lead,
@@ -1020,6 +1060,36 @@ export default function Home() {
       .map<QueueBoardCard>((item) => ({
         ...mapQueueItem(item),
         status: isFollowUpQueue(item) ? "follow-up queued" : "queued",
+      }));
+    const phonePending = phoneAssistQueue
+      .filter((item) => item.status === "pending" && !isPhoneAssistDue(item))
+      .map<QueueBoardCard>((item) => ({
+        ...mapQueueItem(item),
+        status: "pending call",
+      }));
+    const phoneDue = phoneAssistQueue
+      .filter((item) => item.status === "pending" && isPhoneAssistDue(item))
+      .map<QueueBoardCard>((item) => ({
+        ...mapQueueItem(item),
+        status: "due",
+      }));
+    const phoneRetry = phoneAssistQueue
+      .filter((item) => ["call_no_answer", "voicemail_left", "gatekeeper", "callback_requested"].includes(item.status))
+      .map<QueueBoardCard>((item) => ({
+        ...mapQueueItem(item),
+        status: item.status.replace(/_/g, " "),
+      }));
+    const phoneInterested = phoneAssistQueue
+      .filter((item) => ["interested", "info_requested", "meeting_requested"].includes(item.status))
+      .map<QueueBoardCard>((item) => ({
+        ...mapQueueItem(item),
+        status: item.status.replace(/_/g, " "),
+      }));
+    const phoneClosed = phoneAssistQueue
+      .filter((item) => ["wrong_person", "not_interested", "suppressed", "call_completed"].includes(item.status))
+      .map<QueueBoardCard>((item) => ({
+        ...mapQueueItem(item),
+        status: item.status.replace(/_/g, " "),
       }));
 
     const sequenceCards = sequenceQueue
@@ -1132,6 +1202,30 @@ export default function Home() {
         cards: initial,
       },
       {
+        id: "call-pending",
+        title: "Call Assist Pending",
+        subtitle: "Post-email calls waiting for due time",
+        cards: phonePending,
+      },
+      {
+        id: "call-due",
+        title: "Call Assist Due",
+        subtitle: "Stephen/VA should work these now",
+        cards: phoneDue,
+      },
+      {
+        id: "call-retry",
+        title: "Call Retry / Callback",
+        subtitle: "No answer, voicemail, gatekeeper, callback",
+        cards: phoneRetry,
+      },
+      {
+        id: "call-interested",
+        title: "Call Interested",
+        subtitle: "Send info or move to booking handoff",
+        cards: phoneInterested,
+      },
+      {
         id: "follow-up-1",
         title: "Follow-Up 1 Draft",
         subtitle: "Step 2 prepared for due-time approval",
@@ -1172,6 +1266,12 @@ export default function Home() {
         title: "Rejected",
         subtitle: "Manually removed from outreach",
         cards: rejected,
+      },
+      {
+        id: "call-closed",
+        title: "Call Closed",
+        subtitle: "Wrong person, not interested, suppressed",
+        cards: phoneClosed,
       },
       {
         id: "done",
@@ -2543,6 +2643,62 @@ export default function Home() {
     }
     setQueueActionId(null);
     await refreshOpsData();
+  }
+
+  async function recordCallAssistOutcome(item: QueueItem, outcome: CallAssistOutcome) {
+    const label = outcome.replace(/_/g, " ");
+    const shouldAskForNote = !["no_answer", "suppress"].includes(outcome);
+    const note = shouldAskForNote
+      ? window.prompt("Add a short call note for Vega/Stephen/VA:", "")
+      : "";
+    if (shouldAskForNote && note === null) return;
+    if (outcome === "suppress" && !window.confirm("Suppress this contact/company from future outreach?")) return;
+
+    setQueueActionId(item.id);
+    setActionToast({
+      phase: "loading",
+      title: "Recording call outcome",
+      detail: `Vega is moving this task to ${label}.`,
+    });
+
+    const response = await fetch(`/api/outreach/queue/${encodeURIComponent(item.id)}/call-outcome`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ outcome, note }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (response.ok) {
+      if (payload.item) {
+        setQueueItems((current) => current.map((queueItem) => (queueItem.id === payload.item.id ? payload.item : queueItem)));
+      }
+      if (payload.followUpQueueItem) {
+        setQueueItems((current) => [payload.followUpQueueItem, ...current]);
+      }
+      setOperationStatus(payload.message || `Recorded call outcome: ${label}.`);
+      setActionToast({
+        phase: "success",
+        title: "Call outcome saved",
+        detail: payload.message || "Vega updated the follow-up path.",
+      });
+      addAutomationEvent({
+        title: "Phone outcome recorded",
+        detail: `${item.lead?.company || item.lead?.companyName || "Call assist"} moved to ${label}.`,
+        status: "done",
+      });
+      window.setTimeout(() => setActionToast(null), 2600);
+    } else {
+      setOperationStatus("Call outcome failed.");
+      setActionToast({
+        phase: "error",
+        title: "Call outcome blocked",
+        detail: payload.error || "Vega could not record that phone outcome.",
+      });
+    }
+
+    setQueueActionId(null);
+    await refreshOpsData();
+    await refreshLeads();
   }
 
   async function markAppointmentSet(card: QueueBoardCard) {
@@ -4999,7 +5155,91 @@ export default function Home() {
                                     </span>
                                   ))}
                                 </div>
-                                {card.kind === "queue" && card.queueItem?.status === "pending" && (
+                                {card.kind === "queue" && isPhoneAssistItem(card.queueItem) && (
+                                  <div className="mt-3 grid grid-cols-2 gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => recordCallAssistOutcome(card.queueItem!, "no_answer")}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-white/[0.08] px-2 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      No Answer
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => recordCallAssistOutcome(card.queueItem!, "voicemail_left")}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-white/[0.08] px-2 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Voicemail
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => recordCallAssistOutcome(card.queueItem!, "callback_requested")}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-white/[0.08] px-2 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Callback
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => recordCallAssistOutcome(card.queueItem!, "gatekeeper")}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-white/[0.08] px-2 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Gatekeeper
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => recordCallAssistOutcome(card.queueItem!, "send_information")}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-[#83d0c2] px-2 py-2 text-xs font-semibold text-[#101417] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Send Info
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => recordCallAssistOutcome(card.queueItem!, "interested")}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-[#d8ff5f] px-2 py-2 text-xs font-semibold text-[#101417] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Interested
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => recordCallAssistOutcome(card.queueItem!, "meeting_requested")}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-[#d8ff5f] px-2 py-2 text-xs font-semibold text-[#101417] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Meeting Req.
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => recordCallAssistOutcome(card.queueItem!, "wrong_person")}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-white/[0.08] px-2 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Wrong Person
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => recordCallAssistOutcome(card.queueItem!, "not_interested")}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-white/[0.08] px-2 py-2 text-xs font-semibold text-[#d6dfdc] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Not Interested
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => recordCallAssistOutcome(card.queueItem!, "suppress")}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-[#ff5f8f] px-2 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Suppress
+                                    </button>
+                                  </div>
+                                )}
+                                {card.kind === "queue" && card.queueItem?.status === "pending" && !isPhoneAssistItem(card.queueItem) && (
                                   <div className="mt-3 flex flex-wrap gap-2">
                                     {card.queueItem.channel === "email" && (
                                       <button
