@@ -53,6 +53,18 @@ export function isRiskyEmailDomain(email?: string | null) {
   return /^(gmail|yahoo|hotmail|outlook|aol|icloud|proton|mail)\.com$/.test(domain);
 }
 
+export function isGenericRoleEmail(email?: string | null) {
+  const local = clean(email).toLowerCase().split("@")[0] || "";
+  return /^(info|contact|hello|sales|support|admin|office|service|customerservice|team|webmaster|marketing|billing|careers|jobs|hr)$/.test(local);
+}
+
+export function emailQualityTier(email?: string | null) {
+  if (!isValidBusinessEmail(email)) return "invalid" as const;
+  if (isRiskyEmailDomain(email)) return "personal" as const;
+  if (isGenericRoleEmail(email)) return "generic" as const;
+  return "named-business" as const;
+}
+
 export async function getSenderHealth(input: { workspaceId?: string; days?: number } = {}) {
   const prisma = getPrisma();
   const workspace = input.workspaceId ? { id: input.workspaceId } : await getDefaultWorkspace();
@@ -109,10 +121,18 @@ export async function evaluateQueueItemForConversionSend(item: QueueItemForQuali
 
   if (item.channel !== "email") return { ok: true, health, reasons, warnings };
   if (!isValidBusinessEmail(email)) reasons.push("Missing or invalid business email.");
+  const tier = emailQualityTier(email);
+  const leadScore = Number(item.lead?.score || 0);
   if (!isDecisionMakerTitle(item.lead?.title || item.lead?.contact?.title || item.lead?.contact?.role)) {
     warnings.push("Buyer title is not clearly decision-maker level.");
   }
-  if (isRiskyEmailDomain(email)) warnings.push("Personal/free email domain; verify before scaling.");
+  if (tier === "personal") warnings.push("Personal/free email domain; verify before scaling.");
+  if (tier === "generic") {
+    warnings.push("Generic role inbox; named buyer email is preferred for auto-send.");
+    if (health.mode !== "clear" || leadScore < numberFromEnv("VEGA_GENERIC_EMAIL_MIN_SCORE", 90)) {
+      reasons.push("Generic role inbox needs manual review or named-buyer enrichment before auto email.");
+    }
+  }
   if (health.mode === "stop" && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false)) {
     reasons.push(`Sender health stop: ${health.bounceRate}% risky events vs ${health.hardStopBounceRate}% hard stop.`);
   }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBookingReadiness } from "@/lib/automation";
+import { getSenderHealth } from "@/lib/conversion-quality";
 import { getGhostCrmHealth } from "@/lib/ghostcrm";
 import { getLinkedInProductStatus } from "@/lib/linkedin-products";
 import { getMissionControlBridgeStatus } from "@/lib/mission-control-bridge";
@@ -59,7 +60,7 @@ export async function GET() {
   try {
     const prisma = getPrisma();
     const workspace = await getDefaultWorkspace();
-    const [events, leads, queue, replies, suppressions, bookingTasks, campaigns, sequenceSteps, ghostcrm] = await Promise.all([
+    const [events, leads, queue, replies, suppressions, bookingTasks, campaigns, sequenceSteps, ghostcrm, senderHealth] = await Promise.all([
       prisma.automationEvent.findMany({
         where: { workspaceId: workspace.id },
         orderBy: { createdAt: "desc" },
@@ -73,6 +74,7 @@ export async function GET() {
       prisma.sourcingCampaign.findMany({ where: { workspaceId: workspace.id }, orderBy: { updatedAt: "desc" }, take: 50 }),
       prisma.sequenceStep.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 500 }),
       getGhostCrmHealth(),
+      getSenderHealth({ workspaceId: workspace.id }),
     ]);
 
     const sourceStatus = getSourcingStatus();
@@ -114,6 +116,7 @@ export async function GET() {
     const recentLearningEvent = events.find((event) => /learning loop|self-tuning|tuned source/i.test(`${event.title} ${event.detail}`));
     const recentSocialIntentEvent = events.find((event) => /social intent|competitor|social\/competitor/i.test(`${event.title} ${event.detail}`));
     const recentLinkedInTaskEvent = events.find((event) => /linkedin task|sales navigator task|sales nav/i.test(`${event.title} ${event.detail}`));
+    const recentConversionAuditEvent = events.find((event) => /conversion audit/i.test(`${event.title} ${event.detail}`));
 
     const sourceConfigured = sourceStatus.pdlConfigured || sourceStatus.googleMapsConfigured || sourceStatus.ghostLeadAgentConfigured;
     const linkedinConfigured = Boolean(
@@ -280,6 +283,33 @@ export async function GET() {
           "warm signals": warmSignalLeads,
         },
         blockers: leads.length || queue.length ? [] : ["Run at least one sourcing/send cycle so Vega has outcomes to learn from."],
+      }),
+      agentCard({
+        id: "conversion-audit",
+        name: "Conversion Audit Agent",
+        role: "Verify the full path from sourced lead to valid contact, delivered email, reply, confirmed opportunity, and booked calendar event.",
+        status: senderHealth.mode === "stop" ? "needs-work" : leads.length || queue.length ? "ready" : "needs-work",
+        health:
+          senderHealth.mode === "clear"
+            ? "Sender health clear"
+            : senderHealth.mode === "caution"
+              ? "Sender health caution"
+              : "Sender health stop",
+        detail:
+          "Use this before scaling sends. It tells Vega where conversion is leaking: contact quality, generic inboxes, risky sends, missing replies, booking handoffs, or source fit.",
+        lastEvent: recentConversionAuditEvent,
+        actionLabel: "Run conversion audit",
+        actionView: "analytics",
+        metrics: {
+          "sender health": senderHealth.mode,
+          "bounce/risky": `${senderHealth.bounceRate}%`,
+          "target": `${senderHealth.targetBounceRate}%`,
+          "hard stop": `${senderHealth.hardStopBounceRate}%`,
+        },
+        blockers:
+          senderHealth.mode === "stop"
+            ? [`Risky SendGrid events are at ${senderHealth.bounceRate}%; protect deliverability before batch sending.`]
+            : [],
       }),
       agentCard({
         id: "social-intent",

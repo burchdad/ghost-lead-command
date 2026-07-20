@@ -9,6 +9,7 @@ import {
 } from "@/lib/autopilot";
 import { approvePendingOutreachBatch } from "@/lib/approval";
 import { createAutomationEvent } from "@/lib/automation";
+import { isConversionAuditRequest, runVegaConversionAudit } from "@/lib/conversion-audit";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { runMorningStandup } from "@/lib/morning-standup";
@@ -218,6 +219,24 @@ export async function POST(request: Request) {
     return slackText("Vega is diagnosing the booking bottleneck now.");
   }
 
+  if (isConversionAuditRequest(text)) {
+    after(async () => {
+      const result = await runVegaConversionAudit();
+      await postSlackCommandResponse(
+        responseUrl,
+        [
+          result.summary,
+          `Sender health: ${result.metrics.senderHealth} (${result.metrics.bounceRate}% risky), reply rate: ${result.metrics.replyRate}%, click rate: ${result.metrics.clickRate}%.`,
+          `Email queue: ${result.metrics.namedBusinessPending} named, ${result.metrics.genericPending} generic, ${result.metrics.invalidPending} invalid, ${result.metrics.manual} manual.`,
+          result.gaps.length ? `Top gaps: ${result.gaps.slice(0, 4).map((gap) => `${gap.severity}: ${gap.issue} Action: ${gap.action}`).join(" | ")}` : "Top gaps: none.",
+          result.sources.length ? `Sources: ${result.sources.slice(0, 4).map((source) => `${source.source}: ${source.sent} sent, ${source.replies} replies, ${source.riskyRate}% risky`).join(" | ")}` : "",
+          result.nextMoves.length ? `Next moves: ${result.nextMoves.slice(0, 5).join("; ")}` : "Next moves: controlled send/watch loop.",
+        ].filter(Boolean).join("\n"),
+      );
+    });
+    return slackText("Vega is auditing conversion quality, reply capture, sender health, and booking leakage now.");
+  }
+
   const specialistKind = classifyVegaSpecialistRequest(text);
   if (specialistKind) {
     after(async () => {
@@ -302,6 +321,8 @@ export async function POST(request: Request) {
         "`Vega, watch replies` - monitor SendGrid, replies, bookings, and source scorecard after sends.",
         "`Vega, show warmest leads` - rank the top accounts Vega should work next.",
         "`Vega, why are we not booking calls today?` - diagnose booking blockers and next moves.",
+        "`Vega, conversion audit` - find exactly where leads are leaking between source, valid contact, send, reply, opportunity, and booking.",
+        "`Vega, why no replies` - audit reply-rate, sender health, source quality, and copy/contact gaps.",
         "`Vega, refresh intent feed` - rank warm buyer signals and public web context before choosing the next accounts.",
         "`Vega, run learning loop` - tune source plays from live reply/send outcomes.",
         "`Vega, scout social intent` - run competitor/social-style signal plays and queue qualified leads.",
