@@ -89,7 +89,7 @@ function leadRunText(input: Awaited<ReturnType<typeof runVegaLeadRequest>>) {
 
 function isApprovalRequest(text: string) {
   const normalized = text.trim().toLowerCase();
-  return /\b(?:approve|send|release)\b/.test(normalized) && /\b(?:outreach|emails?|batch|\d+)\b/.test(normalized);
+  return /\b(?:approve|send|release|automate|autopilot|auto[-\s]?send)\b/.test(normalized) && /\b(?:outreach|emails?|batch|\d+)\b/.test(normalized);
 }
 
 function isMorningStandupRequest(text: string) {
@@ -300,6 +300,7 @@ export async function POST(request: Request) {
         "`Vega, run ops loop` - run Vega's safe autonomy lanes and post what each sub-agent did.",
         "`Vega, closing sprint approve 10` - run the sprint and approve a SendGrid-ready batch if available.",
         "`Vega, approve 10` - approve the next 10 SendGrid-ready outreach items without relying on Slack buttons.",
+        "`Vega, automate outreach 10` - safely auto-approve the next capped SendGrid-ready batch.",
         "`digest` - post the current ops digest.",
         "`nova` - have the Lead Gen Director brief the Nova CEO AI Agent in Slack.",
         "`director status` - post the Director-to-Nova lead-gen briefing.",

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { rejectOutreachQueueItem } from "@/lib/approval";
+import { slackActionClosePage } from "@/lib/slack-action-page";
 import { isSlackActionAuthorized } from "@/lib/slack";
 
 export async function GET(
@@ -10,14 +12,9 @@ export async function GET(
   }
 
   const { id } = await params;
-  const url = new URL(request.url);
-  const response = await fetch(new URL(`/api/outreach/queue/${id}/reject`, url.origin), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reason: "Discarded from Slack approval." }),
-  });
-
-  const destination = new URL("/?view=queue", url.origin);
-  destination.searchParams.set("slackAction", response.ok ? "discarded" : "discard_failed");
-  return NextResponse.redirect(destination);
+  const result = await rejectOutreachQueueItem(id, "Discarded from Slack approval.");
+  return slackActionClosePage(
+    result.ok ? "Vega rejected outreach" : "Vega reject failed",
+    result.ok ? "The queue item was rejected. You can close this tab." : result.body.error || "Reject failed.",
+  );
 }

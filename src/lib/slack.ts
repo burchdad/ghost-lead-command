@@ -31,11 +31,12 @@ function actionToken() {
   return clean(process.env.SLACK_ACTION_TOKEN) || clean(process.env.LEAD_COMMAND_ACCESS_KEY);
 }
 
-function actionUrl(itemId: string, action: "approve" | "redo" | "discard" | "suppress") {
-  const url = new URL(`/api/slack/actions/outreach/${itemId}/${action}`, appBaseUrl());
-  const token = actionToken();
-  if (token) url.searchParams.set("token", token);
-  return url.toString();
+function outreachActionValue(itemId: string, action: "approve" | "redo" | "discard" | "suppress") {
+  return JSON.stringify({
+    action: `outreach_${action}`,
+    itemId,
+    token: actionToken(),
+  });
 }
 
 function batchApproveValue(limit: number) {
@@ -302,24 +303,28 @@ export async function notifySlackOutreachApproval(
               type: "button",
               text: { type: "plain_text", text: "Approve", emoji: false },
               style: "primary",
-              url: actionUrl(item.id, "approve"),
+              action_id: "outreach_approve",
+              value: outreachActionValue(item.id, "approve"),
             },
             {
               type: "button",
               text: { type: "plain_text", text: "Redo", emoji: false },
-              url: actionUrl(item.id, "redo"),
+              action_id: "outreach_redo",
+              value: outreachActionValue(item.id, "redo"),
             },
             {
               type: "button",
               text: { type: "plain_text", text: "Discard", emoji: false },
               style: "danger",
-              url: actionUrl(item.id, "discard"),
+              action_id: "outreach_discard",
+              value: outreachActionValue(item.id, "discard"),
             },
             {
               type: "button",
               text: { type: "plain_text", text: "Suppress", emoji: false },
               style: "danger",
-              url: actionUrl(item.id, "suppress"),
+              action_id: "outreach_suppress",
+              value: outreachActionValue(item.id, "suppress"),
             },
             {
               type: "button",

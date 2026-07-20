@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { generateSalesText } from "@/lib/ai";
-import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
-import { improveOfferCopy } from "@/lib/offer-copy-brain";
-import { getPrisma } from "@/lib/prisma";
+import { redoOutreachQueueItem } from "@/lib/approval";
+import { slackActionClosePage } from "@/lib/slack-action-page";
 import { isSlackActionAuthorized, notifySlackOutreachApproval } from "@/lib/slack";
 
 export async function GET(
@@ -14,77 +12,15 @@ export async function GET(
   }
 
   const { id } = await params;
-  const prisma = getPrisma();
-  const item = await prisma.outreachQueueItem.findUnique({
-    where: { id },
-    include: { lead: true },
-  });
-
-  if (!item) {
-    return NextResponse.json({ error: "Queue item not found" }, { status: 404 });
+  const result = await redoOutreachQueueItem(id);
+  if (result.ok) {
+    await notifySlackOutreachApproval(result.body.item);
   }
 
-  if (item.status !== "pending") {
-    return NextResponse.json({ error: `Queue item is already ${item.status}`, item }, { status: 409 });
-  }
-
-  const generated = await generateSalesText({
-    kind: "outreach",
-    lead: item.lead
-      ? {
-          name: item.lead.name,
-          companyName: item.lead.companyName,
-          niche: item.lead.niche,
-          stage: item.lead.stage,
-          score: item.lead.score,
-          value: item.lead.value,
-          source: item.lead.source,
-          nextAction: item.lead.nextAction,
-        }
-      : undefined,
-    input: [
-      "Rewrite this queued outreach because the operator requested Redo from Slack.",
-      "Make it shorter, sharper, consultative, and compliant.",
-      "Use a problem-led opener, avoid hype, and end with one low-friction question.",
-      `Previous draft:\n${item.body}`,
-    ].join("\n"),
-  });
-
-  const text = generated.text.trim();
-  const subjectMatch = text.match(/^Subject:\s*(.+)$/im);
-  const copy = improveOfferCopy({
-    subject: subjectMatch?.[1]?.trim() || item.subject,
-    body: sanitizeCustomerMessage(text.replace(/^Subject:\s*.+$/im, "").trim() || item.body, {
-      channel: item.channel,
-    }),
-    lead: item.lead
-      ? {
-          name: item.lead.name,
-          companyName: item.lead.companyName,
-          niche: item.lead.niche,
-          source: item.lead.source,
-          nextAction: item.lead.nextAction,
-          score: item.lead.score,
-          value: item.lead.value,
-        }
-      : undefined,
-    mode: "rewrite",
-  });
-
-  const updated = await prisma.outreachQueueItem.update({
-    where: { id },
-    data: {
-      subject: sanitizeSubject(copy.subject),
-      body: copy.body,
-      reason: `Rewritten from Slack. ${copy.reason}`,
-    },
-    include: { lead: true },
-  });
-
-  await notifySlackOutreachApproval(updated);
-
-  const url = new URL(request.url);
-  const destination = new URL("/?view=queue", url.origin);
-  destination.searchParams.set("slackAction", "rewritten");
-  return NextResponse.redirect(destination);
+  return slackActionClosePage(
+    result.ok ? "Vega rewrote outreach" : "Vega rewrite failed",
+    result.ok
+      ? "A fresh approval card was posted in Slack. You can close this tab."
+      : result.body.error || "Rewrite failed.",
+  );
 }

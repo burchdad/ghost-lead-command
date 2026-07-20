@@ -69,7 +69,7 @@ function isMorningStandupRequest(text: string) {
 
 function isApprovalRequest(text: string) {
   const normalized = normalizedInstruction(text);
-  return /\b(?:approve|send|release)\b/.test(normalized) && /\b(?:outreach|emails?|batch|\d+)\b/.test(normalized);
+  return /\b(?:approve|send|release|automate|autopilot|auto[-\s]?send)\b/.test(normalized) && /\b(?:outreach|emails?|batch|\d+)\b/.test(normalized);
 }
 
 function parseApprovalLimit(text: string) {

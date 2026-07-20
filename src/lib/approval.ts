@@ -1,9 +1,15 @@
 import { createFollowUpSequenceForLead } from "@/lib/automation";
+import { generateSalesText } from "@/lib/ai";
 import { sendEmail, sendSms } from "@/lib/outreach";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
+import { improveOfferCopy } from "@/lib/offer-copy-brain";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 import { findSuppressionMatch } from "@/lib/suppression";
+
+function emailDomain(email: string | null | undefined) {
+  return email?.split("@")[1]?.trim().toLowerCase() || "";
+}
 
 export async function approveOutreachQueueItem(
   id: string,
@@ -172,4 +178,161 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
       delivery: result.ok ? result.body.delivery : null,
     })),
   };
+}
+
+export async function rejectOutreachQueueItem(id: string, reason = "Rejected from approval queue") {
+  const prisma = getPrisma();
+  const existing = await prisma.outreachQueueItem.findUnique({ where: { id } });
+
+  if (!existing) {
+    return { ok: false as const, status: 404, body: { error: "Queue item not found" } };
+  }
+
+  if (existing.status !== "pending") {
+    return {
+      ok: false as const,
+      status: 409,
+      body: { error: `Queue item is already ${existing.status}`, item: existing },
+    };
+  }
+
+  const item = await prisma.outreachQueueItem.update({
+    where: { id },
+    data: {
+      status: "rejected",
+      rejectedAt: new Date(),
+      reason,
+    },
+    include: { lead: true },
+  });
+
+  return { ok: true as const, status: 200, body: { item } };
+}
+
+export async function suppressOutreachQueueItem(id: string) {
+  const prisma = getPrisma();
+  const item = await prisma.outreachQueueItem.findUnique({
+    where: { id },
+    include: { lead: { include: { contact: true, company: true } } },
+  });
+
+  if (!item?.lead) {
+    return { ok: false as const, status: 404, body: { error: "Queue item or lead not found" } };
+  }
+
+  const domain = item.lead.company?.website || emailDomain(item.lead.contact?.email);
+  const records = [
+    item.lead.contact?.email
+      ? { type: "email", value: item.lead.contact.email.toLowerCase(), reason: "Suppressed from Slack approval." }
+      : null,
+    domain ? { type: "domain", value: domain.toLowerCase(), reason: "Suppressed from Slack approval." } : null,
+    { type: "company", value: item.lead.companyName.toLowerCase(), reason: "Suppressed from Slack approval." },
+  ].filter(Boolean) as { type: string; value: string; reason: string }[];
+
+  for (const record of records) {
+    await prisma.suppressionRecord.upsert({
+      where: {
+        workspaceId_type_value: {
+          workspaceId: item.workspaceId,
+          type: record.type,
+          value: record.value,
+        },
+      },
+      update: { reason: record.reason, source: "slack" },
+      create: {
+        workspaceId: item.workspaceId,
+        type: record.type,
+        value: record.value,
+        reason: record.reason,
+        source: "slack",
+      },
+    });
+  }
+
+  const rejected = await prisma.outreachQueueItem.update({
+    where: { id },
+    data: {
+      status: "rejected",
+      rejectedAt: new Date(),
+      reason: "Suppressed from Slack approval.",
+    },
+    include: { lead: true },
+  });
+
+  return { ok: true as const, status: 200, body: { item: rejected, suppressed: records.length } };
+}
+
+export async function redoOutreachQueueItem(id: string) {
+  const prisma = getPrisma();
+  const item = await prisma.outreachQueueItem.findUnique({
+    where: { id },
+    include: { lead: true },
+  });
+
+  if (!item) {
+    return { ok: false as const, status: 404, body: { error: "Queue item not found" } };
+  }
+
+  if (item.status !== "pending") {
+    return {
+      ok: false as const,
+      status: 409,
+      body: { error: `Queue item is already ${item.status}`, item },
+    };
+  }
+
+  const generated = await generateSalesText({
+    kind: "outreach",
+    lead: item.lead
+      ? {
+          name: item.lead.name,
+          companyName: item.lead.companyName,
+          niche: item.lead.niche,
+          stage: item.lead.stage,
+          score: item.lead.score,
+          value: item.lead.value,
+          source: item.lead.source,
+          nextAction: item.lead.nextAction,
+        }
+      : undefined,
+    input: [
+      "Rewrite this queued outreach because the operator requested Redo from Slack.",
+      "Make it shorter, sharper, consultative, and compliant.",
+      "Use a problem-led opener, avoid hype, and end with one low-friction question.",
+      `Previous draft:\n${item.body}`,
+    ].join("\n"),
+  });
+
+  const text = generated.text.trim();
+  const subjectMatch = text.match(/^Subject:\s*(.+)$/im);
+  const copy = improveOfferCopy({
+    subject: subjectMatch?.[1]?.trim() || item.subject,
+    body: sanitizeCustomerMessage(text.replace(/^Subject:\s*.+$/im, "").trim() || item.body, {
+      channel: item.channel,
+    }),
+    lead: item.lead
+      ? {
+          name: item.lead.name,
+          companyName: item.lead.companyName,
+          niche: item.lead.niche,
+          source: item.lead.source,
+          nextAction: item.lead.nextAction,
+          score: item.lead.score,
+          value: item.lead.value,
+        }
+      : undefined,
+    mode: "rewrite",
+  });
+
+  const updated = await prisma.outreachQueueItem.update({
+    where: { id },
+    data: {
+      subject: sanitizeSubject(copy.subject),
+      body: copy.body,
+      reason: `Rewritten from Slack. ${copy.reason}`,
+    },
+    include: { lead: true },
+  });
+
+  return { ok: true as const, status: 200, body: { item: updated, reason: copy.reason } };
 }

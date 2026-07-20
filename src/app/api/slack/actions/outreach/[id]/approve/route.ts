@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { approveOutreachQueueItem } from "@/lib/approval";
+import { slackActionClosePage } from "@/lib/slack-action-page";
 import { isSlackActionAuthorized } from "@/lib/slack";
 
 export async function GET(
@@ -11,14 +12,13 @@ export async function GET(
   }
 
   const { id } = await params;
-  const url = new URL(request.url);
   const result = await approveOutreachQueueItem(id);
 
-  const destination = new URL("/?view=queue", url.origin);
   const delivery = result.ok ? result.body.delivery : null;
-  destination.searchParams.set(
-    "slackAction",
-    result.ok ? `approved_${delivery?.dryRun ? "queued" : delivery?.status || "sent"}` : "approval_failed",
+  return slackActionClosePage(
+    result.ok ? "Vega approved outreach" : "Vega approval failed",
+    result.ok
+      ? `Delivery: ${delivery?.dryRun ? "dry-run queued" : delivery?.status || "sent"}. You can close this tab.`
+      : result.body.error || "Approval failed.",
   );
-  return NextResponse.redirect(destination);
 }
