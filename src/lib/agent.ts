@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { approveOutreachQueueItem } from "@/lib/approval";
 import { generateSalesText } from "@/lib/ai";
 import { createAutomationEvent } from "@/lib/automation";
+import type { CallAssistTask } from "@/lib/human-followup";
 import { buildSignalScoreboard, signalScoreboardSummary } from "@/lib/intent-scoreboard";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
 import { improveOfferCopy } from "@/lib/offer-copy-brain";
@@ -615,7 +616,14 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     searchRuns: sourceResult.runs,
   };
   const approvalResults = queued.map((entry) => entry.approval).filter(Boolean) as Array<
-    | { ok: true; body: { delivery: { status: string; dryRun?: boolean; message?: string }; item?: { lead?: { companyName?: string } | null } } }
+    | {
+        ok: true;
+        body: {
+          delivery: { status: string; dryRun?: boolean; message?: string };
+          humanFollowUp?: { queued: boolean; task?: CallAssistTask };
+          item?: { lead?: { companyName?: string } | null };
+        };
+      }
     | { ok: false; body: { error?: string; detail?: string; item?: { lead?: { companyName?: string } | null } } }
   >;
   const sentCompanies = queued
@@ -642,6 +650,12 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       return Boolean(approval?.ok && approval.body?.delivery?.status === "failed");
     })
     .map((entry) => entry.lead.companyName);
+  const callAssistTasks = approvalResults.flatMap((approval) => {
+    if (!approval.ok) return [];
+    return approval.body.humanFollowUp?.queued && approval.body.humanFollowUp.task
+      ? [approval.body.humanFollowUp.task]
+      : [];
+  });
 
   await createAutomationEvent({
     title: "AI operator finished",
@@ -665,6 +679,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         dryRunQueued: dryRunCompanies.length,
         blocked: blockedCompanies.length,
         failed: failedCompanies.length,
+        callAssistQueued: callAssistTasks.length,
       },
     },
   });
@@ -691,11 +706,12 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       blockedCompanies,
       failedCompanies,
       manualCompanies: manualQueued.map((entry) => entry.lead.companyName),
+      callAssistTasks,
     },
     message:
       queued.length + manualQueued.length > 0
         ? autoSend
-          ? `AI operator cleaned copy and attempted ${approvalResults.length} live sends: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued.`
+          ? `AI operator cleaned copy and attempted ${approvalResults.length} live sends: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued, ${callAssistTasks.length} phone assists queued.`
           : manualQueued.length
             ? `AI operator queued ${queued.length} email approvals and ${manualQueued.length} manual contact tasks.`
             : `AI operator queued ${queued.length} approval-ready emails.`

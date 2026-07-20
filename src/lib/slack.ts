@@ -1,6 +1,7 @@
 import type { Lead, OutreachQueueItem } from "@prisma/client";
 import { createHmac, timingSafeEqual } from "crypto";
 import type { AgentPlan } from "@/lib/autopilot";
+import type { CallAssistTask } from "@/lib/human-followup";
 import { buildSignalScoreboard, signalScoreboardSummary } from "@/lib/intent-scoreboard";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getOperatorCaps } from "@/lib/operator-policy";
@@ -998,15 +999,23 @@ export async function notifySlackBatchApprovalResult(input: {
   emailReadyBefore: number;
   manualPending: number;
   otherPending: number;
+  callAssistQueued?: number;
+  callAssistTasks?: CallAssistTask[];
   blocked?: boolean;
   blockReason?: string;
   health?: { mode?: string; bounceRate?: number; targetBounceRate?: number };
 }) {
   const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
+  const callAssistLine = input.callAssistTasks?.length
+    ? `\n*Phone assists:* ${input.callAssistTasks
+        .slice(0, 5)
+        .map((task) => `${task.contactName} at ${task.companyName} - ${task.phone} (${task.dueLabel})`)
+        .join("; ")}${input.callAssistTasks.length > 5 ? ` +${input.callAssistTasks.length - 5} more` : ""}`
+    : "";
   const summary = input.blocked
     ? `Paused by Vega quality gate: ${input.blockReason || "sender health or contact quality needs review."}`
     : input.attempted
-      ? `Approved ${input.approved}/${input.attempted}. Sent ${input.sent}. Dry-run queued ${input.dryRunQueued}. Failed ${input.failed}.`
+      ? `Approved ${input.approved}/${input.attempted}. Sent ${input.sent}. Phone assists ${input.callAssistQueued || 0}. Dry-run queued ${input.dryRunQueued}. Failed ${input.failed}.`
       : `No SendGrid-ready email approvals found. Manual pending ${input.manualPending}; other pending ${input.otherPending}.`;
   const result = await postSlackPayload({
     webhookUrl:
@@ -1026,7 +1035,7 @@ export async function notifySlackBatchApprovalResult(input: {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*Channel:* #${channelName}\n*Status:* ${summary}`,
+            text: `*Channel:* #${channelName}\n*Status:* ${summary}${callAssistLine}`,
           },
         },
         {
@@ -1036,6 +1045,7 @@ export async function notifySlackBatchApprovalResult(input: {
             { type: "mrkdwn", text: `*SendGrid-ready before click*\n${input.emailReadyBefore}` },
             { type: "mrkdwn", text: `*Attempted*\n${input.attempted}` },
             { type: "mrkdwn", text: `*Actually sent*\n${input.sent}` },
+            { type: "mrkdwn", text: `*Phone assists queued*\n${input.callAssistQueued || 0}` },
             { type: "mrkdwn", text: `*Dry-run queued*\n${input.dryRunQueued}` },
             { type: "mrkdwn", text: `*Failed*\n${input.failed}` },
             { type: "mrkdwn", text: `*Manual tasks pending*\n${input.manualPending}` },

@@ -129,7 +129,14 @@ async function handlePlanAction(actionName: string, plan: AgentPlan | undefined,
   const blocked = result.autoSendSummary?.blockedCompanies || [];
   const failed = result.autoSendSummary?.failedCompanies || [];
   const manual = result.autoSendSummary?.manualCompanies || [];
+  const callAssists = result.autoSendSummary?.callAssistTasks || [];
   const contactedLine = sent.length ? `Contacted: ${sent.slice(0, 10).join(", ")}${sent.length > 10 ? ` +${sent.length - 10} more` : ""}` : "Contacted: none yet.";
+  const callAssistLine = callAssists.length
+    ? `Phone assists queued for Stephen/VA: ${callAssists
+        .slice(0, 6)
+        .map((task) => `${task.contactName} at ${task.companyName} - ${task.phone} (${task.dueLabel})`)
+        .join("; ")}${callAssists.length > 6 ? ` +${callAssists.length - 6} more` : ""}`
+    : "";
   const skippedLine = [
     blocked.length ? `Blocked by quality gate: ${blocked.slice(0, 6).join(", ")}` : "",
     failed.length ? `Failed send: ${failed.slice(0, 6).join(", ")}` : "",
@@ -152,7 +159,7 @@ async function handlePlanAction(actionName: string, plan: AgentPlan | undefined,
       qualified: result.qualified,
       queued: result.queued,
       reviewReady: result.reviewReady,
-      message: [contactedLine, skippedLine].filter(Boolean).join("\n"),
+      message: [contactedLine, callAssistLine, skippedLine].filter(Boolean).join("\n"),
       guardrails: result.guardrails,
       diagnostics: result.diagnostics,
     },
@@ -160,14 +167,14 @@ async function handlePlanAction(actionName: string, plan: AgentPlan | undefined,
 
   await createAutomationEvent({
     title: "Vega plan auto-send finished",
-    detail: `Sent ${result.autoSendSummary?.sent || 0}; blocked ${result.autoSendSummary?.blocked || 0}; failed ${result.autoSendSummary?.failed || 0}; manual ${result.autoSendSummary?.manualCompanies.length || 0}.`,
+    detail: `Sent ${result.autoSendSummary?.sent || 0}; blocked ${result.autoSendSummary?.blocked || 0}; failed ${result.autoSendSummary?.failed || 0}; manual ${result.autoSendSummary?.manualCompanies.length || 0}; phone assists ${callAssists.length}.`,
     status: result.autoSendSummary?.sent ? "done" : "needs_review",
     type: "slack",
     payload: { result, userId: payload.user?.id, channelId: payload.channel?.id },
   });
 
   return slackEphemeral(
-    `Vega ran the plan end-to-end. Sent ${result.autoSendSummary?.sent || 0}, blocked ${result.autoSendSummary?.blocked || 0}, failed ${result.autoSendSummary?.failed || 0}.`,
+    `Vega ran the plan end-to-end. Sent ${result.autoSendSummary?.sent || 0}, phone assists ${callAssists.length}, blocked ${result.autoSendSummary?.blocked || 0}, failed ${result.autoSendSummary?.failed || 0}.`,
   );
 }
 

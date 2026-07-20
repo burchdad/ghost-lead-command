@@ -4,6 +4,7 @@ import { sendEmail, sendSms } from "@/lib/outreach";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { improveOfferCopy } from "@/lib/offer-copy-brain";
 import { evaluateQueueItemForConversionSend, getSenderHealth } from "@/lib/conversion-quality";
+import { queueHumanCallAssistAfterEmail } from "@/lib/human-followup";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 import { findSuppressionMatch } from "@/lib/suppression";
@@ -132,7 +133,12 @@ export async function approveOutreachQueueItem(
           seedBody: message,
         });
 
-  return { ok: true as const, status: 200, body: { item: updated, delivery, sequence, quality } };
+  const humanFollowUp =
+    item.channel === "email" && delivery.status === "sent" && !delivery.dryRun
+      ? await queueHumanCallAssistAfterEmail({ leadId: item.lead.id, sourceQueueItemId: item.id })
+      : { queued: false as const, reason: "No human phone assist needed for this queue item." };
+
+  return { ok: true as const, status: 200, body: { item: updated, delivery, sequence, quality, humanFollowUp } };
 }
 
 export async function approvePendingOutreachBatch(input: { limit?: number } = {}) {
@@ -182,6 +188,8 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
       otherPending,
       sent: 0,
       dryRunQueued: 0,
+      callAssistQueued: 0,
+      callAssistTasks: [],
       results: [],
     };
   }
@@ -202,6 +210,12 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
   for (const item of items) {
     results.push(await approveOutreachQueueItem(item.id));
   }
+  const callAssistTasks = results.flatMap((result) => {
+    if (!result.ok) return [];
+    return result.body.humanFollowUp.queued && result.body.humanFollowUp.task
+      ? [result.body.humanFollowUp.task]
+      : [];
+  });
 
   return {
     requested: limit,
@@ -213,12 +227,15 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
     otherPending,
     sent: results.filter((result) => result.ok && result.body.delivery.status === "sent").length,
     dryRunQueued: results.filter((result) => result.ok && result.body.delivery.dryRun).length,
+    callAssistQueued: callAssistTasks.length,
+    callAssistTasks,
     results: results.map((result) => ({
       ok: result.ok,
       status: result.status,
       error: result.ok ? null : result.body.error || "Approval failed",
       detail: result.ok ? null : "detail" in result.body ? result.body.detail || null : null,
       delivery: result.ok ? result.body.delivery : null,
+      humanFollowUp: result.ok ? result.body.humanFollowUp : null,
     })),
     health,
   };
