@@ -44,6 +44,21 @@ function clean(value: unknown) {
   return String(value || "").trim();
 }
 
+function isReachedOutcome(outcome: CallAssistOutcome) {
+  return ["gatekeeper", "wrong_person", "callback_requested", "interested", "send_information", "meeting_requested", "meeting_booked", "not_interested", "suppress"].includes(outcome);
+}
+
+function isConversationOutcome(outcome: CallAssistOutcome) {
+  return ["callback_requested", "interested", "send_information", "meeting_requested", "meeting_booked", "not_interested"].includes(outcome);
+}
+
+function bumpAttempts(body: string) {
+  if (/Attempts:\s*\d+/i.test(body)) {
+    return body.replace(/Attempts:\s*(\d+)/i, (_match, count) => `Attempts: ${Number(count) + 1}`);
+  }
+  return `${body}\nAttempts: 1`;
+}
+
 function appendCallOutcome(body: string, outcome: CallAssistOutcome, note: string) {
   return sanitizeCustomerMessage(
     [
@@ -151,7 +166,7 @@ export async function recordCallAssistOutcome(input: {
         status: statusByOutcome[outcome],
         scheduledFor: nextRetry,
         reason: sanitizeInternalReason(`Phone assist outcome: ${outcomeLabels[outcome]}. ${note}`),
-        body: appendCallOutcome(item.body, outcome, note),
+        body: appendCallOutcome(bumpAttempts(item.body), outcome, note),
       },
       include: { lead: true },
     });
@@ -183,6 +198,14 @@ export async function recordCallAssistOutcome(input: {
         ]
           .filter(Boolean)
           .join("\n"),
+        metadata: {
+          queueItemId: item.id,
+          provider: item.provider,
+          reached: isReachedOutcome(outcome),
+          conversation: isConversationOutcome(outcome),
+          meetingRequested: ["meeting_requested", "meeting_booked"].includes(outcome),
+          interested: ["interested", "send_information", "meeting_requested", "meeting_booked"].includes(outcome),
+        },
       },
     });
 

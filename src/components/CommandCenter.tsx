@@ -204,6 +204,23 @@ type AnalyticsPayload = {
   suppressedOrFailed?: number;
   queueByStatus: Record<string, number>;
   repliesByClass: Record<string, number>;
+  phoneAssist?: {
+    total: number;
+    pending: number;
+    due: number;
+    overdue: number;
+    completed: number;
+    reached: number;
+    conversations: number;
+    interested: number;
+    meetingRequested: number;
+    suppressed: number;
+    notInterested: number;
+    wrongPerson: number;
+    callback: number;
+    attempts: number;
+    booked: number;
+  };
   sourceScorecard?: {
     summary: {
       sources: number;
@@ -5117,6 +5134,27 @@ export default function Home() {
 
             {active === "queue" && (
               <div className="space-y-6">
+                <Panel title="Phone Assist Accountability" icon={PhoneCall}>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                    {[
+                      { label: "Due Now", value: analytics?.phoneAssist?.due ?? 0, detail: `${analytics?.phoneAssist?.overdue ?? 0} overdue` },
+                      { label: "Completed", value: analytics?.phoneAssist?.completed ?? 0, detail: `${analytics?.phoneAssist?.attempts ?? 0} attempts logged` },
+                      { label: "Reached", value: analytics?.phoneAssist?.reached ?? 0, detail: `${analytics?.phoneAssist?.conversations ?? 0} conversations` },
+                      { label: "Interested", value: analytics?.phoneAssist?.interested ?? 0, detail: `${analytics?.phoneAssist?.meetingRequested ?? 0} meeting requests` },
+                      {
+                        label: "Closed Out",
+                        value: (analytics?.phoneAssist?.notInterested ?? 0) + (analytics?.phoneAssist?.suppressed ?? 0),
+                        detail: `${analytics?.phoneAssist?.wrongPerson ?? 0} wrong person`,
+                      },
+                    ].map((metric) => (
+                      <div key={metric.label} className="rounded-md border border-white/10 bg-white/[0.035] p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#83d0c2]">{metric.label}</p>
+                        <p className="mt-2 font-mono text-2xl text-white">{metric.value}</p>
+                        <p className="mt-1 text-xs text-[#9fb0a8]">{metric.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
                 <Panel title="Outreach Pipeline Board" icon={ClipboardList}>
                   <div className="flex gap-3 overflow-x-auto pb-2">
                     {queueBoardColumns.map((column) => (

@@ -31,6 +31,10 @@ function cleanPhone(phone: string | null | undefined) {
   return String(phone || "").trim();
 }
 
+function defaultCallAssignee() {
+  return process.env.VEGA_PHONE_FOLLOWUP_ASSIGNEE?.trim() || "Stephen/VA";
+}
+
 function toTask(item: {
   id: string;
   scheduledFor: Date | null;
@@ -102,9 +106,11 @@ export async function queueHumanCallAssistAfterEmail(input: {
       `Person: ${contactName}`,
       `Role: ${role}`,
       `Phone: ${phone}`,
+      `Assigned to: ${defaultCallAssignee()}`,
       email,
       companyWebsite,
       `When: about ${delay} hours after the email send`,
+      "Attempts: 0",
       "",
       `Why this lead: ${lead.nextAction || "Vega marked this as a fit for the Lead Command offer."}`,
       "",

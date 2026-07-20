@@ -94,6 +94,11 @@ export async function GET() {
     const failed = queue.filter((item) => item.status === "failed").length;
     const manualPending = queue.filter((item) => item.status === "pending" && item.channel === "manual").length;
     const pendingEmail = queue.filter((item) => item.status === "pending" && item.channel === "email").length;
+    const phoneAssistTasks = queue.filter((item) => item.channel === "manual" && ["phone-after-email", "phone-website"].includes(item.provider));
+    const phoneAssistDue = phoneAssistTasks.filter((item) => item.status === "pending" && (!item.scheduledFor || item.scheduledFor <= now)).length;
+    const phoneAssistOverdue = phoneAssistTasks.filter((item) => item.status === "pending" && item.scheduledFor && item.scheduledFor < now).length;
+    const phoneAssistInterested = phoneAssistTasks.filter((item) => ["interested", "info_requested", "meeting_requested"].includes(item.status)).length;
+    const phoneAssistClosed = phoneAssistTasks.filter((item) => ["not_interested", "suppressed", "wrong_person"].includes(item.status)).length;
     const dueSequence = sequenceSteps.filter((step) => ["draft", "active"].includes(step.status)).length;
     const hotReplies = replies.filter((reply) => ["hot", "booked", "objection"].includes(reply.classification)).length;
     const bookedTasks = bookingTasks.filter((task) => task.status !== "blocked").length;
@@ -531,14 +536,18 @@ export async function GET() {
         id: "contact-path",
         name: "Contact Path Agent",
         role: "Work manual phone/website tasks and enrich contacts that are not email-ready yet.",
-        status: manualPending ? "ready" : "needs-work",
-        health: manualPending ? "Manual tasks waiting" : "No manual tasks waiting",
-        detail: "Keeps Google Maps and website-only leads from dying in the queue when no public email is found.",
+        status: manualPending || phoneAssistDue ? "ready" : "needs-work",
+        health: phoneAssistDue ? `${phoneAssistDue} call assists due` : manualPending ? "Manual tasks waiting" : "No manual tasks waiting",
+        detail: "Keeps Google Maps and website-only leads from dying in the queue, then tracks Stephen/VA call outcomes after email sends.",
         lastEvent: recentContactPathEvent,
         actionLabel: "Open queue",
         actionView: "queue",
         metrics: {
           "manual tasks": manualPending,
+          "call assists due": phoneAssistDue,
+          overdue: phoneAssistOverdue,
+          "phone interested": phoneAssistInterested,
+          "phone closed": phoneAssistClosed,
           "pending email": pendingEmail,
           suppressions,
         },

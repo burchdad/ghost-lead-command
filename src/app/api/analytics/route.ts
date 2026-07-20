@@ -3,6 +3,11 @@ import { getPrisma } from "@/lib/prisma";
 import { getSourceScorecard } from "@/lib/source-scorecard";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
+function metadataFlag(metadata: unknown, key: string) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
+  return (metadata as Record<string, unknown>)[key] === true;
+}
+
 export async function GET() {
   try {
     const prisma = getPrisma();
@@ -10,6 +15,10 @@ export async function GET() {
     const leads = await prisma.lead.findMany({ where: { workspaceId: workspace.id } });
     const queue = await prisma.outreachQueueItem.findMany({ where: { workspaceId: workspace.id } });
     const replies = await prisma.reply.findMany({ where: { workspaceId: workspace.id } });
+    const callInteractions = await prisma.interaction.findMany({
+      where: { channel: "phone:human-assist", lead: { is: { workspaceId: workspace.id } } },
+      orderBy: { createdAt: "desc" },
+    });
     const proposals = await prisma.proposal.findMany({ where: { workspaceId: workspace.id } });
     const [opportunities, sourceScorecard] = await Promise.all([
       prisma.opportunity.findMany({ where: { company: { is: { workspaceId: workspace.id } } } }),
@@ -49,6 +58,25 @@ export async function GET() {
     };
     const replyRate = sent ? replies.length / sent : 0;
     const hotRate = sent ? hotReplies / sent : 0;
+    const phoneAssists = queue.filter((item) => item.channel === "manual" && ["phone-after-email", "phone-website"].includes(item.provider));
+    const now = new Date();
+    const phoneAssistMetrics = {
+      total: phoneAssists.length,
+      pending: phoneAssists.filter((item) => item.status === "pending").length,
+      due: phoneAssists.filter((item) => item.status === "pending" && (!item.scheduledFor || item.scheduledFor <= now)).length,
+      overdue: phoneAssists.filter((item) => item.status === "pending" && item.scheduledFor && item.scheduledFor < now).length,
+      completed: phoneAssists.filter((item) => item.status !== "pending").length,
+      reached: callInteractions.filter((interaction) => metadataFlag(interaction.metadata, "reached")).length,
+      conversations: callInteractions.filter((interaction) => metadataFlag(interaction.metadata, "conversation")).length,
+      interested: phoneAssists.filter((item) => ["interested", "info_requested", "meeting_requested"].includes(item.status)).length,
+      meetingRequested: phoneAssists.filter((item) => item.status === "meeting_requested").length,
+      suppressed: phoneAssists.filter((item) => item.status === "suppressed").length,
+      notInterested: phoneAssists.filter((item) => item.status === "not_interested").length,
+      wrongPerson: phoneAssists.filter((item) => item.status === "wrong_person").length,
+      callback: phoneAssists.filter((item) => ["callback_requested", "call_no_answer", "voicemail_left", "gatekeeper"].includes(item.status)).length,
+      attempts: callInteractions.length,
+      booked: leads.filter((lead) => lead.stage === "Call Booked").length,
+    };
 
     return NextResponse.json({
       totals: {
@@ -74,6 +102,7 @@ export async function GET() {
         acc[reply.classification] = (acc[reply.classification] || 0) + 1;
         return acc;
       }, {}),
+      phoneAssist: phoneAssistMetrics,
       sourceScorecard,
     });
   } catch (error) {
