@@ -3,6 +3,7 @@ import { offerCopyPrompt } from "@/lib/offer-copy-brain";
 
 type GenerateArgs = {
   kind: "outreach" | "call-prep" | "proposal" | "classifier";
+  channel?: "email" | "dm" | "sms" | "slack" | "manual";
   lead?: {
     name?: string;
     companyName?: string;
@@ -66,7 +67,7 @@ export async function generateSalesText(args: GenerateArgs) {
   };
 }
 
-function buildPrompt({ kind, lead, input }: GenerateArgs) {
+function buildPrompt({ kind, channel, lead, input }: GenerateArgs) {
   if (kind === "proposal") {
     return [
       "You are writing a project-based proposal draft for an AI automation consulting sale.",
@@ -84,18 +85,42 @@ function buildPrompt({ kind, lead, input }: GenerateArgs) {
     ].join("\n");
   }
 
+  const requestedChannel = normalizeOutboundChannel(channel) || detectOutboundChannel(input);
+  const channelInstruction =
+    requestedChannel === "dm"
+      ? [
+          "Channel: social DM or FB/LinkedIn-style message.",
+          "Write 2-5 short sentences. No subject line. No signature block unless explicitly requested.",
+          "Open like a real founder/operator message, not an email campaign.",
+          "Use one concrete observation, then one curious question. Keep it easy to answer.",
+        ].join("\n")
+      : requestedChannel === "sms"
+        ? [
+            "Channel: SMS.",
+            "Write under 320 characters. No subject line. No signature block. Make one clear ask.",
+          ].join("\n")
+        : [
+            "Channel: cold email.",
+            "Keep it under 110 words. Use a specific subject under 45 characters.",
+            "Return the subject as the first line in this exact format: Subject: ...",
+            `End with this exact signature:\n${customerSignature()}`,
+          ].join("\n");
+
   return [
-    "You are Ghost Lead Command, an AI consultant sales operator.",
+    "You are Vega Copy Chief inside Ghost Lead Command, writing as a sharp founder-led sales operator.",
     "Write concise, practical sales copy that helps book qualified sales conversations for a lead-generation AI product.",
     "Position the offer as an intent-led outbound engine: find warm buyer signals, enrich the account, write context-aware outreach, route replies, and book meetings.",
     "Lead with the observed signal or likely pipeline leak before mentioning AI. The buyer should feel this is about revenue conversations, not software novelty.",
     "Use proven sales principles without copying any author or book: clear offer math, painful problem awareness, curiosity-led questions, consequence framing, objection-aware phrasing, low-friction next steps, and plain human language.",
     "Every outbound message should diagnose before pitching, avoid hype, avoid fake familiarity, avoid guarantees, avoid pressure, and make one specific ask.",
     "Favor short consultative questions over claims. Make the buyer feel understood, not cornered.",
-    "For cold email, keep it under 120 words. Use a specific subject under 45 characters. Make one ask: permission to show the exact signal-to-meeting workflow.",
+    "Use the voice Stephen has been getting better results with manually: direct, calm, specific, and conversational enough for FB DMs while still professional for email.",
+    "Do not sound like a marketing newsletter. Do not use buzzwords unless they are tied to a concrete leak, booked-call problem, or follow-up workflow.",
+    "Do not mention books, frameworks, ChatGPT, OpenAI, prompt engineering, or internal agent names to the prospect.",
+    channelInstruction,
     offerCopyPrompt(lead),
     "Keep compliance in mind: no deceptive claims, no pressure language, and no misleading urgency.",
-    `Customer-facing email signatures must be exactly:\n${customerSignature()}`,
+    `Customer-facing email signatures, when used, must be exactly:\n${customerSignature()}`,
     `Never include placeholders like [Your Name], internal tool names, OpenAI, AI operator, queue metadata, or ${outreachBrandName()} command-center status lines in customer-facing copy.`,
     `If you mention the sender, use ${outreachSenderName()} from ${outreachBrandName()}.`,
     `Task: ${kind}`,
@@ -107,7 +132,23 @@ function buildPrompt({ kind, lead, input }: GenerateArgs) {
 
 function sanitizeGeneratedText(args: GenerateArgs, text: string) {
   if (args.kind !== "outreach") return text;
-  return sanitizeCustomerMessage(text, { channel: "email" });
+  return sanitizeCustomerMessage(text, { channel: normalizeOutboundChannel(args.channel) || detectOutboundChannel(args.input) });
+}
+
+function normalizeOutboundChannel(channel?: GenerateArgs["channel"]): "email" | "dm" | "sms" | null {
+  if (channel === "dm" || channel === "sms" || channel === "email") return channel;
+  return null;
+}
+
+function detectOutboundChannel(input?: string): "email" | "dm" | "sms" {
+  const normalized = String(input || "").toLowerCase();
+  if (/\b(?:fb dm|facebook dm|messenger|instagram dm|linkedin dm|social dm|direct message|dm)\b/.test(normalized)) {
+    return "dm";
+  }
+  if (/\b(?:sms|text message|text back|text)\b/.test(normalized)) {
+    return "sms";
+  }
+  return "email";
 }
 
 function buildFallback({ kind, lead, input }: GenerateArgs) {

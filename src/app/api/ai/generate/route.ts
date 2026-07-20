@@ -13,6 +13,7 @@ export async function POST(request: Request) {
 
   const result = await generateSalesText({
     kind: kind as "outreach" | "call-prep" | "proposal" | "classifier",
+    channel: body.channel,
     lead: body.lead,
     input: body.input,
   });

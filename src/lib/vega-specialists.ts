@@ -684,7 +684,7 @@ export function classifyVegaSpecialistRequest(text: string): VegaSpecialistKind 
   if (/\b(?:contact path|manual path|manual tasks?|find emails?|enrich contacts?|phone website)\b/.test(normalized)) return "contact-path";
   if (/\b(?:push bookings?|booking concierge|booked calls?|calendar handoff|appointment)\b/.test(normalized)) return "booking";
   if (/\b(?:deliverability|bounces?|suppress|reputation|failed sends?|protect sending)\b/.test(normalized)) return "deliverability";
-  if (/\b(?:copy chief|rewrite|copy qa|improve emails?|offer copy|hormozi|nepq)\b/.test(normalized)) return "copy-chief";
+  if (/\b(?:copy chief|rewrite|copy qa|improve emails?|offer copy|hormozi|nepq|chatgpt copy|chatgpt rewrite|email wording|dm wording|fb dm|facebook dm|linkedin dm)\b/.test(normalized)) return "copy-chief";
   if (/\b(?:cadence|sequence|due follow[-\s]?ups?|follow[-\s]?up queue|next touches)\b/.test(normalized)) return "cadence";
   if (/\b(?:intent feed|signal feed|warm signals?|perplexity|web intel|sonar|research feed)\b/.test(normalized)) return "intent-feed";
   if (/\b(?:learning loop|self[-\s]?tune|adaptive learning|optimi[sz]e sources?|source learning|campaign learning|what'?s working|gojiberry gap)\b/.test(normalized)) return "learning-loop";
