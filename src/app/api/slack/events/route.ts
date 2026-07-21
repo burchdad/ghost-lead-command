@@ -20,6 +20,7 @@ import {
   type SlackEventPayload,
 } from "@/lib/slack";
 import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSprint } from "@/lib/vega-closing-sprint";
+import { isCallAssistWorkRequest, runVegaCallAssistWork } from "@/lib/vega-call-assist-work";
 import { isDominanceLoopRequest, runVegaDominanceLoop } from "@/lib/vega-dominance-loop";
 import { isVegaOpsRequest, runVegaOpsBrief, shouldExecuteOps } from "@/lib/vega-ops-brief";
 import { isRevenueWatchRequest, runVegaRevenueWatch } from "@/lib/vega-revenue-watch";
@@ -82,6 +83,43 @@ function parseApprovalLimit(text: string) {
     text.match(/\b(\d+)\s+(?:emails?|outreach|approvals?|drafts?)\b/i) ||
     text.match(/\blimit\s*(?:=|:)?\s*(\d+)\b/i);
   return match ? Number(match[1]) : undefined;
+}
+
+function slackAutomationTitle(input: {
+  isLeadInstruction: boolean;
+  isReplyInstruction: boolean;
+  isConversionAuditInstruction: boolean;
+  isAuditInstruction: boolean;
+  isDigestInstruction: boolean;
+  isNovaInstruction: boolean;
+  isMorningStandupInstruction: boolean;
+  isApprovalInstruction: boolean;
+  isClosingInstruction: boolean;
+  isDominanceInstruction: boolean;
+  isOpsInstruction: boolean;
+  isRevenueWatchInstruction: boolean;
+  isCallAssistInstruction: boolean;
+  isWarmLeadInstruction: boolean;
+  isBookingDiagnosisInstruction: boolean;
+  specialistKind: string | null;
+}) {
+  if (input.isLeadInstruction) return "Vega Slack lead request received";
+  if (input.isReplyInstruction) return "Vega Slack reply work received";
+  if (input.isConversionAuditInstruction) return "Vega Slack conversion audit received";
+  if (input.isAuditInstruction) return "Vega Slack audit request received";
+  if (input.isDigestInstruction) return "Vega Slack digest request received";
+  if (input.isNovaInstruction) return "Vega Slack Nova brief request received";
+  if (input.isMorningStandupInstruction) return "Vega Slack morning standup received";
+  if (input.isApprovalInstruction) return "Vega Slack batch approval received";
+  if (input.isClosingInstruction) return "Vega Slack closing sprint received";
+  if (input.isDominanceInstruction) return "Vega Slack dominance loop received";
+  if (input.isOpsInstruction) return "Vega Slack ops brief received";
+  if (input.isRevenueWatchInstruction) return "Vega Slack revenue watch received";
+  if (input.isCallAssistInstruction) return "Vega Slack call-assist request received";
+  if (input.isWarmLeadInstruction) return "Vega Slack warm-lead request received";
+  if (input.isBookingDiagnosisInstruction) return "Vega Slack booking diagnosis received";
+  if (input.specialistKind) return "Vega Slack specialist request received";
+  return "Vega Slack message ignored";
 }
 
 export async function POST(request: Request) {
@@ -147,42 +185,30 @@ export async function POST(request: Request) {
   const isDominanceInstruction = isDominanceLoopRequest(instruction);
   const isOpsInstruction = isVegaOpsRequest(instruction);
   const isRevenueWatchInstruction = isRevenueWatchRequest(instruction);
+  const isCallAssistInstruction = isCallAssistWorkRequest(instruction);
   const isWarmLeadInstruction = isWarmLeadRequest(instruction);
   const isBookingDiagnosisInstruction = isBookingDiagnosisRequest(instruction);
   const isConversionAuditInstruction = isConversionAuditRequest(instruction);
   const specialistKind = classifyVegaSpecialistRequest(instruction);
   await createAutomationEvent({
-    title: isLeadInstruction
-      ? "Vega Slack lead request received"
-      : isReplyInstruction
-        ? "Vega Slack reply work received"
-        : isConversionAuditInstruction
-          ? "Vega Slack conversion audit received"
-          : isAuditInstruction
-            ? "Vega Slack audit request received"
-            : isDigestInstruction
-              ? "Vega Slack digest request received"
-              : isNovaInstruction
-                ? "Vega Slack Nova brief request received"
-                : isMorningStandupInstruction
-                  ? "Vega Slack morning standup received"
-                  : isApprovalInstruction
-                    ? "Vega Slack batch approval received"
-                    : isClosingInstruction
-                      ? "Vega Slack closing sprint received"
-                      : isDominanceInstruction
-                        ? "Vega Slack dominance loop received"
-                        : isOpsInstruction
-                          ? "Vega Slack ops brief received"
-                          : isRevenueWatchInstruction
-                            ? "Vega Slack revenue watch received"
-                            : isWarmLeadInstruction
-                              ? "Vega Slack warm-lead request received"
-                              : isBookingDiagnosisInstruction
-                                ? "Vega Slack booking diagnosis received"
-                                : specialistKind
-                                  ? "Vega Slack specialist request received"
-                                  : "Vega Slack message ignored",
+    title: slackAutomationTitle({
+      isLeadInstruction,
+      isReplyInstruction,
+      isConversionAuditInstruction,
+      isAuditInstruction,
+      isDigestInstruction,
+      isNovaInstruction,
+      isMorningStandupInstruction,
+      isApprovalInstruction,
+      isClosingInstruction,
+      isDominanceInstruction,
+      isOpsInstruction,
+      isRevenueWatchInstruction,
+      isCallAssistInstruction,
+      isWarmLeadInstruction,
+      isBookingDiagnosisInstruction,
+      specialistKind,
+    }),
     detail: instruction || text || "No Slack text received.",
     status:
       isLeadInstruction ||
@@ -218,6 +244,7 @@ export async function POST(request: Request) {
       isDominanceInstruction,
       isOpsInstruction,
       isRevenueWatchInstruction,
+      isCallAssistInstruction,
       isWarmLeadInstruction,
       isBookingDiagnosisInstruction,
       isConversionAuditInstruction,
@@ -237,6 +264,7 @@ export async function POST(request: Request) {
     !isDominanceInstruction &&
     !isOpsInstruction &&
     !isRevenueWatchInstruction &&
+    !isCallAssistInstruction &&
     !isWarmLeadInstruction &&
     !isBookingDiagnosisInstruction &&
     !isConversionAuditInstruction &&
@@ -497,6 +525,28 @@ export async function POST(request: Request) {
           instruction,
           status: "failed",
           summary: error instanceof Error ? error.message : "Unknown Vega approval failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
+  }
+
+  if (isCallAssistInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is building the Stephen/VA call-assist worklist now.",
+    });
+
+    after(async () => {
+      try {
+        await runVegaCallAssistWork({ instruction, limit: 10, postToSlack: true });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Vega call-assist failure.",
         });
       }
     });

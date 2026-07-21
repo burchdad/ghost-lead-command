@@ -15,6 +15,7 @@ import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { runMorningStandup } from "@/lib/morning-standup";
 import { isSlackCommandAuthorized, notifySlackBatchApprovalResult, notifySlackClosingSprintResult } from "@/lib/slack";
 import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSprint } from "@/lib/vega-closing-sprint";
+import { isCallAssistWorkRequest, runVegaCallAssistWork } from "@/lib/vega-call-assist-work";
 import { isDominanceLoopRequest, runVegaDominanceLoop } from "@/lib/vega-dominance-loop";
 import { isVegaOpsRequest, runVegaOpsBrief, shouldExecuteOps } from "@/lib/vega-ops-brief";
 import { isRevenueWatchRequest, runVegaRevenueWatch } from "@/lib/vega-revenue-watch";
@@ -192,6 +193,21 @@ export async function POST(request: Request) {
     return slackText("Vega is watching replies, SendGrid signals, bookings, and source performance now.");
   }
 
+  if (isCallAssistWorkRequest(text)) {
+    after(async () => {
+      const result = await runVegaCallAssistWork({ instruction: text, limit: 10, postToSlack: true });
+      await postSlackCommandResponse(
+        responseUrl,
+        [
+          result.summary,
+          `Due ${result.metrics.due}, overdue ${result.metrics.overdue}, selected ${result.metrics.selected}.`,
+          result.nextMove,
+        ].join("\n"),
+      );
+    });
+    return slackText("Vega is building the Stephen/VA call-assist worklist now.");
+  }
+
   if (isWarmLeadRequest(text)) {
     after(async () => {
       const result = await getWarmLeadPriorityReport({ limit: 5 });
@@ -332,6 +348,7 @@ export async function POST(request: Request) {
         "`Vega, queue LinkedIn tasks` - create manual Sales Navigator connection/DM tasks for social-fit leads.",
         "`Vega, review the waitlist` - review Vega early-access contestants and surface top beta/design-partner candidates.",
         "`Vega, push bookings` - work engaged replies toward calendar-ready follow-up.",
+        "`Vega, work calls` - post the due Stephen/VA phone-assist worklist with numbers, opener, assignee, and attempts.",
         "`Vega, work contact paths` - refresh manual phone/website tasks and blocked contact paths.",
         "`Vega, tune copy` - rewrite pending email drafts using the offer/copy scorecard.",
         "`Vega, protect deliverability` - suppress failed contacts and reject risky pending sends.",
