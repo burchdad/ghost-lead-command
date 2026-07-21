@@ -29,6 +29,79 @@ model Workspace {
   automationEvents AutomationEvent[]
   bookingTasks BookingTask[]
   sequenceSteps SequenceStep[]
+  onboardingSessions AIOnboardingSession[]
+  launchAgentRuns LaunchAgentRun[]
+  pricingQuotes PricingQuote[]
+  commercialProposals CommercialProposal[]
+  humanReviewTasks HumanReviewTask[]
+}
+
+enum VegaLaunchAgentType {
+  VEGA_CONCIERGE
+  BUSINESS_DISCOVERY_AGENT
+  MARKET_STRATEGY_AGENT
+  OFFER_ARCHITECT
+  CAMPAIGN_ARCHITECT
+  PRODUCT_ADVISOR
+  PRICING_AGENT
+  PROPOSAL_AGENT
+  BILLING_CONCIERGE
+  PROVISIONING_AGENT
+  LAUNCH_QA_AGENT
+}
+
+enum AIOnboardingStatus {
+  STARTED
+  DISCOVERING_BUSINESS
+  RESEARCHING_MARKET
+  BUILDING_OFFER
+  DESIGNING_CAMPAIGN
+  RECOMMENDING_PRODUCT
+  PRICING
+  REVIEWING_PROPOSAL
+  AWAITING_CHECKOUT
+  PAYMENT_PROCESSING
+  PAID
+  PROVISIONING
+  LAUNCH_REVIEW
+  READY
+  LAUNCHED
+  ABANDONED
+  HUMAN_REVIEW
+  BLOCKED
+}
+
+enum VegaProductCode {
+  VEGA_SCOUT
+  VEGA_REACH
+  VEGA_CONVERT
+  VEGA_MANAGED
+  VEGA_WHITE_LABEL
+}
+
+enum LaunchReadinessStatus {
+  NOT_READY
+  READY_FOR_DRY_RUN
+  READY_FOR_CUSTOMER_REVIEW
+  READY_FOR_LIVE
+  BLOCKED
+}
+
+enum CommercialProposalStatus {
+  DRAFT
+  PRESENTED
+  REVISION_REQUESTED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  HUMAN_REVIEW
+}
+
+enum HumanReviewStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CANCELED
 }
 
 model Company {
@@ -397,5 +470,162 @@ model SequenceStep {
 
   @@index([workspaceId])
   @@index([leadId])
+  @@index([status])
+}
+
+model AIOnboardingSession {
+  id                       String              @id @default(cuid())
+  workspaceId              String?
+  visitorId                String?
+  authenticatedUserId      String?
+  status                   AIOnboardingStatus  @default(STARTED)
+  currentObjective         String?
+  currentAgent             VegaLaunchAgentType @default(VEGA_CONCIERGE)
+  collectedFacts           Json?
+  confirmedFacts           Json?
+  inferredFacts            Json?
+  missingRequiredFacts     Json?
+  rejectedRecommendations  Json?
+  businessProfileDraft     Json?
+  targetMarketDraft        Json?
+  offerDraft               Json?
+  campaignDraft            Json?
+  productRecommendation    Json?
+  pricingQuoteId           String?
+  proposalId               String?
+  checkoutSessionId        String?
+  subscriptionId           String?
+  provisioningStatus       String?
+  launchReadiness          LaunchReadinessStatus @default(NOT_READY)
+  lastActivityAt           DateTime            @default(now())
+  expiresAt                DateTime?
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  workspace                Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  messages                 AIOnboardingMessage[]
+  launchAgentRuns          LaunchAgentRun[]
+  pricingQuotes            PricingQuote[]
+  commercialProposals      CommercialProposal[]
+  humanReviewTasks         HumanReviewTask[]
+
+  @@index([workspaceId])
+  @@index([status])
+  @@index([visitorId])
+  @@index([lastActivityAt])
+}
+
+model AIOnboardingMessage {
+  id                  String              @id @default(cuid())
+  sessionId           String
+  role                String
+  content             String
+  structuredParts     Json?
+  visibleToCustomer   Boolean             @default(true)
+  agentType           VegaLaunchAgentType?
+  createdAt           DateTime            @default(now())
+  session             AIOnboardingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([agentType])
+}
+
+model LaunchAgentRun {
+  id                  String              @id @default(cuid())
+  workspaceId         String?
+  onboardingSessionId String
+  agentType           VegaLaunchAgentType
+  status              String
+  input               Json
+  structuredOutput    Json?
+  promptVersion       String
+  model               String
+  confidence          Float?
+  cost                Float?
+  startedAt           DateTime            @default(now())
+  completedAt         DateTime?
+  error               String?
+  createdAt           DateTime            @default(now())
+  workspace           Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  onboardingSession   AIOnboardingSession @relation(fields: [onboardingSessionId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([onboardingSessionId])
+  @@index([agentType])
+  @@index([status])
+}
+
+model PricingQuote {
+  id                    String              @id @default(cuid())
+  workspaceId           String?
+  onboardingSessionId   String
+  productCode           VegaProductCode
+  inputConfiguration    Json
+  lineItems             Json
+  totals                Json
+  authorizedDiscounts   Json?
+  priceVersion          String
+  createdAt             DateTime            @default(now())
+  expiresAt             DateTime
+  acceptedAt            DateTime?
+  workspace             Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  onboardingSession     AIOnboardingSession @relation(fields: [onboardingSessionId], references: [id], onDelete: Cascade)
+  commercialProposals   CommercialProposal[]
+
+  @@index([workspaceId])
+  @@index([onboardingSessionId])
+  @@index([productCode])
+  @@index([expiresAt])
+}
+
+model CommercialProposal {
+  id                    String                   @id @default(cuid())
+  onboardingSessionId   String
+  workspaceId           String?
+  version               Int
+  productCode           VegaProductCode
+  fulfillmentMode       String
+  campaignSummary       Json
+  targetMarket          Json
+  territory             Json
+  offer                 Json
+  vegaResponsibilities  Json
+  customerResponsibilities Json
+  allowances            Json
+  setupScope            Json
+  recurringScope        Json
+  billingSummary        Json
+  limitations           Json
+  termsReference        String
+  pricingQuoteId        String
+  status                CommercialProposalStatus @default(DRAFT)
+  approvedAt            DateTime?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  workspace             Workspace?               @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  onboardingSession     AIOnboardingSession      @relation(fields: [onboardingSessionId], references: [id], onDelete: Cascade)
+  pricingQuote          PricingQuote             @relation(fields: [pricingQuoteId], references: [id], onDelete: Restrict)
+
+  @@unique([onboardingSessionId, version])
+  @@index([workspaceId])
+  @@index([pricingQuoteId])
+  @@index([status])
+}
+
+model HumanReviewTask {
+  id                    String              @id @default(cuid())
+  workspaceId           String?
+  onboardingSessionId   String?
+  reason                String
+  status                HumanReviewStatus   @default(OPEN)
+  priority              String              @default("normal")
+  payload               Json?
+  resolution            Json?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  workspace             Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  onboardingSession     AIOnboardingSession? @relation(fields: [onboardingSessionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([onboardingSessionId])
   @@index([status])
 }
