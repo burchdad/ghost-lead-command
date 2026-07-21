@@ -1387,6 +1387,44 @@ export async function notifySlackMorningStandup(input: {
     blockers: string[];
     nextMoves: string[];
   };
+  proof?: {
+    yesterday: {
+      emailsAttempted: number;
+      delivered: number;
+      bounced: number;
+      opened: number;
+      clicked: number;
+      replies: number;
+      phoneTasksCreated: number;
+      callsCompleted: number;
+      contactsReached: number;
+      conversations: number;
+      interested: number;
+      meetingsRequested: number;
+      meetingsBooked: number;
+    };
+    today: {
+      campaignsRunning: number;
+      emailsEligible: number;
+      followUpsDue: number;
+      callsDue: number;
+      callbacksDue: number;
+      repliesToday: number;
+      phoneReadyAfterEmail: number;
+    };
+    lanes: {
+      autoEmailNow: number;
+      callFirst: number;
+      researchMore: number;
+      suppress: number;
+    };
+    sender: {
+      mode: string;
+      bounceRate: number;
+      recommendedSendLimit: number;
+      decision: string;
+    };
+  };
   novaDirective: string;
   vegaOrders: string[];
   stephenAsk: string;
@@ -1403,6 +1441,14 @@ export async function notifySlackMorningStandup(input: {
   const blockerLines = input.bookingDiagnosis?.blockers?.length
     ? input.bookingDiagnosis.blockers.slice(0, 5).map((blocker) => `- ${blocker}`).join("\n")
     : "- No urgent booking blocker detected.";
+  const proofText = input.proof
+    ? [
+        `*Yesterday:* ${input.proof.yesterday.emailsAttempted} attempted, ${input.proof.yesterday.delivered} delivered, ${input.proof.yesterday.bounced} risky, ${input.proof.yesterday.replies} replies, ${input.proof.yesterday.callsCompleted} calls, ${input.proof.yesterday.contactsReached} reached, ${input.proof.yesterday.meetingsBooked} booked.`,
+        `*Today:* ${input.proof.today.campaignsRunning} campaigns, ${input.proof.today.emailsEligible} email-eligible, ${input.proof.today.followUpsDue} follow-ups due, ${input.proof.today.callsDue} calls due, ${input.proof.today.callbacksDue} callbacks.`,
+        `*Decision lanes:* auto-email ${input.proof.lanes.autoEmailNow}, call-first ${input.proof.lanes.callFirst}, research ${input.proof.lanes.researchMore}, suppress ${input.proof.lanes.suppress}.`,
+        `*Sender governor:* ${input.proof.sender.mode} at ${input.proof.sender.bounceRate}% risky. ${input.proof.sender.decision}`,
+      ].join("\n")
+    : "";
   const result = await postSlackPayload({
     webhookUrl:
       clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
@@ -1453,6 +1499,14 @@ export async function notifySlackMorningStandup(input: {
             text: `*Warmest accounts for Vega*\n${warmLeadLines || "No warm accounts found yet. Run a focused sourcing batch."}\n\n*Booking diagnosis*\n${input.bookingDiagnosis?.summary || "No diagnosis available."}\n${blockerLines}`,
           },
         },
+        ...(proofText
+          ? [
+              {
+                type: "section",
+                text: { type: "mrkdwn", text: `*Production proof loop*\n${proofText}` },
+              },
+            ]
+          : []),
         {
           type: "section",
           text: {

@@ -5,6 +5,7 @@ import {
   getClosingSprintNextMoves,
 } from "@/lib/vega-closing-sprint";
 import { notifySlackMorningStandup } from "@/lib/slack";
+import { runVegaProductionProof } from "@/lib/production-proof";
 import { getBookingDiagnosisReport, getWarmLeadPriorityReport } from "@/lib/warm-leads";
 
 type MorningStandupInput = {
@@ -59,7 +60,7 @@ function defaultLocation(message?: string, explicit?: string) {
 
 export async function runMorningStandup(input: MorningStandupInput = {}) {
   const location = defaultLocation(input.message, input.location);
-  const [metrics, warmLeads, bookingDiagnosis] = await Promise.all([
+  const [metrics, warmLeads, bookingDiagnosis, proof] = await Promise.all([
     getClosingSprintMetrics({
       instruction: input.message || "Morning lead-gen standup",
       targetCloses: input.targetCloses,
@@ -67,6 +68,7 @@ export async function runMorningStandup(input: MorningStandupInput = {}) {
     }),
     getWarmLeadPriorityReport({ limit: 5, createEvent: false }),
     getBookingDiagnosisReport({ createEvent: false }),
+    runVegaProductionProof({ instruction: input.message || "Morning proof readout", postToSlack: false }),
   ]);
   const bottleneck = getClosingSprintBottleneck(metrics);
   const nextMoves = getClosingSprintNextMoves(metrics, bottleneck);
@@ -107,6 +109,7 @@ export async function runMorningStandup(input: MorningStandupInput = {}) {
     targets,
     warmLeads: warmLeads.leads,
     bookingDiagnosis,
+    proof: proof.report,
     novaDirective,
     vegaOrders,
     stephenAsk,

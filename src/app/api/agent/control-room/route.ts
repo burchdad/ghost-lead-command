@@ -122,6 +122,7 @@ export async function GET() {
     const recentSocialIntentEvent = events.find((event) => /social intent|competitor|social\/competitor/i.test(`${event.title} ${event.detail}`));
     const recentLinkedInTaskEvent = events.find((event) => /linkedin task|sales navigator task|sales nav/i.test(`${event.title} ${event.detail}`));
     const recentConversionAuditEvent = events.find((event) => /conversion audit/i.test(`${event.title} ${event.detail}`));
+    const recentProductionProofEvent = events.find((event) => /production proof/i.test(`${event.title} ${event.detail}`));
 
     const sourceConfigured = sourceStatus.pdlConfigured || sourceStatus.googleMapsConfigured || sourceStatus.ghostLeadAgentConfigured;
     const linkedinConfigured = Boolean(
@@ -314,6 +315,30 @@ export async function GET() {
         blockers:
           senderHealth.mode === "stop"
             ? [`Risky SendGrid events are at ${senderHealth.bounceRate}%; protect deliverability before batch sending.`]
+            : [],
+      }),
+      agentCard({
+        id: "production-proof",
+        name: "Vega Production Proof Agent",
+        role: "Prove the seven-day campaign loop by tracking delivery, replies, calls, conversations, meetings, source quality, and campaign attribution.",
+        status: senderHealth.mode === "stop" ? "needs-work" : leads.length || queue.length ? "ready" : "needs-work",
+        health: recentProductionProofEvent ? "Proof loop reporting active" : "Ready to prove campaign movement",
+        detail:
+          "This is Vega's board-level report: what worked yesterday, what is eligible today, what humans must call, which sources deserve more volume, and which campaigns need approval before strategy changes.",
+        lastEvent: recentProductionProofEvent,
+        nextRun: "Mondays 9:00 AM CT plus every weekday standup",
+        actionLabel: "Run proof loop",
+        actionView: "analytics",
+        metrics: {
+          "email-ready": pendingEmail,
+          "calls due": phoneAssistDue,
+          "callbacks": phoneAssistTasks.filter((item) => item.status === "callback_requested").length,
+          "booked calls": bookedCalls,
+          "sender": `${senderHealth.mode} ${senderHealth.bounceRate}%`,
+        },
+        blockers:
+          senderHealth.mode === "stop"
+            ? [`Sender health is in stop mode at ${senderHealth.bounceRate}%; proof loop will recommend calls/replies over new sends.`]
             : [],
       }),
       agentCard({

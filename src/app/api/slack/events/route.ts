@@ -12,6 +12,7 @@ import { isConversionAuditRequest, runVegaConversionAudit } from "@/lib/conversi
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { runMorningStandup } from "@/lib/morning-standup";
+import { isProductionProofRequest, runVegaProductionProof } from "@/lib/production-proof";
 import {
   isSlackEventAuthorized,
   notifySlackBatchApprovalResult,
@@ -101,6 +102,7 @@ function slackAutomationTitle(input: {
   isCallAssistInstruction: boolean;
   isWarmLeadInstruction: boolean;
   isBookingDiagnosisInstruction: boolean;
+  isProductionProofInstruction: boolean;
   specialistKind: string | null;
 }) {
   if (input.isLeadInstruction) return "Vega Slack lead request received";
@@ -118,6 +120,7 @@ function slackAutomationTitle(input: {
   if (input.isCallAssistInstruction) return "Vega Slack call-assist request received";
   if (input.isWarmLeadInstruction) return "Vega Slack warm-lead request received";
   if (input.isBookingDiagnosisInstruction) return "Vega Slack booking diagnosis received";
+  if (input.isProductionProofInstruction) return "Vega Slack production proof request received";
   if (input.specialistKind) return "Vega Slack specialist request received";
   return "Vega Slack message ignored";
 }
@@ -189,6 +192,7 @@ export async function POST(request: Request) {
   const isWarmLeadInstruction = isWarmLeadRequest(instruction);
   const isBookingDiagnosisInstruction = isBookingDiagnosisRequest(instruction);
   const isConversionAuditInstruction = isConversionAuditRequest(instruction);
+  const isProductionProofInstruction = isProductionProofRequest(instruction);
   const specialistKind = classifyVegaSpecialistRequest(instruction);
   await createAutomationEvent({
     title: slackAutomationTitle({
@@ -207,6 +211,7 @@ export async function POST(request: Request) {
       isCallAssistInstruction,
       isWarmLeadInstruction,
       isBookingDiagnosisInstruction,
+      isProductionProofInstruction,
       specialistKind,
     }),
     detail: instruction || text || "No Slack text received.",
@@ -226,6 +231,7 @@ export async function POST(request: Request) {
       isWarmLeadInstruction ||
       isBookingDiagnosisInstruction ||
       isConversionAuditInstruction ||
+      isProductionProofInstruction ||
       specialistKind
         ? "running"
         : "blocked",
@@ -251,6 +257,7 @@ export async function POST(request: Request) {
       isWarmLeadInstruction,
       isBookingDiagnosisInstruction,
       isConversionAuditInstruction,
+      isProductionProofInstruction,
       specialistKind,
     },
   });
@@ -271,15 +278,38 @@ export async function POST(request: Request) {
     !isWarmLeadInstruction &&
     !isBookingDiagnosisInstruction &&
     !isConversionAuditInstruction &&
+    !isProductionProofInstruction &&
     !specialistKind
   ) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "failed",
       summary:
-        "I heard Vega, but I could not detect a lead sourcing, dominance loop, closing sprint, approval, reply-work, call-assist, audit, digest, or Nova brief request. Try: Vega, dominance loop. Or: Vega, work calls.",
+        "I heard Vega, but I could not detect a lead sourcing, dominance loop, proof-loop, closing sprint, approval, reply-work, call-assist, audit, digest, or Nova brief request. Try: Vega, production proof. Or: Vega, work calls.",
     });
     return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
+  }
+
+  if (isProductionProofInstruction) {
+    await notifySlackVegaLeadRequestResult({
+      instruction,
+      status: "received",
+      summary: "Vega is running the seven-day production proof and learning report now.",
+    });
+
+    after(async () => {
+      try {
+        await runVegaProductionProof({ instruction, postToSlack: true });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Vega production proof failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true });
   }
 
   if (isMorningStandupInstruction) {

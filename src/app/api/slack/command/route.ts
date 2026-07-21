@@ -13,6 +13,7 @@ import { isConversionAuditRequest, runVegaConversionAudit } from "@/lib/conversi
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { runMorningStandup } from "@/lib/morning-standup";
+import { isProductionProofRequest, runVegaProductionProof } from "@/lib/production-proof";
 import { isSlackCommandAuthorized, notifySlackBatchApprovalResult, notifySlackClosingSprintResult } from "@/lib/slack";
 import { isClosingSprintRequest, parseClosingSprintInstruction, runVegaClosingSprint } from "@/lib/vega-closing-sprint";
 import { isCallAssistWorkRequest, runVegaCallAssistWork } from "@/lib/vega-call-assist-work";
@@ -139,6 +140,17 @@ export async function POST(request: Request) {
       );
     });
     return slackText("Vega is preparing the Nova x Vega morning standup now.");
+  }
+
+  if (isProductionProofRequest(text)) {
+    after(async () => {
+      const result = await runVegaProductionProof({ instruction: text, postToSlack: true });
+      await postSlackCommandResponse(
+        responseUrl,
+        `Production proof posted. Sender ${result.report.sender.mode}; ${result.report.today.emailsEligible} email-eligible; ${result.report.today.callsDue} calls due; ${result.report.yesterday.meetingsBooked} booked yesterday.`,
+      );
+    });
+    return slackText("Vega is running the seven-day production proof and learning report now.");
   }
 
   if (isClosingSprintRequest(text)) {
@@ -357,6 +369,7 @@ export async function POST(request: Request) {
         "`Vega, closing sprint for 10 closes this week` - run Vega's close-this-week operating loop and report the bottleneck.",
         "`Vega, dominance loop` - run the full source, signal, specialist, booking, deliverability, and closing loop.",
         "`Vega, morning standup` - post the Stephen/Nova/Vega scoreboard, Nova directive, Vega orders, and today's lead targets.",
+        "`Vega, production proof` - post the seven-day proof loop: delivery, replies, calls, meetings, source quality, campaign split, and sender governor.",
         "`Vega, ops brief` - post the sub-agent chain-of-command report for Vega, Nova, and Stephen.",
         "`Vega, run ops loop` - run Vega's safe autonomy lanes and post what each sub-agent did.",
         "`Vega, closing sprint approve 10` - run the sprint and approve a SendGrid-ready batch if available.",

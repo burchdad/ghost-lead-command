@@ -11,6 +11,10 @@
       "schedule": "30 13 * * 1-5"
     },
     {
+      "path": "/api/agent/production-proof?instruction=weekly%20production%20proof",
+      "schedule": "0 14 * * 1"
+    },
+    {
       "path": "/api/agent/closing-sprint",
       "schedule": "45 14 * * 1-5"
     },
