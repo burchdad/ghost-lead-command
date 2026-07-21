@@ -10,10 +10,12 @@ function isAllowedPath(pathname: string) {
     pathname === "/" ||
     pathname === "/access" ||
     pathname === "/waitlist" ||
+    pathname === "/onboarding/ai" ||
     pathname === "/privacy" ||
     pathname.startsWith("/proposals/") ||
     pathname === "/api/access" ||
     pathname === "/api/access/logout" ||
+    pathname === "/api/onboarding/ai" ||
     pathname === "/api/waitlist/analytics" ||
     pathname === "/api/agent/digest" ||
     pathname === "/api/agent/director" ||
