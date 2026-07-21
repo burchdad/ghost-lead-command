@@ -34,6 +34,7 @@ export async function GET(request: Request) {
       minScore: url.searchParams.get("minScore") ? Number(url.searchParams.get("minScore")) : undefined,
       queueLimit: url.searchParams.get("queueLimit") ? Number(url.searchParams.get("queueLimit")) : undefined,
       autoSend: boolParam(url.searchParams.get("autoSend")),
+      partnerService: url.searchParams.get("partnerService") || undefined,
     });
 
     return NextResponse.json(result);
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
       minScore: body.minScore ? Number(body.minScore) : undefined,
       queueLimit: body.queueLimit ? Number(body.queueLimit) : undefined,
       autoSend: typeof body.autoSend === "boolean" ? body.autoSend : undefined,
+      partnerService: body.partnerService ? String(body.partnerService) : undefined,
     });
 
     return NextResponse.json(result);

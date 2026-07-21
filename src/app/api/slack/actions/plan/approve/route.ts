@@ -20,6 +20,7 @@ function planFromUrl(url: URL): AgentPlan {
     minScore: Number(url.searchParams.get("minScore") || 80),
     queueLimit: Number(url.searchParams.get("queueLimit") || 5),
     size: Number(url.searchParams.get("size") || 15),
+    partnerService: url.searchParams.get("partnerService") || undefined,
     rationale: ["Approved from Slack."],
     source: "slack-command",
   };

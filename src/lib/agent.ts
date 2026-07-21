@@ -24,6 +24,7 @@ type AgentRunInput = {
   minScore?: number;
   queueLimit?: number;
   autoSend?: boolean;
+  partnerService?: string;
 };
 
 type AgentSourceResult = Awaited<ReturnType<typeof searchFreshLeads>> & {
@@ -337,6 +338,53 @@ function manualContactBody(sourceLead: SourceLead) {
   ].filter(Boolean).join("\n");
 }
 
+function partnerServiceNextAction(sourceLead: SourceLead, partnerService: string) {
+  const signals = sourceLead.signalSummary || sourceLead.intentSignals?.slice(0, 3).join("; ");
+  return [
+    `Vega sourced ${sourceLead.companyName} as a buyer/referral account for a ${partnerService}.`,
+    "Likely path: ask who handles vendor relationships, fleet/customer vehicle cleanup, or recurring detailing needs.",
+    signals ? `Signal: ${signals}.` : "",
+    "Next: send a short partner-service opener, then create a phone assist if delivered.",
+  ].filter(Boolean).join(" ");
+}
+
+function partnerServiceOutreachCopy(sourceLead: SourceLead, partnerService: string) {
+  const company = clean(sourceLead.companyName) || "your team";
+  const niche = clean(sourceLead.niche).toLowerCase();
+  const context = `${company} ${niche}`;
+  const isDealer = /dealer|auto sales|used car|car lot|automotive/i.test(context);
+  const isProperty = /apartment|property|real estate|office|storage|marina|rv/i.test(context);
+  const useCase = isDealer
+    ? "customer vehicles, lot-ready details, trade-ins, or make-ready work"
+    : isProperty
+      ? "resident events, staff vehicles, tenant perks, or recurring on-site detail days"
+      : "fleet vehicles, customer vehicles, staff vehicles, or recurring on-site detail work";
+  const subject = isDealer
+    ? "quick detailing partner question"
+    : isProperty
+      ? "mobile detailing for your property?"
+      : "local mobile detailing question";
+  const body = [
+    `Team at ${company},`,
+    "",
+    `I am helping a Tyler-area ${partnerService} connect with local businesses that may need reliable on-site detailing.`,
+    "",
+    `Do you ever need help with ${useCase}?`,
+    "",
+    "If so, who would be the best person to talk with about becoming a reliable local detailing option?",
+    "",
+    "Best,",
+    "Stephen Burch",
+    "Ghost AI Solutions",
+  ].join("\n");
+
+  return {
+    subject: sanitizeSubject(subject),
+    body: sanitizeCustomerMessage(body, { channel: "email" }),
+    reason: "Partner service lead copy generated for a local detailing company.",
+  };
+}
+
 function localManualFallbackLimit(requestedQueueLimit: number) {
   const raw = Number(process.env.VEGA_LOCAL_MANUAL_FALLBACK_LIMIT || 10);
   const fallback = Number.isFinite(raw) && raw > 0 ? raw : 10;
@@ -349,7 +397,7 @@ function canRunLocalManualFallback(provider: SourceProvider, policy: OperatorRun
   return !policy.blockedReasons.some((reason) => /source|daily outreach queue/i.test(reason));
 }
 
-async function importSourceLead(sourceLead: SourceLead, workspaceId: string) {
+async function importSourceLead(sourceLead: SourceLead, workspaceId: string, input: { nextAction?: string } = {}) {
   const prisma = getPrisma();
   const email = clean(sourceLead.email).toLowerCase();
   const phone = clean(sourceLead.phone);
@@ -440,7 +488,7 @@ async function importSourceLead(sourceLead: SourceLead, workspaceId: string) {
       value,
       source: sourceLead.source,
       lastTouch: "Never",
-      nextAction: defaultNextAction(sourceLead),
+      nextAction: input.nextAction || defaultNextAction(sourceLead),
       opportunities: {
         create: {
           companyId: company.id,
@@ -470,6 +518,7 @@ async function runLocalManualFallback(input: {
   requestedQueueLimit: number;
   policy: OperatorRunPolicy;
   autoSend: boolean;
+  partnerService?: string;
 }) {
   const prisma = getPrisma();
   const skipped: Record<string, number> = {};
@@ -511,7 +560,12 @@ async function runLocalManualFallback(input: {
 
   for (const sourceLead of manualCandidates) {
     if (manualQueued.length >= manualLimit) break;
-    const imported = await importSourceLead(sourceLead, input.workspaceId);
+    const partnerService = clean(input.partnerService);
+    const imported = await importSourceLead(
+      sourceLead,
+      input.workspaceId,
+      partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {},
+    );
     if (imported.skipped) {
       skip(`manual-${imported.reason}`);
       continue;
@@ -599,6 +653,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   const workspace = await getDefaultWorkspace();
   const provider = input.provider || "pdl";
   const autoSend = input.autoSend ?? boolFromEnv("AGENT_AUTO_SEND", false);
+  const partnerService = clean(input.partnerService);
   const requestedMinScore = Number(input.minScore || process.env.AGENT_MIN_CONTACT_SCORE || process.env.AGENT_MIN_LEAD_SCORE || 80);
   const maxRequestedQueueLimit = Number(process.env.AGENT_MAX_REQUEST_QUEUE_LIMIT || process.env.AGENT_DAILY_QUEUE_LIMIT || 40);
   const maxRequestedSourceSize = Number(process.env.AGENT_MAX_REQUEST_SOURCE_SIZE || process.env.AGENT_DAILY_SOURCE_LIMIT || 150);
@@ -640,6 +695,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         requestedQueueLimit,
         policy,
         autoSend,
+        partnerService,
       });
     }
 
@@ -711,28 +767,36 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   const manualQueued: ManualQueuedEntry[] = [];
 
   for (const sourceLead of qualified) {
-    const imported = await importSourceLead(sourceLead, workspace.id);
+    const imported = await importSourceLead(
+      sourceLead,
+      workspace.id,
+      partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {},
+    );
     if (imported.skipped) {
       skip(imported.reason);
       continue;
     }
 
-    const generated = await generateSalesText({
-      kind: "outreach",
-      lead: {
-        name: imported.lead.name,
-        companyName: imported.lead.companyName,
-        niche: imported.lead.niche,
-        stage: imported.lead.stage,
-        score: imported.lead.score,
-        value: imported.lead.value,
-        source: imported.lead.source,
-        nextAction: imported.lead.nextAction,
-      },
-      input: "Autonomous first-touch email. Keep it short, consultative, and approval-ready.",
-    });
+    const generated = partnerService
+      ? { provider: "partner-service-template", text: "" }
+      : await generateSalesText({
+          kind: "outreach",
+          lead: {
+            name: imported.lead.name,
+            companyName: imported.lead.companyName,
+            niche: imported.lead.niche,
+            stage: imported.lead.stage,
+            score: imported.lead.score,
+            value: imported.lead.value,
+            source: imported.lead.source,
+            nextAction: imported.lead.nextAction,
+          },
+          input: "Autonomous first-touch email. Keep it short, consultative, and approval-ready.",
+        });
 
-    const copy = improveGeneratedOutreach(parseGeneratedOutreach(generated.text, imported.lead.companyName), sourceLead);
+    const copy = partnerService
+      ? partnerServiceOutreachCopy(sourceLead, partnerService)
+      : improveGeneratedOutreach(parseGeneratedOutreach(generated.text, imported.lead.companyName), sourceLead);
     const item = await prisma.outreachQueueItem.create({
       data: {
         workspaceId: workspace.id,
@@ -766,7 +830,11 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
 
   for (const sourceLead of manualCandidates) {
     if (manualQueued.length >= Math.max(0, queueLimit - queued.length)) break;
-    const imported = await importSourceLead(sourceLead, workspace.id);
+    const imported = await importSourceLead(
+      sourceLead,
+      workspace.id,
+      partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {},
+    );
     if (imported.skipped) {
       skip(`manual-${imported.reason}`);
       continue;

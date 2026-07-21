@@ -21,6 +21,7 @@ export type AgentPlan = {
   minScore: number;
   queueLimit: number;
   size: number;
+  partnerService?: string;
   rationale: string[];
   source: "daily" | "slack-command" | "reroll";
 };
@@ -127,6 +128,14 @@ function parseLeadCount(text: string) {
   return match ? Number(match[1]) : null;
 }
 
+function parsePartnerService(text: string, niche?: string) {
+  if (!/\b(?:partner|friend|client|customer|company)\b/i.test(text)) return undefined;
+  if (niche === "Auto Detail" && /\b(?:for|help)\b.+\b(?:detailing|detailer|auto detail|mobile detail)\b/i.test(text)) {
+    return "mobile automobile detailing company";
+  }
+  return undefined;
+}
+
 function maxRequestedQueueLimit() {
   const value = Number(process.env.AGENT_MAX_REQUEST_QUEUE_LIMIT || process.env.AGENT_DAILY_QUEUE_LIMIT || 40);
   return Number.isFinite(value) && value > 0 ? value : 40;
@@ -152,7 +161,7 @@ function parseProvider(text: string, niche: string): SourceProvider {
 function commandQuery(niche: string, text: string) {
   const lowerNiche = niche.toLowerCase();
   if (lowerNiche === "auto detail") {
-    return "automobile detailing referral partners car dealerships used car lots luxury apartments property managers fleet operators auto repair tint wrap shops";
+    return "car dealerships used car lots fleet operators property managers luxury apartments office parks auto repair shops collision centers boat RV storage companies";
   }
   if (localServiceNiches.has(lowerNiche)) {
     return `${lowerNiche} companies owners operators that need missed-call follow-up, quote follow-up, booking automation, or speed-to-lead help`;
@@ -172,11 +181,16 @@ export function createAgentPlan(input: {
   const explicitNiche = nicheAliases.find((alias) => text.includes(alias.match))?.niche;
   const recommended = recommendNiche({ exclude: input.exclude });
   const niche = explicitNiche || recommended.niche;
+  const partnerService = parsePartnerService(text, niche);
   const provider = parseProvider(text, niche);
   const location = text ? parseLocation(text) : recommended.location;
   const locations = text ? parseLocationMarkets(text, location) : undefined;
   const industries = explicitNiche
-    ? [niche, niche === "Roofing" ? "Construction" : niche === "Auto Detail" ? "Automotive Services" : "Local Services"]
+    ? [
+        niche,
+        niche === "Roofing" ? "Construction" : niche === "Auto Detail" ? "Automotive Services" : "Local Services",
+        ...(partnerService ? ["Fleet Services", "Property Management", "Auto Sales", "Auto Repair"] : []),
+      ]
     : recommended.industries;
   const minScore = parseNumber(text, "score", explicitNiche && localServiceNiches.has(niche.toLowerCase()) ? 70 : recommended.minScore);
   const requestedLeads = parseLeadCount(text);
@@ -193,9 +207,11 @@ export function createAgentPlan(input: {
     minScore,
     queueLimit,
     size,
+    partnerService,
     rationale: explicitNiche
       ? [
           `Operator requested ${niche}, so the agent will stay inside that market.`,
+          partnerService ? `Partner mode: Vega will source buyer/referral accounts for a ${partnerService}, not sell Ghost AI to this niche.` : "",
           `Vega will use ${provider === "google-maps" ? "Google Maps/web contact discovery" : provider === "ghost-lead-agent" ? "Ghost Lead Intelligence" : "People Data Labs"} for this run.`,
           locations?.length ? `Route market expanded into ${locations.length} nearby searches.` : "",
           "The run will source fresh contacts, dedupe, score, draft email-first outreach, and wait for approvals.",
@@ -243,6 +259,7 @@ export async function approveAgentPlan(plan: AgentPlan, input: { autoSend?: bool
     minScore: plan.minScore,
     queueLimit: plan.queueLimit,
     size: plan.size,
+    partnerService: plan.partnerService,
     autoSend: input.autoSend,
   });
 }

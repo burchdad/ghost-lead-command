@@ -63,6 +63,7 @@ function planActionValue(action: "approve" | "deny", plan: AgentPlan) {
       minScore: plan.minScore,
       queueLimit: plan.queueLimit,
       size: plan.size,
+      partnerService: plan.partnerService,
       rationale: plan.rationale,
       source: plan.source,
     },
@@ -459,7 +460,7 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${plan.niche}*\n*Provider:* ${plan.provider}\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | queue ${plan.queueLimit} approvals\n*Guardrails:* daily source ${caps.dailySourceLimit} | daily queue ${caps.dailyQueueLimit} | pending max ${caps.maxPendingApprovals}`,
+            text: `*${plan.niche}*\n${plan.partnerService ? `*Partner mode:* ${plan.partnerService}\n` : ""}*Provider:* ${plan.provider}\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | queue ${plan.queueLimit} approvals\n*Guardrails:* daily source ${caps.dailySourceLimit} | daily queue ${caps.dailyQueueLimit} | pending max ${caps.maxPendingApprovals}`,
           },
         },
         {
