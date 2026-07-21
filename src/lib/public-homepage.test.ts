@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { brand } from "../config/brand.ts";
 import { publicPromptExamples, publicVegaPlans } from "./public-homepage.ts";
 
 const pageSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
@@ -43,6 +44,7 @@ test("homepage navigation and CTAs route into onboarding without live sourcing",
   assert.match(pageSource, /id="plans"/);
   assert.match(pageSource, /id="results"/);
   assert.match(pageSource, /Start my Vega consultation/);
-  assert.match(formSource, /\/onboarding\/ai/);
+  assert.match(formSource, /brand\.onboardingUrl/);
+  assert.equal(brand.onboardingUrl, "/onboarding/ai");
   assert.doesNotMatch(pageSource, /api\/source|api\/outreach\/send|api\/agent\/run/);
 });

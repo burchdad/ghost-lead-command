@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { publicMetadata } from "@/config/brand";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,9 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vega Lead Command | Ghost AI Solutions",
-  description:
-    "Join the Vega private beta waitlist for Ghost AI Solutions' AI sales operating system.",
+  title: publicMetadata.title,
+  description: publicMetadata.description,
 };
 
 export default function RootLayout({

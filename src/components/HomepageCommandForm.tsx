@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ArrowRight, Search } from "lucide-react";
 import { FormEvent, ReactNode, useRef, useState } from "react";
 import { trackLandingEvent } from "@/components/VegaLandingClient";
+import { VegaCommandInput } from "@/components/vega";
+import { brand } from "@/config/brand";
 
 type PromptExample = {
   id: string;
@@ -31,10 +33,10 @@ function onboardingHref({
     if (exampleId) params.set("example", exampleId);
     if (productCode) params.set("product_interest", productCode);
     if (fulfillment) params.set("fulfillment", fulfillment);
-    return `/onboarding/ai?${params.toString()}`;
+    return `${brand.onboardingUrl}?${params.toString()}`;
   }
 
-  const target = new URL("/onboarding/ai", window.location.origin);
+  const target = new URL(brand.onboardingUrl, window.location.origin);
   const current = new URLSearchParams(window.location.search);
   for (const key of attributionKeys) {
     const value = current.get(key);
@@ -83,45 +85,47 @@ export function HomepageCommandForm({
         className={
           compact
             ? "flex w-full items-center"
-            : "mx-auto mt-9 flex max-w-2xl flex-col gap-3 rounded-lg border border-[#ced8d1] bg-white p-2 shadow-[0_24px_80px_rgba(34,43,38,0.12)] sm:flex-row lg:mx-0"
+            : "mx-auto mt-9 max-w-2xl lg:mx-0"
         }
       >
-        <label className="sr-only" htmlFor={compact ? "nav-prompt" : "hero-prompt"}>
-          Tell Vega what you sell and who you want to reach
-        </label>
-        <input
-          id={compact ? "nav-prompt" : "hero-prompt"}
-          value={prompt}
-          onFocus={markInputStarted}
-          onChange={(event) => {
-            setPrompt(event.target.value);
-            markInputStarted();
-          }}
-          className={
-            compact
-              ? "h-10 min-w-0 flex-1 rounded-l-md border border-[#cfd8d1] bg-white px-4 text-sm outline-none transition focus:border-[#7f8cff] focus:ring-2 focus:ring-[#7f8cff]/20"
-              : "min-h-14 min-w-0 flex-1 rounded-md px-4 text-base outline-none focus:ring-2 focus:ring-[#7f8cff]/30"
-          }
-          placeholder={compact ? "Enter your lead task, market, or customer type" : "Tell Vega what you sell and who you want to reach..."}
-        />
-        <button
-          className={
-            compact
-              ? "grid h-10 w-12 place-items-center rounded-r-md bg-[#111811] text-white transition hover:bg-[#243129] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7f8cff]"
-              : "inline-flex min-h-14 items-center justify-center gap-2 rounded-md bg-[#7c5cff] px-6 text-base font-black text-white transition hover:bg-[#6848e8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7f8cff]"
-          }
-          type="submit"
-          aria-label={compact ? "Start Vega consultation" : undefined}
-        >
-          {compact ? (
-            <Search size={18} aria-hidden="true" />
-          ) : (
-            <>
-              Build my pipeline
-              <ArrowRight size={18} aria-hidden="true" />
-            </>
-          )}
-        </button>
+        <VegaCommandInput className={compact ? "flex w-full shadow-none" : "flex flex-col gap-3 p-2 sm:flex-row"}>
+          <label className="sr-only" htmlFor={compact ? "nav-prompt" : "hero-prompt"}>
+            Tell Vega what you sell and who you want to reach
+          </label>
+          <input
+            id={compact ? "nav-prompt" : "hero-prompt"}
+            value={prompt}
+            onFocus={markInputStarted}
+            onChange={(event) => {
+              setPrompt(event.target.value);
+              markInputStarted();
+            }}
+            className={
+              compact
+                ? "h-10 min-w-0 flex-1 rounded-l-md bg-white px-4 text-sm outline-none transition focus:ring-2 focus:ring-[var(--vega-focus-ring)]/20"
+                : "min-h-14 min-w-0 flex-1 rounded-md px-4 text-base outline-none focus:ring-2 focus:ring-[var(--vega-focus-ring)]/30"
+            }
+            placeholder={compact ? "Enter your lead task, market, or customer type" : "Tell Vega what you sell and who you want to reach..."}
+          />
+          <button
+            className={
+              compact
+                ? "grid h-10 w-12 place-items-center rounded-r-md bg-[var(--vega-ink)] text-white transition hover:bg-[#243129] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vega-focus-ring)]"
+                : "inline-flex min-h-14 items-center justify-center gap-2 rounded-md bg-[var(--vega-purple)] px-6 text-base font-black text-white transition hover:bg-[var(--vega-purple-600)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vega-focus-ring)]"
+            }
+            type="submit"
+            aria-label={compact ? "Start Vega consultation" : undefined}
+          >
+            {compact ? (
+              <Search size={18} aria-hidden="true" />
+            ) : (
+              <>
+                Build my pipeline
+                <ArrowRight size={18} aria-hidden="true" />
+              </>
+            )}
+          </button>
+        </VegaCommandInput>
       </form>
 
       {!compact ? (

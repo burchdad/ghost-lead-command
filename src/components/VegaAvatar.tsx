@@ -1,4 +1,6 @@
 import Image from "next/image";
+import { brand } from "@/config/brand";
+import { vegaAssets } from "@/config/vega-assets";
 
 type VegaAvatarProps = {
   caption?: string;
@@ -24,10 +26,11 @@ export default function VegaAvatar({
     <div className={`vega-float relative inline-flex flex-col items-center ${className}`}>
       <div className="vega-avatar-glow relative">
         <Image
-          src="/vega-avatar.png"
-          alt="Vega AI lead command avatar"
+          src={vegaAssets.neutral}
+          alt={`${brand.aiDirectorName} AI lead command avatar`}
           width={640}
           height={960}
+          loading="eager"
           className={`${sizes[size]} relative z-10 rounded-md object-contain drop-shadow-[0_0_30px_rgba(168,85,247,0.45)]`}
         />
         <span className="vega-scan absolute inset-x-8 bottom-8 top-8 z-20 rounded-full opacity-60" />

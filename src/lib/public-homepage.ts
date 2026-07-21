@@ -1,3 +1,15 @@
+export type PublicVegaPlan = {
+  code: "vega_scout" | "vega_reach" | "vega_convert" | "vega_managed";
+  name: string;
+  label?: string;
+  tone?: "ghost";
+  target: string;
+  priceLabel: string;
+  vegaHandles: string;
+  customerHandles: string;
+  outcome: string;
+};
+
 export const publicPromptExamples = [
   {
     id: "detailing_dealerships",
@@ -13,7 +25,7 @@ export const publicPromptExamples = [
   },
 ];
 
-export const publicVegaPlans = [
+export const publicVegaPlans: PublicVegaPlan[] = [
   {
     code: "vega_scout",
     name: "Vega Scout",
@@ -35,6 +47,7 @@ export const publicVegaPlans = [
   {
     code: "vega_convert",
     name: "Vega Convert",
+    label: "Full conversion workflow",
     target: "Move interest toward appointments",
     priceLabel: "Starting at $2,500/month",
     vegaHandles: "Reply handling, phone-assist tasks, callbacks, booking workflows, and pipeline management.",
@@ -44,6 +57,7 @@ export const publicVegaPlans = [
   {
     code: "vega_managed",
     name: "Vega Managed",
+    tone: "ghost",
     target: "Let Ghost run the operation",
     priceLabel: "Custom based on territory, volume, and human support",
     vegaHandles: "Ghost operates the campaign, supports follow-up, manages the work queue, and reports the pipeline.",

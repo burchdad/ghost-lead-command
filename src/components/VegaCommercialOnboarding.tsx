@@ -9,9 +9,18 @@ import {
   Rocket,
   Send,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  GhostProductAttribution,
+  PoweredByGhost,
+  VegaApprovalState,
+  VegaIdentity,
+  VegaMessageBubble,
+  VegaResearchState,
+  VegaStatusBadge,
+} from "@/components/vega";
+import { brand } from "@/config/brand";
 
 type Message = {
   id: string;
@@ -125,17 +134,12 @@ export default function VegaCommercialOnboarding() {
   const proposal = session?.commercialProposals?.[0];
 
   return (
-    <main className="min-h-screen bg-[#071013] text-[#f7fbf8]">
-      <div className="grid min-h-screen lg:grid-cols-[360px_1fr]">
-        <aside className="border-r border-[#244044] bg-[#0d171a] p-5">
-          <div className="flex items-center gap-3">
-            <span className="grid size-11 place-items-center rounded-md bg-[#caff4d] text-[#071013]">
-              <Sparkles size={22} />
-            </span>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#78dcca]">Vega Launch Team</p>
-              <h1 className="text-xl font-semibold">Commercial Onboarding</h1>
-            </div>
+    <main className="min-h-screen overflow-x-hidden bg-[#071013] text-[#f7fbf8]">
+      <div className="grid min-h-screen min-w-0 lg:grid-cols-[360px_1fr]">
+        <aside className="min-w-0 border-r border-[#244044] bg-[#0d171a] p-4 sm:p-5">
+          <div className="rounded-md border border-[#244044] bg-[#101d20] p-4">
+            <VegaIdentity />
+            <GhostProductAttribution className="mt-4 text-[#91a8a5]" />
           </div>
 
           <div className="mt-7">
@@ -175,25 +179,37 @@ export default function VegaCommercialOnboarding() {
               <li>Checkout uses a hosted provider boundary.</li>
               <li>Launch QA blocks unsafe campaigns.</li>
             </ul>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <VegaResearchState />
+              <VegaApprovalState />
+            </div>
           </section>
         </aside>
 
-        <section className="flex min-h-screen flex-col">
-          <header className="border-b border-[#244044] bg-[#0b1417] px-5 py-4">
-            <p className="text-sm uppercase tracking-[0.18em] text-[#78dcca]">AI-led consultation</p>
-            <h2 className="mt-1 text-2xl font-semibold">Tell Vega what you sell. Vega builds the commercial launch plan.</h2>
+        <section className="flex min-h-screen min-w-0 flex-col">
+          <header className="border-b border-[#244044] bg-[#0b1417] px-4 py-4 sm:px-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm uppercase tracking-[0.18em] text-[#78dcca]">AI-led consultation</p>
+                <h2 className="mt-1 text-2xl font-semibold">Tell {brand.aiDirectorName} what you sell. Vega builds the commercial launch plan.</h2>
+              </div>
+              <VegaStatusBadge label={`${brand.aiDirectorName} onboarding`} status="online" />
+            </div>
           </header>
 
-          <div className="grid flex-1 gap-4 p-5 xl:grid-cols-[1fr_360px]">
-            <div className="flex min-h-[640px] flex-col rounded-md border border-[#244044] bg-[#0d171a]">
-              <div className="flex-1 space-y-4 overflow-auto p-5">
+          <div className="grid min-w-0 flex-1 gap-4 p-4 sm:p-5 xl:grid-cols-[1fr_360px]">
+            <div className="flex min-h-[640px] min-w-0 flex-col rounded-md border border-[#244044] bg-[#0d171a]">
+              <div className="flex-1 space-y-4 overflow-auto p-4 sm:p-5">
                 {(!session ? [initialMessage] : session.messages).filter((item) => item.visibleToCustomer !== false).map((item) => (
-                  <div key={item.id} className={item.role === "customer" ? "flex justify-end" : "flex justify-start"}>
-                    <div className={`max-w-[780px] rounded-md p-4 ${item.role === "customer" ? "bg-[#caff4d] text-[#071013]" : "bg-[#162529] text-[#e8f1ef]"}`}>
-                      <p className="whitespace-pre-wrap text-sm leading-6">{item.content}</p>
-                      {item.agentType ? <p className="mt-3 text-xs uppercase tracking-[0.14em] opacity-70">{item.agentType}</p> : null}
-                    </div>
-                  </div>
+                  <VegaMessageBubble
+                    key={item.id}
+                    side={item.role === "customer" ? "customer" : "vega"}
+                    speaker={item.role === "customer" ? "Customer" : brand.aiDirectorName}
+                    className="text-[#071013]"
+                  >
+                    <p className="whitespace-pre-wrap">{item.content}</p>
+                    {item.agentType ? <p className="mt-3 text-xs uppercase tracking-[0.14em] opacity-70">{item.agentType}</p> : null}
+                  </VegaMessageBubble>
                 ))}
                 <div ref={endRef} />
               </div>
@@ -211,7 +227,7 @@ export default function VegaCommercialOnboarding() {
                   <button
                     type="submit"
                     disabled={busy || !message.trim()}
-                    className="inline-flex min-w-24 items-center justify-center gap-2 rounded-md bg-[#caff4d] px-4 py-3 text-sm font-semibold text-[#071013] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex min-w-24 items-center justify-center gap-2 rounded-md bg-[var(--vega-purple)] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {busy ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
                     Send
@@ -280,6 +296,9 @@ export default function VegaCommercialOnboarding() {
               ) : null}
             </aside>
           </div>
+          <footer className="border-t border-[#244044] px-5 py-4 text-xs text-[#91a8a5]">
+            <PoweredByGhost /> <span className="ml-2">{brand.legalAttributionText}</span>
+          </footer>
         </section>
       </div>
     </main>

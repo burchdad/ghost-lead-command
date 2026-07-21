@@ -3,6 +3,42 @@
 :root {
   --background: #0b0f12;
   --foreground: #f4f7f5;
+  --ghost-paper: #f7f8f6;
+  --ghost-ink: #121614;
+  --ghost-muted: #4f5b54;
+  --ghost-subtle: #eef2ef;
+  --ghost-border: #dfe6e0;
+  --ghost-dark: #101817;
+  --ghost-dark-muted: #b8cac5;
+  --vega-ink: #111811;
+  --vega-deep: #10121f;
+  --vega-purple: #7c5cff;
+  --vega-purple-50: #f3efff;
+  --vega-purple-100: #e6ddff;
+  --vega-purple-200: #cfc0ff;
+  --vega-purple-300: #ad95ff;
+  --vega-purple-500: #7c5cff;
+  --vega-purple-600: #6848e8;
+  --vega-purple-900: #2b176e;
+  --vega-lime: #caff4d;
+  --vega-lime-100: #eefce6;
+  --vega-lime-300: #b7ea37;
+  --vega-teal: #008f75;
+  --vega-teal-50: #e7fbf6;
+  --vega-teal-200: #82ded0;
+  --vega-teal-300: #55c9b8;
+  --vega-teal-900: #083f37;
+  --vega-amber-50: #fff7df;
+  --vega-amber-300: #f7c948;
+  --vega-amber-900: #5f3b00;
+  --vega-danger-50: #fff1f2;
+  --vega-danger-300: #fda4af;
+  --vega-danger-900: #7f1d1d;
+  --vega-focus-ring: #7f8cff;
+  --vega-soft-glow: 0 24px 80px rgba(124, 92, 255, 0.15);
+  --vega-glow: 0 0 34px rgba(124, 92, 255, 0.32);
+  --vega-panel-gradient: radial-gradient(circle at 78% 0%, rgba(124, 92, 255, 0.13), transparent 38%);
+  --vega-hero-gradient: radial-gradient(circle at 50% 38%, rgba(124, 92, 255, 0.2), rgba(226, 232, 240, 0.34) 33%, transparent 68%);
 }
 
 @theme inline {

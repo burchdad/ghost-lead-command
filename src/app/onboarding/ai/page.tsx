@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import VegaCommercialOnboarding from "@/components/VegaCommercialOnboarding";
+import { brand, publicMetadata } from "@/config/brand";
 
 export const metadata: Metadata = {
-  title: "Vega Commercial Onboarding | Ghost Lead Command",
-  description: "AI-led commercial onboarding for Vega Lead Command.",
+  title: `${brand.aiDirectorName} AI Onboarding | ${brand.productName}`,
+  description: publicMetadata.description,
 };
 
 export default function AIOnboardingPage() {
