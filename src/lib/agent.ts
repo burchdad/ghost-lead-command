@@ -25,6 +25,7 @@ type AgentRunInput = {
   queueLimit?: number;
   autoSend?: boolean;
   partnerService?: string;
+  campaignName?: string;
 };
 
 type AgentSourceResult = Awaited<ReturnType<typeof searchFreshLeads>> & {
@@ -397,7 +398,11 @@ function canRunLocalManualFallback(provider: SourceProvider, policy: OperatorRun
   return !policy.blockedReasons.some((reason) => /source|daily outreach queue/i.test(reason));
 }
 
-async function importSourceLead(sourceLead: SourceLead, workspaceId: string, input: { nextAction?: string } = {}) {
+async function importSourceLead(
+  sourceLead: SourceLead,
+  workspaceId: string,
+  input: { nextAction?: string; campaignName?: string; partnerService?: string; location?: string } = {},
+) {
   const prisma = getPrisma();
   const email = clean(sourceLead.email).toLowerCase();
   const phone = clean(sourceLead.phone);
@@ -475,6 +480,16 @@ async function importSourceLead(sourceLead: SourceLead, workspaceId: string, inp
   const scoreboard = buildSignalScoreboard(sourceLead);
   const score = Math.max(Number(sourceLead.score || 50), scoreboard.total);
   const value = score >= 95 ? 7500 : score >= 85 ? 5000 : 3500;
+  const campaignName = clean(input.campaignName);
+  const partnerService = clean(input.partnerService);
+  const campaignTags = [
+    "Vega",
+    "Lead Command",
+    campaignName ? `Campaign: ${campaignName}` : "",
+    partnerService ? "Partner Lead Gen" : "",
+    sourceLead.source,
+    sourceLead.niche || "General",
+  ].filter(Boolean);
   const lead = await prisma.lead.create({
     data: {
       workspaceId,
@@ -489,6 +504,18 @@ async function importSourceLead(sourceLead: SourceLead, workspaceId: string, inp
       source: sourceLead.source,
       lastTouch: "Never",
       nextAction: input.nextAction || defaultNextAction(sourceLead),
+      tags: campaignTags as Prisma.InputJsonValue,
+      customFields: {
+        campaignName: campaignName || null,
+        partnerService: partnerService || null,
+        sourceProvider: sourceLead.source,
+        sourceLocation: sourceLead.location || input.location || null,
+        sourceUrl: sourceLead.sourceUrl || null,
+        website: (sourceLead as SourceLead & { website?: string }).website || null,
+        buyerFit: sourceLead.buyerFit || null,
+        signalSummary: sourceLead.signalSummary || null,
+        intentSignals: sourceLead.intentSignals || [],
+      } as Prisma.InputJsonValue,
       opportunities: {
         create: {
           companyId: company.id,
@@ -519,6 +546,7 @@ async function runLocalManualFallback(input: {
   policy: OperatorRunPolicy;
   autoSend: boolean;
   partnerService?: string;
+  campaignName?: string;
 }) {
   const prisma = getPrisma();
   const skipped: Record<string, number> = {};
@@ -566,7 +594,12 @@ async function runLocalManualFallback(input: {
       const imported = await importSourceLead(
         sourceLead,
         input.workspaceId,
-        partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {},
+        {
+          ...(partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {}),
+          campaignName: input.campaignName,
+          partnerService,
+          location: input.location,
+        },
       );
       if (imported.skipped) {
         skip(`email-${imported.reason}`);
@@ -627,7 +660,12 @@ async function runLocalManualFallback(input: {
     const imported = await importSourceLead(
       sourceLead,
       input.workspaceId,
-      partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {},
+      {
+        ...(partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {}),
+        campaignName: input.campaignName,
+        partnerService,
+        location: input.location,
+      },
     );
     if (imported.skipped) {
       skip(`manual-${imported.reason}`);
@@ -758,6 +796,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   const provider = input.provider || "pdl";
   const autoSend = input.autoSend ?? boolFromEnv("AGENT_AUTO_SEND", false);
   const partnerService = clean(input.partnerService);
+  const campaignName = clean(input.campaignName) || `${partnerService ? "Partner Lead Gen" : "Ghost AI"} - ${input.industries?.[0] || "General"} - ${input.location || process.env.AGENT_SOURCE_LOCATION || "United States"}`;
   const requestedMinScore = Number(input.minScore || process.env.AGENT_MIN_CONTACT_SCORE || process.env.AGENT_MIN_LEAD_SCORE || 80);
   const maxRequestedQueueLimit = Number(process.env.AGENT_MAX_REQUEST_QUEUE_LIMIT || process.env.AGENT_DAILY_QUEUE_LIMIT || 40);
   const maxRequestedSourceSize = Number(process.env.AGENT_MAX_REQUEST_SOURCE_SIZE || process.env.AGENT_DAILY_SOURCE_LIMIT || 150);
@@ -800,6 +839,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         policy,
         autoSend,
         partnerService,
+        campaignName,
       });
     }
 
@@ -899,7 +939,12 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     const imported = await importSourceLead(
       sourceLead,
       workspace.id,
-      partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {},
+      {
+        ...(partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {}),
+        campaignName,
+        partnerService,
+        location: input.location || process.env.AGENT_SOURCE_LOCATION || "United States",
+      },
     );
     if (imported.skipped) {
       skip(imported.reason);
@@ -962,7 +1007,12 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     const imported = await importSourceLead(
       sourceLead,
       workspace.id,
-      partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {},
+      {
+        ...(partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {}),
+        campaignName,
+        partnerService,
+        location: input.location || process.env.AGENT_SOURCE_LOCATION || "United States",
+      },
     );
     if (imported.skipped) {
       skip(`manual-${imported.reason}`);

@@ -59,6 +59,21 @@ function bumpAttempts(body: string) {
   return `${body}\nAttempts: 1`;
 }
 
+function setLine(body: string, label: string, value: string) {
+  const pattern = new RegExp(`^${label}:\\s*.*$`, "im");
+  if (pattern.test(body)) return body.replace(pattern, `${label}: ${value}`);
+  return `${body}\n${label}: ${value}`;
+}
+
+function updateCallMetadata(body: string, input: { outcome: CallAssistOutcome; nextRetry: Date | null }) {
+  const now = new Date();
+  let updated = bumpAttempts(body);
+  updated = setLine(updated, "Last attempt", now.toISOString());
+  updated = setLine(updated, "Final disposition", outcomeLabels[input.outcome]);
+  updated = setLine(updated, "Next attempt", input.nextRetry ? input.nextRetry.toISOString() : "none");
+  return updated;
+}
+
 function appendCallOutcome(body: string, outcome: CallAssistOutcome, note: string) {
   return sanitizeCustomerMessage(
     [
@@ -139,7 +154,7 @@ export async function recordCallAssistOutcome(input: {
     interested: "Interested from phone follow-up. Vega prepared booking handoff.",
     send_information: "Prospect asked for information. Vega queued a short email follow-up.",
     meeting_requested: "Meeting requested. Vega prepared booking handoff.",
-    meeting_booked: "Meeting requested. Confirm the calendar event before counting this as booked.",
+    meeting_booked: "Meeting booked by phone assist. Confirm the calendar event and prep the call.",
     not_interested: "Not interested from phone follow-up. Stop active outreach or move to long-term nurture.",
     suppress: "Suppressed after phone follow-up. Do not contact again.",
   };
@@ -154,7 +169,7 @@ export async function recordCallAssistOutcome(input: {
     interested: "interested",
     send_information: "info_requested",
     meeting_requested: "meeting_requested",
-    meeting_booked: "meeting_requested",
+    meeting_booked: "meeting_booked",
     not_interested: "not_interested",
     suppress: "suppressed",
   };
@@ -166,7 +181,7 @@ export async function recordCallAssistOutcome(input: {
         status: statusByOutcome[outcome],
         scheduledFor: nextRetry,
         reason: sanitizeInternalReason(`Phone assist outcome: ${outcomeLabels[outcome]}. ${note}`),
-        body: appendCallOutcome(bumpAttempts(item.body), outcome, note),
+        body: appendCallOutcome(updateCallMetadata(item.body, { outcome, nextRetry }), outcome, note),
       },
       include: { lead: true },
     });
@@ -175,7 +190,9 @@ export async function recordCallAssistOutcome(input: {
       where: { id: lead.id },
       data: {
         stage: ["interested", "send_information", "meeting_requested", "meeting_booked"].includes(outcome)
-          ? "Potential Client"
+          ? outcome === "meeting_booked"
+            ? "Call Booked"
+            : "Potential Client"
           : lead.stage === "Imported"
             ? "Contacted"
             : lead.stage,
@@ -204,6 +221,7 @@ export async function recordCallAssistOutcome(input: {
           reached: isReachedOutcome(outcome),
           conversation: isConversationOutcome(outcome),
           meetingRequested: ["meeting_requested", "meeting_booked"].includes(outcome),
+          meetingBooked: outcome === "meeting_booked",
           interested: ["interested", "send_information", "meeting_requested", "meeting_booked"].includes(outcome),
         },
       },

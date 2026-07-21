@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { approveAgentPlan, type AgentPlan } from "@/lib/autopilot";
+import { approveAgentPlan, campaignNameFor, type AgentPlan } from "@/lib/autopilot";
 import { isSlackActionAuthorized } from "@/lib/slack";
 import type { SourceProvider } from "@/lib/sourcing";
 
@@ -11,16 +11,19 @@ function parseProvider(value: string | null): SourceProvider {
 function planFromUrl(url: URL): AgentPlan {
   const industries = url.searchParams.getAll("industries").filter(Boolean);
   const niche = url.searchParams.get("niche") || "Roofing";
+  const location = url.searchParams.get("location") || "United States";
+  const partnerService = url.searchParams.get("partnerService") || undefined;
   return {
     provider: parseProvider(url.searchParams.get("provider")),
     niche,
     query: url.searchParams.get("query") || `owners and operators of ${niche.toLowerCase()} companies`,
-    location: url.searchParams.get("location") || "United States",
+    location,
     industries: industries.length ? industries : [niche],
     minScore: Number(url.searchParams.get("minScore") || 80),
     queueLimit: Number(url.searchParams.get("queueLimit") || 5),
     size: Number(url.searchParams.get("size") || 15),
-    partnerService: url.searchParams.get("partnerService") || undefined,
+    partnerService,
+    campaignName: campaignNameFor({ niche, location, partnerService, source: "slack-command" }),
     rationale: ["Approved from Slack."],
     source: "slack-command",
   };

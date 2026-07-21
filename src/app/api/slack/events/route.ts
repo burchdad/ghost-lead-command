@@ -222,6 +222,9 @@ export async function POST(request: Request) {
       isDominanceInstruction ||
       isOpsInstruction ||
       isRevenueWatchInstruction ||
+      isCallAssistInstruction ||
+      isWarmLeadInstruction ||
+      isBookingDiagnosisInstruction ||
       isConversionAuditInstruction ||
       specialistKind
         ? "running"
@@ -274,7 +277,7 @@ export async function POST(request: Request) {
       instruction,
       status: "failed",
       summary:
-        "I heard Vega, but I could not detect a lead sourcing, dominance loop, closing sprint, approval, reply-work, audit, digest, or Nova brief request. Try: Vega, dominance loop. Or: Vega, approve 10.",
+        "I heard Vega, but I could not detect a lead sourcing, dominance loop, closing sprint, approval, reply-work, call-assist, audit, digest, or Nova brief request. Try: Vega, dominance loop. Or: Vega, work calls.",
     });
     return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
   }

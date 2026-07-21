@@ -64,9 +64,35 @@ function planActionValue(action: "approve" | "deny", plan: AgentPlan) {
       queueLimit: plan.queueLimit,
       size: plan.size,
       partnerService: plan.partnerService,
+      campaignName: plan.campaignName,
       rationale: plan.rationale,
       source: plan.source,
     },
+  });
+}
+
+function dailyNichePlanValue(input: {
+  action: "approve" | "deny";
+  niche: string;
+  query: string;
+  location: string;
+  industries: string[];
+  minScore: number;
+  queueLimit: number;
+  rationale: string[];
+}) {
+  return planActionValue(input.action, {
+    provider: "pdl",
+    niche: input.niche,
+    query: input.query,
+    location: input.location,
+    industries: input.industries,
+    minScore: input.minScore,
+    queueLimit: input.queueLimit,
+    size: Math.max(input.queueLimit * 3, input.queueLimit),
+    campaignName: `Ghost AI - ${input.niche} - ${input.location} - Daily Slate`,
+    rationale: input.rationale,
+    source: "daily",
   });
 }
 
@@ -130,20 +156,6 @@ async function postSlackPayload(input: {
   }
 
   return { configured: false, sent: false, channel: "", message: "Missing Slack webhook or bot channel configuration." };
-}
-
-function nicheActionUrl(action: "approve" | "deny", params: Record<string, string | number | string[]>) {
-  const url = new URL(`/api/slack/actions/niche/${action}`, appBaseUrl());
-  const token = actionToken();
-  if (token) url.searchParams.set("token", token);
-  Object.entries(params).forEach(([key, value]) => {
-    if (Array.isArray(value)) {
-      value.forEach((item) => url.searchParams.append(key, item));
-    } else {
-      url.searchParams.set(key, String(value));
-    }
-  });
-  return url.toString();
 }
 
 export function isSlackActionAuthorized(request: Request) {
@@ -1599,21 +1611,6 @@ export async function notifySlackNicheRecommendation(input: {
     return { configured: false, sent: false, message: "Missing SLACK_WEBHOOK_URL." };
   }
 
-  const approveUrl = nicheActionUrl("approve", {
-    niche: input.niche,
-    query: input.query,
-    location: input.location,
-    minScore: input.minScore,
-    queueLimit: input.queueLimit,
-    industries: input.industries,
-  });
-  const denyUrl = nicheActionUrl("deny", {
-    exclude: input.niche,
-    location: input.location,
-    minScore: input.minScore,
-    queueLimit: input.queueLimit,
-  });
-
   const response = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1643,14 +1640,16 @@ export async function notifySlackNicheRecommendation(input: {
           elements: [
             {
               type: "button",
-              text: { type: "plain_text", text: "Approve Scan", emoji: false },
+              text: { type: "plain_text", text: "Auto-send Scan", emoji: false },
               style: "primary",
-              url: approveUrl,
+              action_id: "plan_approve",
+              value: dailyNichePlanValue({ action: "approve", ...input }),
             },
             {
               type: "button",
               text: { type: "plain_text", text: "Different Niche", emoji: false },
-              url: denyUrl,
+              action_id: "plan_deny",
+              value: dailyNichePlanValue({ action: "deny", ...input }),
             },
           ],
         },

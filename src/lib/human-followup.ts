@@ -35,6 +35,12 @@ function defaultCallAssignee() {
   return process.env.VEGA_PHONE_FOLLOWUP_ASSIGNEE?.trim() || "Stephen/VA";
 }
 
+function leadCustomFields(lead: { customFields?: unknown }) {
+  return lead.customFields && typeof lead.customFields === "object" && !Array.isArray(lead.customFields)
+    ? (lead.customFields as Record<string, unknown>)
+    : {};
+}
+
 function toTask(item: {
   id: string;
   scheduledFor: Date | null;
@@ -90,6 +96,9 @@ export async function queueHumanCallAssistAfterEmail(input: {
 
   const delay = followUpDelayHours();
   const scheduledFor = new Date(Date.now() + delay * 60 * 60 * 1000);
+  const fields = leadCustomFields(lead);
+  const campaignName = String(fields.campaignName || "").trim();
+  const partnerService = String(fields.partnerService || "").trim();
   const contactName = lead.name || lead.contact?.name || "the decision maker";
   const role = lead.title || lead.contact?.title || "decision maker";
   const companyWebsite = lead.company?.website ? `Website: ${lead.company.website}` : "";
@@ -107,10 +116,16 @@ export async function queueHumanCallAssistAfterEmail(input: {
       `Role: ${role}`,
       `Phone: ${phone}`,
       `Assigned to: ${defaultCallAssignee()}`,
+      campaignName ? `Campaign: ${campaignName}` : "",
+      partnerService ? `Partner offer: ${partnerService}` : "",
       email,
       companyWebsite,
       `When: about ${delay} hours after the email send`,
+      `Due time: ${scheduledFor.toISOString()}`,
       "Attempts: 0",
+      "Last attempt: none",
+      `Next attempt: ${scheduledFor.toISOString()}`,
+      "Final disposition: pending",
       "",
       `Why this lead: ${lead.nextAction || "Vega marked this as a fit for the Lead Command offer."}`,
       "",

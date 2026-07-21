@@ -34,7 +34,7 @@ function dueLabel(date: Date | null) {
 
 export function isCallAssistWorkRequest(text: string) {
   const normalized = clean(text).toLowerCase();
-  return /\b(?:work calls?|call assists?|phone assists?|call lane|work phones?|phone follow[-\s]?ups?|va calls?)\b/.test(normalized);
+  return /\b(?:work calls?|call assists?|phone[-\s]?assists?|call lane|work phones?|phone follow[-\s]?ups?|va calls?|calls due|call list|phone list)\b/.test(normalized);
 }
 
 export async function runVegaCallAssistWork(input: { instruction?: string; limit?: number; postToSlack?: boolean } = {}) {
@@ -64,6 +64,10 @@ export async function runVegaCallAssistWork(input: { instruction?: string; limit
   const worklist = selected.map((task, index) => {
     const lead = task.lead;
     const assignee = extractLine(task.body, "Assigned to") || "Stephen/VA";
+    const campaign = extractLine(task.body, "Campaign") || "Unassigned campaign";
+    const lastAttempt = extractLine(task.body, "Last attempt") || "none";
+    const nextAttempt = extractLine(task.body, "Next attempt") || dueLabel(task.scheduledFor);
+    const finalDisposition = extractLine(task.body, "Final disposition") || task.status.replace(/_/g, " ");
     const phone = extractLine(task.body, "Phone") || lead?.contact?.phone || "";
     const person = extractLine(task.body, "Person") || lead?.name || lead?.contact?.name || "Decision maker";
     const role = extractLine(task.body, "Role") || lead?.title || lead?.contact?.title || "";
@@ -76,8 +80,12 @@ export async function runVegaCallAssistWork(input: { instruction?: string; limit
       role,
       phone,
       assignee,
+      campaign,
       attempts: extractAttempts(task.body),
       due: dueLabel(task.scheduledFor),
+      lastAttempt,
+      nextAttempt,
+      finalDisposition,
       signal: lead?.nextAction || task.reason || "Phone follow-up after email send.",
       opener,
     };
@@ -92,7 +100,8 @@ export async function runVegaCallAssistWork(input: { instruction?: string; limit
   const lines = worklist.map((task) =>
     [
       `${task.rank}. ${task.companyName} - ${task.person}${task.role ? ` (${task.role})` : ""}`,
-      `Phone: ${task.phone || "missing"} | Assignee: ${task.assignee} | ${task.due} | Attempts: ${task.attempts}`,
+      `Phone: ${task.phone || "missing"} | Assignee: ${task.assignee} | Campaign: ${task.campaign} | ${task.due} | Attempts: ${task.attempts}`,
+      `Last: ${task.lastAttempt} | Next: ${task.nextAttempt} | Disposition: ${task.finalDisposition}`,
       `Signal: ${task.signal.slice(0, 220)}`,
       task.opener ? `Opener: ${task.opener.slice(0, 260)}` : "",
     ].filter(Boolean).join("\n"),
@@ -127,6 +136,14 @@ export async function runVegaCallAssistWork(input: { instruction?: string; limit
       overdue,
       upcoming: upcomingTasks.length,
       selected: worklist.map((task) => ({ id: task.id, companyName: task.companyName, phone: task.phone, assignee: task.assignee, due: task.due })),
+      accountability: worklist.map((task) => ({
+        id: task.id,
+        campaign: task.campaign,
+        attempts: task.attempts,
+        lastAttempt: task.lastAttempt,
+        nextAttempt: task.nextAttempt,
+        finalDisposition: task.finalDisposition,
+      })),
       slack,
     },
   });

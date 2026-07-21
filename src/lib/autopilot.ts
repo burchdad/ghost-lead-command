@@ -14,6 +14,7 @@ import { getDefaultWorkspace } from "@/lib/workspace";
 export type AgentPlan = {
   provider: SourceProvider;
   niche: string;
+  campaignName: string;
   query: string;
   location: string;
   locations?: string[];
@@ -136,6 +137,48 @@ function parsePartnerService(text: string, niche?: string) {
   return undefined;
 }
 
+export function campaignNameFor(input: { niche: string; location: string; partnerService?: string; source?: AgentPlan["source"] }) {
+  const owner = input.partnerService ? "Partner Lead Gen" : "Ghost AI";
+  const source = input.source === "daily" ? "Daily Slate" : "Vega Command";
+  return `${owner} - ${input.niche} - ${input.location || "United States"} - ${source}`;
+}
+
+async function ensureSourcingCampaignFromPlan(plan: AgentPlan) {
+  const prisma = getPrisma();
+  const workspace = await getDefaultWorkspace();
+  const existing = await prisma.sourcingCampaign.findFirst({
+    where: { workspaceId: workspace.id, name: plan.campaignName },
+    orderBy: { updatedAt: "desc" },
+  });
+  const data = {
+    provider: plan.provider,
+    query: plan.query,
+    location: plan.location || null,
+    industries: plan.industries.join(", "),
+    titles: plan.partnerService
+      ? "Owner, General Manager, Operations Manager, Property Manager, Fleet Manager, Sales Manager"
+      : "Founder, CEO, Owner, President, Head of Growth, VP Sales, Revenue Operations, General Manager",
+    dailyLimit: plan.size,
+    scoreThreshold: plan.minScore,
+    status: "active",
+  };
+
+  if (existing) {
+    return prisma.sourcingCampaign.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+
+  return prisma.sourcingCampaign.create({
+    data: {
+      workspaceId: workspace.id,
+      name: plan.campaignName,
+      ...data,
+    },
+  });
+}
+
 function maxRequestedQueueLimit() {
   const value = Number(process.env.AGENT_MAX_REQUEST_QUEUE_LIMIT || process.env.AGENT_DAILY_QUEUE_LIMIT || 40);
   return Number.isFinite(value) && value > 0 ? value : 40;
@@ -200,6 +243,7 @@ export function createAgentPlan(input: {
   return {
     provider,
     niche,
+    campaignName: campaignNameFor({ niche, location, partnerService, source: input.source || "slack-command" }),
     query: explicitNiche ? commandQuery(niche, text) : recommended.query,
     location,
     locations,
@@ -242,12 +286,13 @@ export async function sendAgentPlan(input: {
 }
 
 export async function approveAgentPlan(plan: AgentPlan, input: { autoSend?: boolean } = {}) {
+  const campaign = await ensureSourcingCampaignFromPlan(plan);
   await createAutomationEvent({
     title: input.autoSend ? "AI operator auto-send slate approved" : "AI operator plan approved",
-    detail: `${plan.niche} scan approved from Slack. Auto-send ${input.autoSend ? "enabled" : "disabled"}.`,
+    detail: `${plan.niche} scan approved from Slack. Campaign ${campaign.name} is active. Auto-send ${input.autoSend ? "enabled" : "disabled"}.`,
     status: "running",
     type: "agent",
-    payload: { plan, autoSend: input.autoSend },
+    payload: { plan, campaignId: campaign.id, autoSend: input.autoSend },
   });
 
   return runLeadCommandAgent({
@@ -260,6 +305,7 @@ export async function approveAgentPlan(plan: AgentPlan, input: { autoSend?: bool
     queueLimit: plan.queueLimit,
     size: plan.size,
     partnerService: plan.partnerService,
+    campaignName: plan.campaignName,
     autoSend: input.autoSend,
   });
 }
@@ -292,7 +338,7 @@ function parseReplyWorkLimit(text: string) {
 
 export async function runVegaLeadRequest(input: { text: string }) {
   const plan = createAgentPlan({ text: input.text, source: "slack-command" });
-  const result = await approveAgentPlan(plan);
+  const result = await approveAgentPlan(plan, { autoSend: true });
   return { plan, result };
 }
 

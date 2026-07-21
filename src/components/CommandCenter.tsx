@@ -163,6 +163,7 @@ type CallAssistOutcome =
   | "interested"
   | "send_information"
   | "meeting_requested"
+  | "meeting_booked"
   | "not_interested"
   | "suppress";
 
@@ -214,6 +215,7 @@ type AnalyticsPayload = {
     conversations: number;
     interested: number;
     meetingRequested: number;
+    meetingBooked?: number;
     suppressed: number;
     notInterested: number;
     wrongPerson: number;
@@ -848,6 +850,11 @@ function dueLabel(value?: string | null) {
     : `due ${date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
 }
 
+function queueBodyLine(body: string | null | undefined, label: string) {
+  const match = String(body || "").match(new RegExp(`${label}:\\s*([^\\n]+)`, "i"));
+  return match?.[1]?.trim() || "";
+}
+
 function isPhoneAssistItem(item?: QueueItem | null) {
   return Boolean(item && item.channel === "manual" && ["phone-after-email", "phone-website"].includes(item.provider));
 }
@@ -1051,6 +1058,8 @@ export default function Home() {
       meta: [
         item.channel,
         item.provider,
+        isPhoneAssistItem(item) ? queueBodyLine(item.body, "Assigned to") : "",
+        isPhoneAssistItem(item) ? queueBodyLine(item.body, "Campaign") : "",
         isPhoneAssistItem(item) ? dueLabel(item.scheduledFor) : "",
         cardTime(item.createdAt),
       ].filter(Boolean),
@@ -1172,6 +1181,12 @@ export default function Home() {
       }));
 
     const appointmentCards = [
+      ...phoneAssistQueue
+        .filter((item) => item.status === "meeting_booked")
+        .map<QueueBoardCard>((item) => ({
+          ...mapQueueItem(item),
+          status: "meeting booked",
+        })),
       ...bookingTasks.filter((task) => task.status === "scheduled").map<QueueBoardCard>((task) => ({
         id: task.id,
         kind: "booking",
@@ -1924,6 +1939,8 @@ export default function Home() {
   async function runSourceCampaign(id: string) {
     const response = await fetch(`/api/source/campaigns/${encodeURIComponent(id)}/run`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ autoSend: outreachStatus.mode === "live" }),
     });
 
     if (!response.ok) {
@@ -1933,7 +1950,12 @@ export default function Home() {
 
     const payload = await response.json();
     setSourceResults(payload.qualified || payload.result?.leads || []);
-    setSourceStatus(`Campaign found ${payload.qualifiedCount || 0} leads above threshold.`);
+    const summary = payload.autoSendSummary;
+    setSourceStatus(
+      summary
+        ? `Vega ran campaign: ${summary.sent || 0} sent, ${summary.blocked || 0} blocked, ${summary.failed || 0} failed, ${summary.callAssistQueued || 0} phone assists.`
+        : `Campaign found ${payload.qualifiedCount || 0} leads above threshold.`,
+    );
     await refreshOpsData();
   }
 
@@ -4415,7 +4437,7 @@ export default function Home() {
                               </span>
                             </div>
                             <p className="mt-1 text-xs text-[#9fb0a8]">
-                              Limit {campaign.dailyLimit} - threshold {campaign.scoreThreshold}
+                              Auto-send eligible leads - limit {campaign.dailyLimit} - threshold {campaign.scoreThreshold}
                             </p>
                           </button>
                         ))}
@@ -5135,12 +5157,13 @@ export default function Home() {
             {active === "queue" && (
               <div className="space-y-6">
                 <Panel title="Phone Assist Accountability" icon={PhoneCall}>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
                     {[
                       { label: "Due Now", value: analytics?.phoneAssist?.due ?? 0, detail: `${analytics?.phoneAssist?.overdue ?? 0} overdue` },
                       { label: "Completed", value: analytics?.phoneAssist?.completed ?? 0, detail: `${analytics?.phoneAssist?.attempts ?? 0} attempts logged` },
                       { label: "Reached", value: analytics?.phoneAssist?.reached ?? 0, detail: `${analytics?.phoneAssist?.conversations ?? 0} conversations` },
                       { label: "Interested", value: analytics?.phoneAssist?.interested ?? 0, detail: `${analytics?.phoneAssist?.meetingRequested ?? 0} meeting requests` },
+                      { label: "Booked", value: analytics?.phoneAssist?.meetingBooked ?? 0, detail: "confirmed from phone outcomes" },
                       {
                         label: "Closed Out",
                         value: (analytics?.phoneAssist?.notInterested ?? 0) + (analytics?.phoneAssist?.suppressed ?? 0),
@@ -5250,6 +5273,14 @@ export default function Home() {
                                       className="rounded-md bg-[#d8ff5f] px-2 py-2 text-xs font-semibold text-[#101417] disabled:cursor-not-allowed disabled:opacity-60"
                                     >
                                       Meeting Req.
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => recordCallAssistOutcome(card.queueItem!, "meeting_booked")}
+                                      disabled={queueActionId === card.id}
+                                      className="rounded-md bg-[#d8ff5f] px-2 py-2 text-xs font-semibold text-[#101417] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Meeting Booked
                                     </button>
                                     <button
                                       type="button"

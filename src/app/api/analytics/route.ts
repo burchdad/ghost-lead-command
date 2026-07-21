@@ -70,12 +70,13 @@ export async function GET() {
       conversations: callInteractions.filter((interaction) => metadataFlag(interaction.metadata, "conversation")).length,
       interested: phoneAssists.filter((item) => ["interested", "info_requested", "meeting_requested"].includes(item.status)).length,
       meetingRequested: phoneAssists.filter((item) => item.status === "meeting_requested").length,
+      meetingBooked: phoneAssists.filter((item) => item.status === "meeting_booked").length,
       suppressed: phoneAssists.filter((item) => item.status === "suppressed").length,
       notInterested: phoneAssists.filter((item) => item.status === "not_interested").length,
       wrongPerson: phoneAssists.filter((item) => item.status === "wrong_person").length,
       callback: phoneAssists.filter((item) => ["callback_requested", "call_no_answer", "voicemail_left", "gatekeeper"].includes(item.status)).length,
       attempts: callInteractions.length,
-      booked: leads.filter((lead) => lead.stage === "Call Booked").length,
+      booked: leads.filter((lead) => lead.stage === "Call Booked").length + phoneAssists.filter((item) => item.status === "meeting_booked").length,
     };
 
     return NextResponse.json({
