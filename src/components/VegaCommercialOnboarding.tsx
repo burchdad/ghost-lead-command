@@ -68,7 +68,16 @@ export default function VegaCommercialOnboarding() {
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [message, setMessage] = useState(() => {
     if (typeof window === "undefined") return "";
-    return new URLSearchParams(window.location.search).get("prompt") || "";
+    const params = new URLSearchParams(window.location.search);
+    const prompt = params.get("prompt");
+    if (prompt) return prompt;
+    const productInterest = params.get("product_interest");
+    const fulfillment = params.get("fulfillment");
+    const context = [
+      productInterest ? `I am interested in ${productInterest.replace(/_/g, " ")}.` : "",
+      fulfillment ? `I want to explore ${fulfillment.replace(/_/g, " ")} fulfillment.` : "",
+    ].filter(Boolean);
+    return context.join(" ");
   });
   const [billingConfirmation, setBillingConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
