@@ -7,7 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test src/lib/waitlist-qualification.test.ts src/lib/vega-launch-team.test.ts src/lib/public-homepage.test.ts src/lib/brand.test.ts",
+    "test": "tsx --test src/lib/waitlist-qualification.test.ts src/lib/vega-launch-team.test.ts src/lib/public-homepage.test.ts src/lib/brand.test.ts src/lib/production-proof.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",

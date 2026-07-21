@@ -1,5 +1,5 @@
 import { createAutomationEvent } from "@/lib/automation";
-import { getPrisma } from "@/lib/prisma";
+import { getActionablePhoneTasks } from "@/lib/phone-assist";
 import { notifySlackVegaLeadRequestResult } from "@/lib/slack";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -38,27 +38,16 @@ export function isCallAssistWorkRequest(text: string) {
 }
 
 export async function runVegaCallAssistWork(input: { instruction?: string; limit?: number; postToSlack?: boolean } = {}) {
-  const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const limit = Math.min(25, Math.max(1, Number(input.limit || 10)));
   const now = new Date();
 
-  const phoneTasks = await prisma.outreachQueueItem.findMany({
-    where: {
-      workspaceId: workspace.id,
-      channel: "manual",
-      provider: { in: ["phone-after-email", "phone-website"] },
-      status: "pending",
-    },
-    include: { lead: { include: { contact: true, company: true } } },
-    orderBy: [{ scheduledFor: "asc" }, { createdAt: "asc" }],
-    take: 200,
-  });
-
-  const dueTasks = phoneTasks.filter((task) => !task.scheduledFor || task.scheduledFor <= now);
-  const upcomingTasks = phoneTasks.filter((task) => task.scheduledFor && task.scheduledFor > now);
-  const selected = [...dueTasks, ...upcomingTasks].slice(0, limit);
-  const overdue = dueTasks.filter((task) => task.scheduledFor && task.scheduledFor < now).length;
+  const phoneReport = await getActionablePhoneTasks({ workspaceId: workspace.id, now, limit: 500 });
+  const phoneTasks = phoneReport.active;
+  const dueTasks = phoneReport.actionable;
+  const upcomingTasks = phoneReport.scheduledLater;
+  const selected = [...phoneReport.actionable, ...phoneReport.scheduledLater].slice(0, limit);
+  const overdue = phoneReport.overdue.length;
   const totalAttempts = phoneTasks.reduce((sum, task) => sum + extractAttempts(task.body), 0);
 
   const worklist = selected.map((task, index) => {
@@ -92,7 +81,7 @@ export async function runVegaCallAssistWork(input: { instruction?: string; limit
   });
 
   const summary = worklist.length
-    ? `Vega found ${worklist.length} phone-assist calls to work now. ${dueTasks.length} due, ${overdue} overdue, ${upcomingTasks.length} upcoming.`
+    ? `Vega found ${worklist.length} phone-assist calls to work now. ${dueTasks.length} actionable, ${overdue} overdue, ${upcomingTasks.length} scheduled later.`
     : "Vega found no pending phone-assist calls to work.";
   const nextMove = worklist.length
     ? "Stephen/VA should call the due list, record every outcome, then run Vega, watch replies."
@@ -135,6 +124,8 @@ export async function runVegaCallAssistWork(input: { instruction?: string; limit
       due: dueTasks.length,
       overdue,
       upcoming: upcomingTasks.length,
+      missingDueTime: phoneReport.missingDueTime.length,
+      callbackDue: phoneReport.callbackDue.length,
       selected: worklist.map((task) => ({ id: task.id, companyName: task.companyName, phone: task.phone, assignee: task.assignee, due: task.due })),
       accountability: worklist.map((task) => ({
         id: task.id,
@@ -157,6 +148,8 @@ export async function runVegaCallAssistWork(input: { instruction?: string; limit
       due: dueTasks.length,
       overdue,
       upcoming: upcomingTasks.length,
+      missingDueTime: phoneReport.missingDueTime.length,
+      callbackDue: phoneReport.callbackDue.length,
       selected: worklist.length,
       totalAttempts,
     },

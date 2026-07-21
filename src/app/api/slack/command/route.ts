@@ -147,7 +147,7 @@ export async function POST(request: Request) {
       const result = await runVegaProductionProof({ instruction: text, postToSlack: true });
       await postSlackCommandResponse(
         responseUrl,
-        `Production proof posted. Sender ${result.report.sender.mode}; ${result.report.today.emailsEligible} email-eligible; ${result.report.today.callsDue} calls due; ${result.report.yesterday.meetingsBooked} booked yesterday.`,
+        `Production proof posted. Sender ${result.report.sender.mode}; ${result.report.emailPipeline.emailQualified} email-qualified; ${result.report.emailPipeline.sendableNow} sendable now; ${result.report.emailPipeline.heldBySenderGovernor} held by governor; ${result.report.today.callsDue} actionable calls; ${result.report.yesterday.meetingsBooked} booked yesterday.`,
       );
     });
     return slackText("Vega is running the seven-day production proof and learning report now.");

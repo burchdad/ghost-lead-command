@@ -1406,17 +1406,47 @@ export async function notifySlackMorningStandup(input: {
     today: {
       campaignsRunning: number;
       emailsEligible: number;
+      sendableNow?: number;
+      heldBySenderGovernor?: number;
       followUpsDue: number;
+      followUpsSendable?: number;
+      followUpsHeld?: number;
       callsDue: number;
       callbacksDue: number;
       repliesToday: number;
       phoneReadyAfterEmail: number;
     };
+    emailPipeline?: {
+      emailQualified: number;
+      sendableNow: number;
+      heldBySenderGovernor: number;
+      firstTouchEligible: number;
+      firstTouchSendable: number;
+      firstTouchHeld: number;
+      followUpsDue: number;
+      followUpsSendable: number;
+      followUpsHeld: number;
+    };
+    phonePipeline?: {
+      createdYesterday: number;
+      dueNow: number;
+      overdue: number;
+      scheduledLater: number;
+      callbackDue: number;
+      missingDueTime: number;
+      completed: number;
+      closed: number;
+    };
     lanes: {
       autoEmailNow: number;
+      autoEmail?: number;
       callFirst: number;
       researchMore: number;
       suppress: number;
+      closed?: number;
+      totalActiveCandidates?: number;
+      unclassified?: number;
+      reconciled?: boolean;
     };
     sender: {
       mode: string;
@@ -1424,6 +1454,7 @@ export async function notifySlackMorningStandup(input: {
       recommendedSendLimit: number;
       decision: string;
     };
+    reconciliationWarnings?: string[];
   };
   novaDirective: string;
   vegaOrders: string[];
@@ -1444,10 +1475,16 @@ export async function notifySlackMorningStandup(input: {
   const proofText = input.proof
     ? [
         `*Yesterday:* ${input.proof.yesterday.emailsAttempted} attempted, ${input.proof.yesterday.delivered} delivered, ${input.proof.yesterday.bounced} risky, ${input.proof.yesterday.replies} replies, ${input.proof.yesterday.callsCompleted} calls, ${input.proof.yesterday.contactsReached} reached, ${input.proof.yesterday.meetingsBooked} booked.`,
-        `*Today:* ${input.proof.today.campaignsRunning} campaigns, ${input.proof.today.emailsEligible} email-eligible, ${input.proof.today.followUpsDue} follow-ups due, ${input.proof.today.callsDue} calls due, ${input.proof.today.callbacksDue} callbacks.`,
-        `*Decision lanes:* auto-email ${input.proof.lanes.autoEmailNow}, call-first ${input.proof.lanes.callFirst}, research ${input.proof.lanes.researchMore}, suppress ${input.proof.lanes.suppress}.`,
-        `*Sender governor:* ${input.proof.sender.mode} at ${input.proof.sender.bounceRate}% risky. ${input.proof.sender.decision}`,
-      ].join("\n")
+        input.proof.emailPipeline
+          ? `*Email pipeline:* ${input.proof.emailPipeline.emailQualified} qualified, ${input.proof.emailPipeline.sendableNow} sendable now, ${input.proof.emailPipeline.heldBySenderGovernor} held by governor, ${input.proof.emailPipeline.followUpsDue} follow-ups due, ${input.proof.emailPipeline.followUpsSendable} follow-ups sendable.`
+          : `*Email pipeline:* ${input.proof.today.emailsEligible} qualified, ${input.proof.today.sendableNow ?? 0} sendable now, ${input.proof.today.heldBySenderGovernor ?? 0} held by governor.`,
+        input.proof.phonePipeline
+          ? `*Phone pipeline:* ${input.proof.phonePipeline.createdYesterday} created yesterday, ${input.proof.today.callsDue} actionable now, ${input.proof.phonePipeline.dueNow} due, ${input.proof.phonePipeline.overdue} overdue, ${input.proof.phonePipeline.scheduledLater} scheduled later, ${input.proof.phonePipeline.missingDueTime} missing schedule.`
+          : `*Phone pipeline:* ${input.proof.today.callsDue} actionable calls, ${input.proof.today.callbacksDue} callbacks.`,
+        `*Primary lanes:* auto-email candidates ${input.proof.lanes.autoEmail ?? input.proof.lanes.autoEmailNow}, call-first ${input.proof.lanes.callFirst}, research ${input.proof.lanes.researchMore}, suppress ${input.proof.lanes.suppress}, closed ${input.proof.lanes.closed ?? 0}${input.proof.lanes.reconciled === false ? ", reconciliation warning" : ""}.`,
+        `*Sender governor:* ${input.proof.sender.mode.toUpperCase()} at ${input.proof.sender.bounceRate}% risky. ${input.proof.sender.decision}`,
+        input.proof.reconciliationWarnings?.length ? `*Warnings:* ${input.proof.reconciliationWarnings.slice(0, 2).join("; ")}` : "",
+      ].filter(Boolean).join("\n")
     : "";
   const result = await postSlackPayload({
     webhookUrl:

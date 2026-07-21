@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { classifyPhoneAssistTasks } from "@/lib/phone-assist";
 import { getPrisma } from "@/lib/prisma";
 import { getSourceScorecard } from "@/lib/source-scorecard";
 import { getDefaultWorkspace } from "@/lib/workspace";
@@ -58,23 +59,26 @@ export async function GET() {
     };
     const replyRate = sent ? replies.length / sent : 0;
     const hotRate = sent ? hotReplies / sent : 0;
-    const phoneAssists = queue.filter((item) => item.channel === "manual" && ["phone-after-email", "phone-website"].includes(item.provider));
     const now = new Date();
+    const phoneAssistReport = classifyPhoneAssistTasks(queue, { now });
+    const phoneAssists = phoneAssistReport.all;
     const phoneAssistMetrics = {
       total: phoneAssists.length,
-      pending: phoneAssists.filter((item) => item.status === "pending").length,
-      due: phoneAssists.filter((item) => item.status === "pending" && (!item.scheduledFor || item.scheduledFor <= now)).length,
-      overdue: phoneAssists.filter((item) => item.status === "pending" && item.scheduledFor && item.scheduledFor < now).length,
-      completed: phoneAssists.filter((item) => item.status !== "pending").length,
+      pending: phoneAssistReport.active.length,
+      due: phoneAssistReport.actionable.length,
+      overdue: phoneAssistReport.overdue.length,
+      completed: phoneAssistReport.completed.length,
       reached: callInteractions.filter((interaction) => metadataFlag(interaction.metadata, "reached")).length,
       conversations: callInteractions.filter((interaction) => metadataFlag(interaction.metadata, "conversation")).length,
-      interested: phoneAssists.filter((item) => ["interested", "info_requested", "meeting_requested"].includes(item.status)).length,
-      meetingRequested: phoneAssists.filter((item) => item.status === "meeting_requested").length,
+      interested: phoneAssistReport.interestedFollowUp.length,
+      meetingRequested: phoneAssistReport.interestedFollowUp.filter((item) => item.status === "meeting_requested").length,
       meetingBooked: phoneAssists.filter((item) => item.status === "meeting_booked").length,
       suppressed: phoneAssists.filter((item) => item.status === "suppressed").length,
       notInterested: phoneAssists.filter((item) => item.status === "not_interested").length,
       wrongPerson: phoneAssists.filter((item) => item.status === "wrong_person").length,
-      callback: phoneAssists.filter((item) => ["callback_requested", "call_no_answer", "voicemail_left", "gatekeeper"].includes(item.status)).length,
+      callback: phoneAssistReport.callbackDue.length,
+      scheduledLater: phoneAssistReport.scheduledLater.length,
+      missingDueTime: phoneAssistReport.missingDueTime.length,
       attempts: callInteractions.length,
       booked: leads.filter((lead) => lead.stage === "Call Booked").length + phoneAssists.filter((item) => item.status === "meeting_booked").length,
     };

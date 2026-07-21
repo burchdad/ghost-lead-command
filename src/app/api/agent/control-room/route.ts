@@ -6,6 +6,7 @@ import { getLinkedInProductStatus } from "@/lib/linkedin-products";
 import { getMissionControlBridgeStatus } from "@/lib/mission-control-bridge";
 import { getOperatorCaps } from "@/lib/operator-policy";
 import { getOutreachStatus, getTwilioReadiness } from "@/lib/outreach";
+import { classifyPhoneAssistTasks } from "@/lib/phone-assist";
 import { getPerplexityStatus } from "@/lib/perplexity";
 import { getPrisma } from "@/lib/prisma";
 import { getSourcingStatus } from "@/lib/sourcing";
@@ -94,11 +95,11 @@ export async function GET() {
     const failed = queue.filter((item) => item.status === "failed").length;
     const manualPending = queue.filter((item) => item.status === "pending" && item.channel === "manual").length;
     const pendingEmail = queue.filter((item) => item.status === "pending" && item.channel === "email").length;
-    const phoneAssistTasks = queue.filter((item) => item.channel === "manual" && ["phone-after-email", "phone-website"].includes(item.provider));
-    const phoneAssistDue = phoneAssistTasks.filter((item) => item.status === "pending" && (!item.scheduledFor || item.scheduledFor <= now)).length;
-    const phoneAssistOverdue = phoneAssistTasks.filter((item) => item.status === "pending" && item.scheduledFor && item.scheduledFor < now).length;
-    const phoneAssistInterested = phoneAssistTasks.filter((item) => ["interested", "info_requested", "meeting_requested"].includes(item.status)).length;
-    const phoneAssistClosed = phoneAssistTasks.filter((item) => ["not_interested", "suppressed", "wrong_person"].includes(item.status)).length;
+    const phoneAssistReport = classifyPhoneAssistTasks(queue, { now });
+    const phoneAssistDue = phoneAssistReport.actionable.length;
+    const phoneAssistOverdue = phoneAssistReport.overdue.length;
+    const phoneAssistInterested = phoneAssistReport.interestedFollowUp.length;
+    const phoneAssistClosed = phoneAssistReport.closed.length;
     const dueSequence = sequenceSteps.filter((step) => ["draft", "active"].includes(step.status)).length;
     const hotReplies = replies.filter((reply) => ["hot", "booked", "objection"].includes(reply.classification)).length;
     const bookedTasks = bookingTasks.filter((task) => task.status !== "blocked").length;
@@ -332,7 +333,7 @@ export async function GET() {
         metrics: {
           "email-ready": pendingEmail,
           "calls due": phoneAssistDue,
-          "callbacks": phoneAssistTasks.filter((item) => item.status === "callback_requested").length,
+          "callbacks": phoneAssistReport.callbackDue.length,
           "booked calls": bookedCalls,
           "sender": `${senderHealth.mode} ${senderHealth.bounceRate}%`,
         },
