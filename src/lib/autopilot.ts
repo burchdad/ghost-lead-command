@@ -214,8 +214,8 @@ export function createAgentPlan(input: {
           partnerService ? `Partner mode: Vega will source buyer/referral accounts for a ${partnerService}, not sell Ghost AI to this niche.` : "",
           `Vega will use ${provider === "google-maps" ? "Google Maps/web contact discovery" : provider === "ghost-lead-agent" ? "Ghost Lead Intelligence" : "People Data Labs"} for this run.`,
           locations?.length ? `Route market expanded into ${locations.length} nearby searches.` : "",
-          "The run will source fresh contacts, dedupe, score, draft email-first outreach, and wait for approvals.",
-          "Slack remains the control surface for approval, rewrite, discard, and suppression decisions.",
+          "The run will source fresh contacts, dedupe, score, clean up email copy, and auto-send eligible email outreach.",
+          "Slack remains the control surface for exceptions, phone-assist work, rewrites, discard, and suppression decisions.",
         ].filter(Boolean)
       : recommended.rationale,
     source: input.source || "slack-command",
@@ -231,8 +231,8 @@ export async function sendAgentPlan(input: {
   const slack = await notifySlackAgentPlan(plan);
 
   await createAutomationEvent({
-    title: "AI operator plan proposed",
-    detail: `${plan.niche} plan proposed from ${plan.source}.`,
+    title: "AI operator auto-send slate proposed",
+    detail: `${plan.niche} auto-send slate proposed from ${plan.source}.`,
     status: slack.sent ? "done" : "blocked",
     type: "agent",
     payload: { plan, slack },
@@ -243,7 +243,7 @@ export async function sendAgentPlan(input: {
 
 export async function approveAgentPlan(plan: AgentPlan, input: { autoSend?: boolean } = {}) {
   await createAutomationEvent({
-    title: "AI operator plan approved",
+    title: input.autoSend ? "AI operator auto-send slate approved" : "AI operator plan approved",
     detail: `${plan.niche} scan approved from Slack. Auto-send ${input.autoSend ? "enabled" : "disabled"}.`,
     status: "running",
     type: "agent",

@@ -104,7 +104,7 @@ function isMorningStandupRequest(text: string) {
 
 function parseApprovalLimit(text: string) {
   const match =
-    text.match(/\b(?:approve|send|release)\s+(\d+)\b/i) ||
+    text.match(/\b(?:approve|send|release|auto[-\s]?send|automate|autopilot)\s+(\d+)\b/i) ||
     text.match(/\b(\d+)\s+(?:emails?|outreach|approvals?|drafts?)\b/i) ||
     text.match(/\blimit\s*(?:=|:)?\s*(\d+)\b/i);
   return match ? Number(match[1]) : undefined;
@@ -300,7 +300,7 @@ export async function POST(request: Request) {
           : `Vega approval complete: approved ${result.approved}/${result.attempted}; sent ${result.sent}; dry-run ${result.dryRunQueued}; failed ${result.failed}.`,
       );
     });
-    return slackText("Vega is approving the next SendGrid-ready outreach batch now. I'll post the result when it finishes.");
+    return slackText("Vega is auto-sending the next SendGrid-ready email batch now. I'll post the result when it finishes.");
   }
 
   if (normalized.includes("nova") || normalized.includes("director")) {
@@ -332,9 +332,10 @@ export async function POST(request: Request) {
     return slackText(
       [
         "Lead Command commands:",
-        "`recommend` - propose today's best niche.",
+        "`recommend` - post today's auto-send slate.",
         "`run roofing in Texas score 85 limit 5` - propose a scoped sourcing plan.",
         "`Vega, need 10 new leads in HVAC between Tyler and Dallas, Texas` - run sourcing and queue approval-ready outreach.",
+        "`Vega, auto-send outreach 10` - let Vega send the next eligible SendGrid-ready emails.",
         "`Vega, work replies` - queue response drafts for hot/booked replies and prep bookings.",
         "`Vega, watch replies` - monitor SendGrid, replies, bookings, and source scorecard after sends.",
         "`Vega, show warmest leads` - rank the top accounts Vega should work next.",

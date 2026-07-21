@@ -79,7 +79,7 @@ function isApprovalRequest(text: string) {
 
 function parseApprovalLimit(text: string) {
   const match =
-    text.match(/\b(?:approve|send|release)\s+(\d+)\b/i) ||
+    text.match(/\b(?:approve|send|release|auto[-\s]?send|automate|autopilot)\s+(\d+)\b/i) ||
     text.match(/\b(\d+)\s+(?:emails?|outreach|approvals?|drafts?)\b/i) ||
     text.match(/\blimit\s*(?:=|:)?\s*(\d+)\b/i);
   return match ? Number(match[1]) : undefined;

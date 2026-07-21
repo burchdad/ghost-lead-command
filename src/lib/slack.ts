@@ -456,17 +456,17 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      text: `Lead Command plan: ${plan.niche}`,
+      text: `Vega auto-send slate: ${plan.niche}`,
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "Lead Command operator plan", emoji: false },
+          text: { type: "plain_text", text: "Vega auto-send slate", emoji: false },
         },
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${plan.niche}*\n${plan.partnerService ? `*Partner mode:* ${plan.partnerService}\n` : ""}*Provider:* ${plan.provider}\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | queue ${plan.queueLimit} approvals\n*Guardrails:* daily source ${caps.dailySourceLimit} | daily queue ${caps.dailyQueueLimit} | pending max ${caps.maxPendingApprovals}`,
+            text: `*${plan.niche}*\n${plan.partnerService ? `*Partner mode:* ${plan.partnerService}\n` : ""}*Provider:* ${plan.provider}\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | auto-send up to ${plan.queueLimit} eligible emails\n*Guardrails:* daily source ${caps.dailySourceLimit} | daily queue ${caps.dailyQueueLimit} | pending max ${caps.maxPendingApprovals}`,
           },
         },
         {
@@ -478,7 +478,7 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
           elements: [
             {
               type: "mrkdwn",
-              text: "Approve starts sourcing, dedupe, scoring, draft generation, and Slack approval cards.",
+              text: "Auto-send lets Vega source, dedupe, score, clean up copy, send eligible emails, and then queue phone-assist work for Stephen/VA. Slack will still receive exceptions, manual contact paths, and blocked sender-health issues.",
             },
           ],
         },
@@ -487,7 +487,7 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
           elements: [
             {
               type: "button",
-              text: { type: "plain_text", text: "Approve Plan", emoji: false },
+              text: { type: "plain_text", text: "Auto-send Emails", emoji: false },
               style: "primary",
               action_id: "plan_approve",
               value: planActionValue("approve", plan),

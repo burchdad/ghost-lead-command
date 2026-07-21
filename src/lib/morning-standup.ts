@@ -78,10 +78,11 @@ export async function runMorningStandup(input: MorningStandupInput = {}) {
     "Vega, queue LinkedIn tasks",
     "Vega, tune copy",
     metrics.sendgridReady >= 5
-      ? `Vega, approve ${targets.approvalTarget}`
+      ? `Vega, auto-send outreach ${targets.approvalTarget}`
       : "Vega, run specialists",
     "Vega, work replies",
     "Vega, push bookings",
+    "Vega, build phone-assist list",
   ].filter(Boolean);
   const novaDirective =
     bottleneck === "booking-handoff"
@@ -92,8 +93,10 @@ export async function runMorningStandup(input: MorningStandupInput = {}) {
           ? "Nova should authorize Vega to prioritize new contactable lead volume before strategy discussion."
           : "Nova should keep Vega focused on the single bottleneck and ask for proof of movement by midday.";
   const stephenAsk =
-    metrics.sendgridReady > 0
-      ? `Approve ${targets.approvalTarget} reviewed SendGrid-ready outreach items.`
+    metrics.manualTasks > 0
+      ? `Work or assign ${metrics.manualTasks} phone/manual contact task${metrics.manualTasks === 1 ? "" : "s"} while Vega owns the email send lane.`
+      : metrics.sendgridReady > 0
+        ? `Let Vega auto-send the next ${targets.approvalTarget} eligible emails; Stephen/VA only steps in for calls, blocked sends, and hot replies.`
       : "Review the standup bottleneck and unblock the first manual contact path or booking task.";
 
   const payload = {
