@@ -25,17 +25,22 @@ export type AgentPlan = {
   source: "daily" | "slack-command" | "reroll";
 };
 
-const knownNiches = [
-  "roofing",
-  "hvac",
-  "dental",
-  "med spa",
-  "auto detail",
-  "construction",
-  "plumbing",
-  "landscaping",
-  "chiropractor",
-  "law firm",
+const nicheAliases = [
+  { match: "automobile detailing", niche: "Auto Detail" },
+  { match: "auto detailing", niche: "Auto Detail" },
+  { match: "mobile detailing", niche: "Auto Detail" },
+  { match: "car detailing", niche: "Auto Detail" },
+  { match: "vehicle detailing", niche: "Auto Detail" },
+  { match: "auto detail", niche: "Auto Detail" },
+  { match: "roofing", niche: "Roofing" },
+  { match: "hvac", niche: "HVAC" },
+  { match: "dental", niche: "Dental" },
+  { match: "med spa", niche: "Med Spa" },
+  { match: "construction", niche: "Construction" },
+  { match: "plumbing", niche: "Plumbing" },
+  { match: "landscaping", niche: "Landscaping" },
+  { match: "chiropractor", niche: "Chiropractor" },
+  { match: "law firm", niche: "Law Firm" },
 ];
 
 const localServiceNiches = new Set(["roofing", "hvac", "dental", "med spa", "auto detail", "construction", "plumbing", "landscaping", "chiropractor", "law firm"]);
@@ -64,13 +69,15 @@ function parseLocation(text: string) {
   const nearMatch = text.match(/\b(?:near|around|outside of)\s+(.+?)(?:\s+(?:for|with|at|over|under|score|limit|size|today|tomorrow)|$)/i);
   if (nearMatch?.[1]) return cleanLocation(nearMatch[1]);
 
+  const localRangeMatch = text.match(/\bin\s+(.+?)(?:\s+and\s+surrounding|\s+within\s+\d+\s*mile|\s+within|\s+radius|\s+range|$)/i);
+  if (localRangeMatch?.[1]) return cleanLocation(localRangeMatch[1]);
+
   const match = text.match(/\bin\s+([a-zA-Z\s,]+?)(?:\s+(?:with|at|over|under|score|limit|today|tomorrow)|$)/i);
   return cleanLocation(match?.[1]) || "United States";
 }
 
 function parseLocationMarkets(text: string, location: string) {
   const normalized = clean(text).toLowerCase();
-  if (!/\bbetween\b/.test(normalized)) return undefined;
 
   if (normalized.includes("tyler") && normalized.includes("dallas")) {
     return [
@@ -84,6 +91,22 @@ function parseLocationMarkets(text: string, location: string) {
       "Dallas, TX",
     ];
   }
+
+  if (normalized.includes("tyler") && /\b(?:surrounding|nearby|within|mile|radius|range)\b/.test(normalized)) {
+    return [
+      "Tyler, TX",
+      "Whitehouse, TX",
+      "Bullard, TX",
+      "Lindale, TX",
+      "Mineola, TX",
+      "Jacksonville, TX",
+      "Henderson, TX",
+      "Longview, TX",
+      "Kilgore, TX",
+    ];
+  }
+
+  if (!/\bbetween\b/.test(normalized)) return undefined;
 
   const match = normalized.match(/\bbetween\s+(.+?)\s+and\s+(.+?)(?:\s+(?:texas|tx|for|with|at|over|under|score|limit|size|today|tomorrow)|[.!?]*$)/i);
   if (!match) return undefined;
@@ -128,6 +151,9 @@ function parseProvider(text: string, niche: string): SourceProvider {
 
 function commandQuery(niche: string, text: string) {
   const lowerNiche = niche.toLowerCase();
+  if (lowerNiche === "auto detail") {
+    return "automobile detailing referral partners car dealerships used car lots luxury apartments property managers fleet operators auto repair tint wrap shops";
+  }
   if (localServiceNiches.has(lowerNiche)) {
     return `${lowerNiche} companies owners operators that need missed-call follow-up, quote follow-up, booking automation, or speed-to-lead help`;
   }
@@ -143,16 +169,16 @@ export function createAgentPlan(input: {
   source?: AgentPlan["source"];
 } = {}): AgentPlan {
   const text = clean(input.text).toLowerCase();
-  const explicitNiche = knownNiches.find((niche) => text.includes(niche));
+  const explicitNiche = nicheAliases.find((alias) => text.includes(alias.match))?.niche;
   const recommended = recommendNiche({ exclude: input.exclude });
-  const niche = explicitNiche ? titleCase(explicitNiche) : recommended.niche;
+  const niche = explicitNiche || recommended.niche;
   const provider = parseProvider(text, niche);
   const location = text ? parseLocation(text) : recommended.location;
   const locations = text ? parseLocationMarkets(text, location) : undefined;
   const industries = explicitNiche
-    ? [titleCase(explicitNiche), explicitNiche === "roofing" ? "Construction" : "Local Services"]
+    ? [niche, niche === "Roofing" ? "Construction" : niche === "Auto Detail" ? "Automotive Services" : "Local Services"]
     : recommended.industries;
-  const minScore = parseNumber(text, "score", recommended.minScore);
+  const minScore = parseNumber(text, "score", explicitNiche && localServiceNiches.has(niche.toLowerCase()) ? 70 : recommended.minScore);
   const requestedLeads = parseLeadCount(text);
   const queueLimit = Math.min(maxRequestedQueueLimit(), Math.max(1, requestedLeads || parseNumber(text, "limit", recommended.queueLimit)));
   const size = Math.min(maxRequestedSourceSize(), Math.max(queueLimit, parseNumber(text, "size", Math.max(30, queueLimit * 3))));

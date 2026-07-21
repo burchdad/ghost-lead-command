@@ -6,7 +6,7 @@ import type { CallAssistTask } from "@/lib/human-followup";
 import { buildSignalScoreboard, signalScoreboardSummary } from "@/lib/intent-scoreboard";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
 import { improveOfferCopy } from "@/lib/offer-copy-brain";
-import { evaluateSourceLead, prepareOperatorRun } from "@/lib/operator-policy";
+import { evaluateSourceLead, prepareOperatorRun, type OperatorRunPolicy } from "@/lib/operator-policy";
 import { getPrisma } from "@/lib/prisma";
 import { searchFreshLeads, type SourceDiagnostics, type SourceLead, type SourceProvider } from "@/lib/sourcing";
 import { findSuppressionMatch } from "@/lib/suppression";
@@ -52,6 +52,19 @@ type NicheRecommendation = {
   minScore: number;
   queueLimit: number;
   rationale: string[];
+};
+
+type QueuedEntry = {
+  lead: { companyName: string };
+  item: Prisma.OutreachQueueItemGetPayload<{ include: { lead: true } }>;
+  slack: unknown;
+  approval: unknown;
+};
+
+type ManualQueuedEntry = {
+  lead: { companyName: string };
+  item: Prisma.OutreachQueueItemGetPayload<{ include: { lead: true } }>;
+  slack: unknown;
 };
 
 const nichePlaybook: NicheRecommendation[] = [
@@ -324,6 +337,18 @@ function manualContactBody(sourceLead: SourceLead) {
   ].filter(Boolean).join("\n");
 }
 
+function localManualFallbackLimit(requestedQueueLimit: number) {
+  const raw = Number(process.env.VEGA_LOCAL_MANUAL_FALLBACK_LIMIT || 10);
+  const fallback = Number.isFinite(raw) && raw > 0 ? raw : 10;
+  return Math.min(Math.max(1, requestedQueueLimit), fallback);
+}
+
+function canRunLocalManualFallback(provider: SourceProvider, policy: OperatorRunPolicy) {
+  if (provider !== "google-maps") return false;
+  if (policy.effective.size <= 0) return false;
+  return !policy.blockedReasons.some((reason) => /source|daily outreach queue/i.test(reason));
+}
+
 async function importSourceLead(sourceLead: SourceLead, workspaceId: string) {
   const prisma = getPrisma();
   const email = clean(sourceLead.email).toLowerCase();
@@ -432,6 +457,143 @@ async function importSourceLead(sourceLead: SourceLead, workspaceId: string) {
   return { skipped: false as const, lead };
 }
 
+async function runLocalManualFallback(input: {
+  workspaceId: string;
+  provider: SourceProvider;
+  query?: string;
+  location?: string;
+  locations?: string[];
+  industries?: string[];
+  titles?: string[];
+  size: number;
+  minScore: number;
+  requestedQueueLimit: number;
+  policy: OperatorRunPolicy;
+  autoSend: boolean;
+}) {
+  const prisma = getPrisma();
+  const skipped: Record<string, number> = {};
+
+  function skip(reason: string) {
+    skipped[reason] = (skipped[reason] || 0) + 1;
+  }
+
+  const sourceResult = await searchFreshLeadsDeep({
+    provider: input.provider,
+    query: input.query || "local service businesses with phone website contact path",
+    location: input.location,
+    locations: input.locations,
+    industries: input.industries,
+    titles: input.titles,
+    size: input.size,
+    queueLimit: input.requestedQueueLimit,
+    minScore: input.minScore,
+  });
+
+  const manualLimit = localManualFallbackLimit(input.requestedQueueLimit);
+  const seen = new Set<string>();
+  const manualCandidates = [
+    ...(sourceResult.leads as SourceLead[]),
+    ...((sourceResult.reviewLeads || []) as SourceLead[]),
+  ]
+    .filter((lead) => {
+      const key = sourceLeadKey(lead);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      if (lead.score < input.minScore) return false;
+      if (!lead.phone && !(lead as SourceLead & { website?: string }).website) return false;
+      if (!lead.companyName?.trim() || !lead.name?.trim()) return false;
+      return true;
+    })
+    .slice(0, manualLimit * 2);
+
+  const manualQueued: ManualQueuedEntry[] = [];
+
+  for (const sourceLead of manualCandidates) {
+    if (manualQueued.length >= manualLimit) break;
+    const imported = await importSourceLead(sourceLead, input.workspaceId);
+    if (imported.skipped) {
+      skip(`manual-${imported.reason}`);
+      continue;
+    }
+
+    const item = await prisma.outreachQueueItem.create({
+      data: {
+        workspaceId: input.workspaceId,
+        leadId: imported.lead.id,
+        channel: "manual",
+        provider: "phone-website",
+        subject: `Manual contact path for ${imported.lead.companyName}`,
+        body: manualContactBody(sourceLead),
+        status: "pending",
+        reason: sanitizeInternalReason(`Queued by Vega as a local-service manual fallback while email approval capacity is full. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`),
+      },
+      include: { lead: true },
+    });
+
+    const slack = await notifySlackOutreachApproval(item);
+    manualQueued.push({ lead: imported.lead, item, slack });
+  }
+
+  const diagnostics = {
+    ...(sourceResult.diagnostics || {
+      rawFound: sourceResult.leads.length,
+      strictQualified: sourceResult.leads.length,
+      reviewReady: sourceResult.reviewLeads?.length || 0,
+      contactable: sourceResult.leads.filter((lead: SourceLead) => lead.email || lead.phone).length,
+      missingContact: sourceResult.leads.filter((lead: SourceLead) => !lead.email && !lead.phone).length,
+      suppressed: {},
+    }),
+    policySkipped: skipped,
+    searchRuns: sourceResult.runs,
+  };
+
+  await createAutomationEvent({
+    title: "AI operator local manual fallback finished",
+    detail: `Email queue was blocked, so Vega sourced local contact paths. Found ${diagnostics.rawFound}, queued ${manualQueued.length} manual tasks.`,
+    status: manualQueued.length ? "done" : "blocked",
+    type: "agent",
+    payload: {
+      provider: input.provider,
+      found: sourceResult.leads.length,
+      queued: manualQueued.length,
+      skipped,
+      diagnostics,
+      guardrails: input.policy,
+      autoSend: input.autoSend,
+    },
+  });
+
+  return {
+    provider: input.provider,
+    found: sourceResult.leads.length,
+    rawFound: diagnostics.rawFound,
+    qualified: manualCandidates.length,
+    queued: manualQueued.length,
+    reviewReady: diagnostics.reviewReady,
+    skipped,
+    diagnostics,
+    guardrails: input.policy,
+    items: manualQueued.map((entry) => entry.item),
+    autoSendSummary: {
+      attempted: 0,
+      sent: 0,
+      dryRunQueued: 0,
+      blocked: 0,
+      failed: 0,
+      sentCompanies: [],
+      dryRunCompanies: [],
+      blockedCompanies: [],
+      failedCompanies: [],
+      manualCompanies: manualQueued.map((entry) => entry.lead.companyName),
+      callAssistTasks: [],
+    },
+    message: manualQueued.length
+      ? `Email approval capacity was blocked, so Vega queued ${manualQueued.length} local manual contact tasks instead.`
+      : sourceResult.message || "Email approval capacity was blocked and Vega did not find local manual contact paths to queue.",
+  };
+}
+
 export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
@@ -456,6 +618,31 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   });
 
   if (policy.mode === "blocked") {
+    if (canRunLocalManualFallback(provider, policy)) {
+      await createAutomationEvent({
+        title: "AI operator switching to local manual fallback",
+        detail: `${policy.blockedReasons.join(" ")} Vega will still source Google Maps leads and create manual contact tasks.`,
+        status: "running",
+        type: "agent",
+        payload: { provider, policy },
+      });
+
+      return runLocalManualFallback({
+        workspaceId: workspace.id,
+        provider,
+        query: input.query,
+        location: input.location || process.env.AGENT_SOURCE_LOCATION || "United States",
+        locations: input.locations,
+        industries: input.industries,
+        titles: input.titles || ["Owner", "Founder", "CEO", "President", "General Manager", "Operations Manager"],
+        size: policy.effective.size,
+        minScore: policy.effective.minScore,
+        requestedQueueLimit,
+        policy,
+        autoSend,
+      });
+    }
+
     await createAutomationEvent({
       title: "AI operator blocked by guardrails",
       detail: policy.blockedReasons.join(" "),
@@ -520,8 +707,8 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     if (qualified.length >= queueLimit) break;
   }
 
-  const queued: { lead: { companyName: string }; item: Prisma.OutreachQueueItemGetPayload<{ include: { lead: true } }>; slack: unknown; approval: unknown }[] = [];
-  const manualQueued: { lead: { companyName: string }; item: Prisma.OutreachQueueItemGetPayload<{ include: { lead: true } }>; slack: unknown }[] = [];
+  const queued: QueuedEntry[] = [];
+  const manualQueued: ManualQueuedEntry[] = [];
 
   for (const sourceLead of qualified) {
     const imported = await importSourceLead(sourceLead, workspace.id);

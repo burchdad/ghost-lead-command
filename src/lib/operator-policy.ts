@@ -82,7 +82,7 @@ export async function prepareOperatorRun(input: PrepareRunInput): Promise<Operat
       where: { workspaceId: input.workspaceId, createdAt: { gte: since } },
     }),
     prisma.outreachQueueItem.count({
-      where: { workspaceId: input.workspaceId, status: "pending" },
+      where: { workspaceId: input.workspaceId, status: "pending", channel: "email" },
     }),
   ]);
 
@@ -97,7 +97,7 @@ export async function prepareOperatorRun(input: PrepareRunInput): Promise<Operat
 
   if (remainingSource <= 0) blockedReasons.push("Daily source cap reached.");
   if (remainingQueue <= 0) blockedReasons.push("Daily outreach queue cap reached.");
-  if (pendingCapacity <= 0) blockedReasons.push("Pending approval cap reached.");
+  if (pendingCapacity <= 0) blockedReasons.push("Pending email approval cap reached.");
   if (queueLimit <= 0) blockedReasons.push("No approval capacity remains for this run.");
   if (size <= 0) blockedReasons.push("No sourcing capacity remains for this run.");
 
@@ -125,7 +125,7 @@ export async function getOperatorQueueCapacity(workspaceId: string) {
       where: { workspaceId, createdAt: { gte: since } },
     }),
     prisma.outreachQueueItem.count({
-      where: { workspaceId, status: "pending" },
+      where: { workspaceId, status: "pending", channel: "email" },
     }),
   ]);
 
@@ -135,7 +135,7 @@ export async function getOperatorQueueCapacity(workspaceId: string) {
   const blockedReasons: string[] = [];
 
   if (remainingQueue <= 0) blockedReasons.push("Daily outreach queue cap reached.");
-  if (pendingCapacity <= 0) blockedReasons.push("Pending approval cap reached.");
+  if (pendingCapacity <= 0) blockedReasons.push("Pending email approval cap reached.");
 
   return {
     mode: blockedReasons.length ? ("blocked" as const) : ("ready" as const),
