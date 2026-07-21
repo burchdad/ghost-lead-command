@@ -66,7 +66,10 @@ const initialMessage: Message = {
 
 export default function VegaCommercialOnboarding() {
   const [session, setSession] = useState<SessionPayload | null>(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("prompt") || "";
+  });
   const [billingConfirmation, setBillingConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
