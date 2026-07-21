@@ -287,16 +287,22 @@ export async function notifySlackOutreachApproval(
   const signalSummary = scoreboard ? signalScoreboardSummary(scoreboard) : clean(item.reason || undefined);
   const signalPreview = signalSummary.length > 620 ? `${signalSummary.slice(0, 617)}...` : signalSummary;
   const queueUrl = new URL("/?view=queue", appBaseUrl()).toString();
+  const isManualTask = item.channel === "manual";
+  const headerText = isManualTask ? "Lead Command manual contact ready" : "Lead Command approval ready";
+  const actionHelp = isManualTask
+    ? "Approve marks this manual phone/contact-form task ready. No SendGrid email is sent from this card. Redo rewrites instructions. Discard rejects it."
+    : "Approve sends in live mode or records a dry-run approval. Redo marks it for rewrite. Discard rejects it.";
+  const approveText = isManualTask ? "Approve Manual" : "Approve";
 
   const response = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      text: `Approval ready: ${title}`,
+      text: `${isManualTask ? "Manual contact ready" : "Approval ready"}: ${title}`,
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "Lead Command approval ready", emoji: false },
+          text: { type: "plain_text", text: headerText, emoji: false },
         },
         {
           type: "section",
@@ -322,7 +328,7 @@ export async function notifySlackOutreachApproval(
           elements: [
             {
               type: "mrkdwn",
-              text: "Approve sends in live mode or records a dry-run approval. Redo marks it for rewrite. Discard rejects it.",
+              text: actionHelp,
             },
           ],
         },
@@ -331,7 +337,7 @@ export async function notifySlackOutreachApproval(
           elements: [
             {
               type: "button",
-              text: { type: "plain_text", text: "Approve", emoji: false },
+              text: { type: "plain_text", text: approveText, emoji: false },
               style: "primary",
               action_id: "outreach_approve",
               value: outreachActionValue(item.id, "approve"),

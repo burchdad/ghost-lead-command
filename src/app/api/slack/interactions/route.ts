@@ -62,8 +62,11 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
   if (actionName === "outreach_approve") {
     const result = await approveOutreachQueueItem(itemId);
     const delivery = result.ok ? result.body.delivery : null;
+    const isManual = delivery?.channel === "manual";
     const summary = result.ok
-      ? `Approved outreach item. Delivery: ${delivery?.dryRun ? "dry-run queued" : delivery?.status || "sent"}.`
+      ? isManual
+        ? "Approved manual contact task. No SendGrid email was sent."
+        : `Approved outreach item. Delivery: ${delivery?.dryRun ? "dry-run queued" : delivery?.status || "sent"}.`
       : `Approval failed: ${result.body.error || "Unknown approval failure."}`;
     await recordOutreachSlackAction({ action: "approve", itemId, ok: result.ok, summary, payload });
     return slackEphemeral(result.ok ? `Vega approved it. ${summary}` : summary);

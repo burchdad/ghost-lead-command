@@ -334,7 +334,7 @@ function manualContactBody(sourceLead: SourceLead) {
     website ? `Website/contact form: ${website}` : "",
     signals ? `Why this lead: ${signals}` : "",
     `Vega read: ${signalScoreboardSummary(scoreboard)}`,
-    "Operator move: find a direct email, call the business, or use the website contact form before adding this lead to email outreach.",
+    "Operator move: call the business or use the website contact form. Approving this card marks the manual task ready; it does not send a SendGrid email.",
   ].filter(Boolean).join("\n");
 }
 
@@ -539,9 +539,9 @@ async function runLocalManualFallback(input: {
     minScore: input.minScore,
   });
 
-  const manualLimit = localManualFallbackLimit(input.requestedQueueLimit);
+  const fallbackLimit = localManualFallbackLimit(input.requestedQueueLimit);
   const seen = new Set<string>();
-  const manualCandidates = [
+  const fallbackCandidates = [
     ...(sourceResult.leads as SourceLead[]),
     ...((sourceResult.reviewLeads || []) as SourceLead[]),
   ]
@@ -550,16 +550,79 @@ async function runLocalManualFallback(input: {
       if (seen.has(key)) return false;
       seen.add(key);
       if (lead.score < input.minScore) return false;
-      if (!lead.phone && !(lead as SourceLead & { website?: string }).website) return false;
+      if (!lead.email && !lead.phone && !(lead as SourceLead & { website?: string }).website) return false;
       if (!lead.companyName?.trim() || !lead.name?.trim()) return false;
       return true;
     })
-    .slice(0, manualLimit * 2);
+    .slice(0, fallbackLimit * 3);
 
+  const emailQueued: QueuedEntry[] = [];
   const manualQueued: ManualQueuedEntry[] = [];
 
-  for (const sourceLead of manualCandidates) {
-    if (manualQueued.length >= manualLimit) break;
+  if (input.autoSend) {
+    for (const sourceLead of fallbackCandidates.filter((lead) => clean(lead.email))) {
+      if (emailQueued.length >= fallbackLimit) break;
+      const partnerService = clean(input.partnerService);
+      const imported = await importSourceLead(
+        sourceLead,
+        input.workspaceId,
+        partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {},
+      );
+      if (imported.skipped) {
+        skip(`email-${imported.reason}`);
+        continue;
+      }
+
+      const generated = partnerService
+        ? { provider: "partner-service-template", text: "" }
+        : await generateSalesText({
+            kind: "outreach",
+            lead: {
+              name: imported.lead.name,
+              companyName: imported.lead.companyName,
+              niche: imported.lead.niche,
+              stage: imported.lead.stage,
+              score: imported.lead.score,
+              value: imported.lead.value,
+              source: imported.lead.source,
+              nextAction: imported.lead.nextAction,
+            },
+            input: "Autonomous fallback first-touch email. Keep it short, consultative, and approval-ready.",
+          });
+
+      const copy = partnerService
+        ? partnerServiceOutreachCopy(sourceLead, partnerService)
+        : improveGeneratedOutreach(parseGeneratedOutreach(generated.text, imported.lead.companyName), sourceLead);
+
+      const item = await prisma.outreachQueueItem.create({
+        data: {
+          workspaceId: input.workspaceId,
+          leadId: imported.lead.id,
+          channel: "email",
+          provider: "sendgrid",
+          subject: copy.subject,
+          body: copy.body,
+          status: "pending",
+          reason: sanitizeInternalReason(`Queued by Vega during local fallback because a public website email was discovered. ${copy.reason} ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))} Generated via ${generated.provider}.`),
+        },
+        include: { lead: true },
+      });
+
+      const approval = await approveOutreachQueueItem(item.id);
+      emailQueued.push({
+        lead: imported.lead,
+        item,
+        slack: { sent: false, skipped: true, reason: "Auto-send fallback; Slack approval card skipped." },
+        approval,
+      });
+    }
+  } else {
+    const emailCandidates = fallbackCandidates.filter((lead) => clean(lead.email)).length;
+    if (emailCandidates) skip(`email-capacity-blocked`);
+  }
+
+  for (const sourceLead of fallbackCandidates.filter((lead) => !clean(lead.email))) {
+    if (manualQueued.length >= Math.max(0, fallbackLimit - emailQueued.length)) break;
     const partnerService = clean(input.partnerService);
     const imported = await importSourceLead(
       sourceLead,
@@ -604,13 +667,13 @@ async function runLocalManualFallback(input: {
 
   await createAutomationEvent({
     title: "AI operator local manual fallback finished",
-    detail: `Email queue was blocked, so Vega sourced local contact paths. Found ${diagnostics.rawFound}, queued ${manualQueued.length} manual tasks.`,
-    status: manualQueued.length ? "done" : "blocked",
+    detail: `Email queue was blocked, so Vega ran local fallback. Found ${diagnostics.rawFound}, auto-send attempted ${emailQueued.length}, queued ${manualQueued.length} manual tasks.`,
+    status: emailQueued.length || manualQueued.length ? "done" : "blocked",
     type: "agent",
     payload: {
       provider: input.provider,
       found: sourceResult.leads.length,
-      queued: manualQueued.length,
+      queued: emailQueued.length + manualQueued.length,
       skipped,
       diagnostics,
       guardrails: input.policy,
@@ -618,32 +681,73 @@ async function runLocalManualFallback(input: {
     },
   });
 
+  const approvalResults = emailQueued.map((entry) => entry.approval).filter(Boolean) as Array<
+    | {
+        ok: true;
+        body: {
+          delivery: { status: string; dryRun?: boolean; message?: string };
+          humanFollowUp?: { queued: boolean; task?: CallAssistTask };
+        };
+      }
+    | { ok: false; body: { error?: string; detail?: string } }
+  >;
+  const sentCompanies = emailQueued
+    .filter((entry) => {
+      const approval = entry.approval as { ok?: boolean; body?: { delivery?: { status?: string; dryRun?: boolean } } } | null;
+      return Boolean(approval?.ok && approval.body?.delivery?.status === "sent" && !approval.body.delivery.dryRun);
+    })
+    .map((entry) => entry.lead.companyName);
+  const dryRunCompanies = emailQueued
+    .filter((entry) => {
+      const approval = entry.approval as { ok?: boolean; body?: { delivery?: { dryRun?: boolean } } } | null;
+      return Boolean(approval?.ok && approval.body?.delivery?.dryRun);
+    })
+    .map((entry) => entry.lead.companyName);
+  const blockedCompanies = emailQueued
+    .filter((entry) => {
+      const approval = entry.approval as { ok?: boolean } | null;
+      return input.autoSend && approval && !approval.ok;
+    })
+    .map((entry) => entry.lead.companyName);
+  const failedCompanies = emailQueued
+    .filter((entry) => {
+      const approval = entry.approval as { ok?: boolean; body?: { delivery?: { status?: string } } } | null;
+      return Boolean(approval?.ok && approval.body?.delivery?.status === "failed");
+    })
+    .map((entry) => entry.lead.companyName);
+  const callAssistTasks = approvalResults.flatMap((approval) => {
+    if (!approval.ok) return [];
+    return approval.body.humanFollowUp?.queued && approval.body.humanFollowUp.task
+      ? [approval.body.humanFollowUp.task]
+      : [];
+  });
+
   return {
     provider: input.provider,
     found: sourceResult.leads.length,
     rawFound: diagnostics.rawFound,
-    qualified: manualCandidates.length,
-    queued: manualQueued.length,
+    qualified: fallbackCandidates.length,
+    queued: emailQueued.length + manualQueued.length,
     reviewReady: diagnostics.reviewReady,
     skipped,
     diagnostics,
     guardrails: input.policy,
-    items: manualQueued.map((entry) => entry.item),
+    items: [...emailQueued.map((entry) => entry.item), ...manualQueued.map((entry) => entry.item)],
     autoSendSummary: {
-      attempted: 0,
-      sent: 0,
-      dryRunQueued: 0,
-      blocked: 0,
-      failed: 0,
-      sentCompanies: [],
-      dryRunCompanies: [],
-      blockedCompanies: [],
-      failedCompanies: [],
+      attempted: approvalResults.length,
+      sent: sentCompanies.length,
+      dryRunQueued: dryRunCompanies.length,
+      blocked: blockedCompanies.length,
+      failed: failedCompanies.length,
+      sentCompanies,
+      dryRunCompanies,
+      blockedCompanies,
+      failedCompanies,
       manualCompanies: manualQueued.map((entry) => entry.lead.companyName),
-      callAssistTasks: [],
+      callAssistTasks,
     },
-    message: manualQueued.length
-      ? `Email approval capacity was blocked, so Vega queued ${manualQueued.length} local manual contact tasks instead.`
+    message: emailQueued.length || manualQueued.length
+      ? `Email approval capacity was blocked, so Vega used local fallback: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued, ${manualQueued.length} manual contact tasks, ${callAssistTasks.length} phone assists queued.`
       : sourceResult.message || "Email approval capacity was blocked and Vega did not find local manual contact paths to queue.",
   };
 }
@@ -710,11 +814,36 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     return {
       provider,
       found: 0,
+      rawFound: 0,
       qualified: 0,
       queued: 0,
+      reviewReady: 0,
       skipped: { guardrails: policy.blockedReasons.length },
+      diagnostics: {
+        rawFound: 0,
+        strictQualified: 0,
+        reviewReady: 0,
+        contactable: 0,
+        missingContact: 0,
+        suppressed: {},
+        policySkipped: { guardrails: policy.blockedReasons.length },
+        searchRuns: [],
+      },
       items: [],
       guardrails: policy,
+      autoSendSummary: {
+        attempted: 0,
+        sent: 0,
+        dryRunQueued: 0,
+        blocked: 0,
+        failed: 0,
+        sentCompanies: [],
+        dryRunCompanies: [],
+        blockedCompanies: [],
+        failedCompanies: [],
+        manualCompanies: [],
+        callAssistTasks: [],
+      },
       message: `AI operator paused: ${policy.blockedReasons.join(" ")}`,
     };
   }
