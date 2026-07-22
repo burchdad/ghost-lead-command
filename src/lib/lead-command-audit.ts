@@ -57,14 +57,14 @@ export async function runLeadCommandAudit(input: { postToSlack?: boolean } = {})
   const repliesToday = replies.filter((reply) => reply.createdAt >= since).length;
   const sourceOnline = sourcing.googleMapsConfigured || sourcing.pdlConfigured || sourcing.ghostLeadAgentConfigured;
   const bookingReady = Boolean(booking.calendarConfigured && booking.ownerEmail && (booking.meetingLink || booking.zoomConfigured));
-  const approvalJam = pending >= Math.max(10, caps.maxPendingApprovals);
+  const reviewJam = pending >= Math.max(5, caps.executiveReviewLimit);
   const noReplies = sentOrQueued > 0 && replies.length === 0;
 
   const agents: AgentAudit[] = [
     {
       name: missionControl.sourceAgent || "Vega Lead Director AI",
-      status: status(sourceOnline && outreach.sendgridConfigured, approvalJam || noReplies),
-      detail: approvalJam ? `${pending} pending approvals are blocking new outreach.` : "Can coordinate source, QA, outreach, and escalation lanes.",
+      status: status(sourceOnline && outreach.sendgridConfigured, reviewJam || noReplies),
+      detail: reviewJam ? `${pending} executive-review items need a human decision.` : "Can coordinate source, trust scoring, safe sends, call-first work, and escalation lanes.",
       owner: "Vega",
     },
     {
@@ -119,8 +119,8 @@ export async function runLeadCommandAudit(input: { postToSlack?: boolean } = {})
     },
   ];
 
-  const bottleneck = approvalJam
-    ? `${pending} approval-ready drafts are waiting on Stephen. No more sourcing should be prioritized until a reviewed batch is approved.`
+  const bottleneck = reviewJam
+    ? `${pending} executive-review items are waiting on Stephen. Keep auto-send moving, but clear exception decisions before adding more high-impact accounts.`
     : !outreach.sendgridConfigured
       ? "SendGrid is not configured, so email outreach cannot leave the system."
       : outreach.mode !== "live"
@@ -129,19 +129,19 @@ export async function runLeadCommandAudit(input: { postToSlack?: boolean } = {})
           ? "No source provider is online."
           : noReplies
             ? "Sends exist but replies are not coming back yet; improve targeting/copy and verify inbound handling."
-            : "System is operational; continue controlled sourcing and approval cadence.";
-  const nextMove = approvalJam
-    ? `Stephen should approve the next ${Math.min(10, pending)} reviewed outreach items from Slack, then Vega should monitor SendGrid events and replies.`
+            : "System is operational; continue controlled sourcing, trust scoring, and sender-governed outreach.";
+  const nextMove = reviewJam
+    ? `Stephen should decide the next ${Math.min(caps.executiveReviewLimit, pending)} executive-review items from Slack, while Vega continues safe sends and call-first work.`
     : sentOrQueued === 0
       ? "Vega should run a Google Maps-first director sprint and queue contactable leads."
-      : "Vega should brief Nova daily, monitor replies, and escalate only blocked approvals or booking-ready responses.";
+      : "Vega should brief Nova daily, monitor replies, and escalate only executive exceptions or booking-ready responses.";
   const executiveSummary =
-    approvalJam
-      ? "Lead generation is sourcing and drafting, but the machine is jammed at human approval."
+    reviewJam
+      ? "Lead generation is moving, but the executive-review lane needs decisions on exception accounts."
       : "Lead Command is ready for supervised lead-gen operations with Vega coordinating and Nova receiving executive updates.";
 
   const audit = {
-    ok: agents.every((agent) => agent.status !== "blocked") && !approvalJam,
+    ok: agents.every((agent) => agent.status !== "blocked") && !reviewJam,
     executiveSummary,
     bottleneck,
     nextMove,

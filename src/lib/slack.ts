@@ -478,7 +478,7 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${plan.niche}*\n${plan.partnerService ? `*Partner mode:* ${plan.partnerService}\n` : ""}*Provider:* ${plan.provider}\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | auto-send up to ${plan.queueLimit} eligible emails\n*Guardrails:* daily source ${caps.dailySourceLimit} | daily queue ${caps.dailyQueueLimit} | pending max ${caps.maxPendingApprovals}`,
+            text: `*${plan.niche}*\n${plan.partnerService ? `*Partner mode:* ${plan.partnerService}\n` : ""}*Provider:* ${plan.provider}\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | Vega auto-sends trust ${caps.autoSendTrustThreshold}+ until sender budget is used\n*Guardrails:* daily source ${caps.dailySourceLimit} | safe sends ${caps.dailySafeSendLimit} | executive review ${caps.executiveReviewLimit}`,
           },
         },
         {
@@ -1117,7 +1117,8 @@ export async function notifySlackVegaLeadRequestResult(input: {
     guardrails?: {
       requested?: { minScore?: number };
       effective?: { minScore?: number; size?: number; queueLimit?: number };
-      caps?: { requireEmail?: boolean; requireBuyerSignal?: boolean };
+      caps?: { requireEmail?: boolean; requireBuyerSignal?: boolean; dailySafeSendLimit?: number; autoSendTrustThreshold?: number };
+      sender?: { mode?: string; safeLimit?: number; sentToday?: number; remaining?: number; bounceRate?: number };
     };
     diagnostics?: {
       marketsSearched?: string[];
@@ -1128,6 +1129,13 @@ export async function notifySlackVegaLeadRequestResult(input: {
       missingContact?: number;
       suppressed?: Record<string, number>;
       policySkipped?: Record<string, number>;
+      decisionEngine?: {
+        autoSend?: number;
+        callFirst?: number;
+        research?: number;
+        suppress?: number;
+        executiveReview?: number;
+      };
       searchRuns?: Array<{
         query?: string;
         found?: number;
@@ -1146,11 +1154,13 @@ export async function notifySlackVegaLeadRequestResult(input: {
           { type: "mrkdwn", text: `*Location*\n${input.plan.location}${input.plan.locations?.length ? ` (${input.plan.locations.length} markets)` : ""}` },
           { type: "mrkdwn", text: `*Found*\n${input.result.rawFound ?? input.result.found}` },
           { type: "mrkdwn", text: `*Qualified*\n${input.result.qualified}` },
-          { type: "mrkdwn", text: `*Queued*\n${input.result.queued}` },
-          { type: "mrkdwn", text: `*Review-ready*\n${input.result.reviewReady ?? input.result.diagnostics?.reviewReady ?? 0}` },
+          { type: "mrkdwn", text: `*Today's Safe Sends*\n${input.result.guardrails?.sender?.remaining ?? "n/a"} remaining` },
+          { type: "mrkdwn", text: `*Auto Send*\n${input.result.diagnostics?.decisionEngine?.autoSend ?? "n/a"}` },
+          { type: "mrkdwn", text: `*Executive Review*\n${input.result.reviewReady ?? input.result.diagnostics?.decisionEngine?.executiveReview ?? 0}` },
+          { type: "mrkdwn", text: `*Call First*\n${input.result.diagnostics?.decisionEngine?.callFirst ?? "n/a"}` },
           { type: "mrkdwn", text: `*Contactable*\n${input.result.diagnostics?.contactable ?? "n/a"}` },
-          { type: "mrkdwn", text: `*Score policy*\n${input.result.guardrails?.requested?.minScore ?? "n/a"} requested / ${input.result.guardrails?.effective?.minScore ?? "n/a"} effective` },
-          { type: "mrkdwn", text: `*Email required*\n${input.result.guardrails?.caps?.requireEmail === false ? "no" : "yes"}` },
+          { type: "mrkdwn", text: `*Trust Policy*\n${input.result.guardrails?.caps?.autoSendTrustThreshold ?? "n/a"}+ auto-send` },
+          { type: "mrkdwn", text: `*Sender Governor*\n${input.result.guardrails?.sender?.mode || "n/a"} / ${input.result.guardrails?.sender?.bounceRate ?? "n/a"}% risky` },
         ]
       : [];
   const diagnosticsText = input.result?.diagnostics
@@ -1166,6 +1176,9 @@ export async function notifySlackVegaLeadRequestResult(input: {
           : "",
         compactReasonCounts("Source filters", input.result.diagnostics.suppressed),
         compactReasonCounts("Policy skips", input.result.diagnostics.policySkipped),
+        input.result.diagnostics.decisionEngine
+          ? `*Decision lanes:* auto ${input.result.diagnostics.decisionEngine.autoSend || 0}, executive ${input.result.diagnostics.decisionEngine.executiveReview || 0}, call-first ${input.result.diagnostics.decisionEngine.callFirst || 0}, research ${input.result.diagnostics.decisionEngine.research || 0}, suppressed ${input.result.diagnostics.decisionEngine.suppress || 0}`
+          : "",
         input.result.message ? `*Detail:* ${input.result.message}` : "",
       ].filter(Boolean).join("\n")
     : input.result?.message

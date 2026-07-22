@@ -6,7 +6,7 @@ import type { CallAssistTask } from "@/lib/human-followup";
 import { buildSignalScoreboard, signalScoreboardSummary } from "@/lib/intent-scoreboard";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
 import { improveOfferCopy } from "@/lib/offer-copy-brain";
-import { evaluateSourceLead, prepareOperatorRun, type OperatorRunPolicy } from "@/lib/operator-policy";
+import { evaluateSourceLead, evaluateVegaLeadDecision, prepareOperatorRun, type OperatorRunPolicy, type VegaLeadDecision } from "@/lib/operator-policy";
 import { getPrisma } from "@/lib/prisma";
 import { searchFreshLeads, type SourceDiagnostics, type SourceLead, type SourceProvider } from "@/lib/sourcing";
 import { findSuppressionMatch } from "@/lib/suppression";
@@ -67,6 +67,15 @@ type ManualQueuedEntry = {
   lead: { companyName: string };
   item: Prisma.OutreachQueueItemGetPayload<{ include: { lead: true } }>;
   slack: unknown;
+};
+
+type DecisionDiagnostics = {
+  autoSend: number;
+  callFirst: number;
+  research: number;
+  suppress: number;
+  executiveReview: number;
+  trustScores: Record<string, number>;
 };
 
 const nichePlaybook: NicheRecommendation[] = [
@@ -311,6 +320,37 @@ function improveGeneratedOutreach(copy: { subject: string; body: string }, lead:
     },
     mode: "first-touch",
   });
+}
+
+function newDecisionDiagnostics(): DecisionDiagnostics {
+  return {
+    autoSend: 0,
+    callFirst: 0,
+    research: 0,
+    suppress: 0,
+    executiveReview: 0,
+    trustScores: {},
+  };
+}
+
+function recordDecision(diagnostics: DecisionDiagnostics, lead: SourceLead, decision: VegaLeadDecision) {
+  if (decision.lane === "auto-send") diagnostics.autoSend += 1;
+  if (decision.lane === "call-first") diagnostics.callFirst += 1;
+  if (decision.lane === "research") diagnostics.research += 1;
+  if (decision.lane === "suppress") diagnostics.suppress += 1;
+  if (decision.lane === "executive-review") diagnostics.executiveReview += 1;
+  diagnostics.trustScores[lead.companyName || lead.id] = decision.trustScore;
+}
+
+function executiveReviewReason(sourceLead: SourceLead, decision: VegaLeadDecision) {
+  return sanitizeInternalReason(
+    [
+      `Executive review required. Trust ${decision.trustScore}.`,
+      `Lead ${decision.scores.leadQuality}, email ${decision.scores.emailConfidence}, copy ${decision.scores.copyConfidence}, deliverability ${decision.scores.deliverability}.`,
+      decision.reasons.length ? `Reasons: ${decision.reasons.join("; ")}.` : "",
+      signalScoreboardSummary(buildSignalScoreboard(sourceLead)),
+    ].filter(Boolean).join(" "),
+  );
 }
 
 function defaultNextAction(lead: SourceLead) {
@@ -587,7 +627,8 @@ async function runLocalManualFallback(input: {
   const emailQueued: QueuedEntry[] = [];
   const manualQueued: ManualQueuedEntry[] = [];
 
-  if (input.autoSend) {
+  const senderCanSend = input.policy.sender.remaining > 0 && input.policy.sender.mode !== "stop";
+  if (input.autoSend && senderCanSend) {
     for (const sourceLead of fallbackCandidates.filter((lead) => clean(lead.email))) {
       if (emailQueued.length >= fallbackLimit) break;
       const partnerService = clean(input.partnerService);
@@ -651,7 +692,7 @@ async function runLocalManualFallback(input: {
     }
   } else {
     const emailCandidates = fallbackCandidates.filter((lead) => clean(lead.email)).length;
-    if (emailCandidates) skip(`email-capacity-blocked`);
+    if (emailCandidates) skip(senderCanSend ? "email-auto-send-disabled" : "sender-capacity-blocked");
   }
 
   for (const sourceLead of fallbackCandidates.filter((lead) => !clean(lead.email))) {
@@ -681,7 +722,7 @@ async function runLocalManualFallback(input: {
         subject: `Manual contact path for ${imported.lead.companyName}`,
         body: manualContactBody(sourceLead),
         status: "pending",
-        reason: sanitizeInternalReason(`Queued by Vega as a local-service manual fallback while email approval capacity is full. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`),
+        reason: sanitizeInternalReason(`Queued by Vega as a local-service call-first fallback while sender capacity or trust policy blocked automatic email. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`),
       },
       include: { lead: true },
     });
@@ -705,7 +746,7 @@ async function runLocalManualFallback(input: {
 
   await createAutomationEvent({
     title: "AI operator local manual fallback finished",
-    detail: `Email queue was blocked, so Vega ran local fallback. Found ${diagnostics.rawFound}, auto-send attempted ${emailQueued.length}, queued ${manualQueued.length} manual tasks.`,
+    detail: `Sender or trust guardrails blocked routine auto-send, so Vega ran local fallback. Found ${diagnostics.rawFound}, auto-send attempted ${emailQueued.length}, queued ${manualQueued.length} manual tasks.`,
     status: emailQueued.length || manualQueued.length ? "done" : "blocked",
     type: "agent",
     payload: {
@@ -785,8 +826,8 @@ async function runLocalManualFallback(input: {
       callAssistTasks,
     },
     message: emailQueued.length || manualQueued.length
-      ? `Email approval capacity was blocked, so Vega used local fallback: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued, ${manualQueued.length} manual contact tasks, ${callAssistTasks.length} phone assists queued.`
-      : sourceResult.message || "Email approval capacity was blocked and Vega did not find local manual contact paths to queue.",
+      ? `Sender or trust guardrails routed Vega to local fallback: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued, ${manualQueued.length} call-first/manual tasks, ${callAssistTasks.length} phone assists queued.`
+      : sourceResult.message || "Sender or trust guardrails were active and Vega did not find local manual contact paths to queue.",
   };
 }
 
@@ -921,19 +962,31 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     skipped[reason] = (skipped[reason] || 0) + 1;
   }
 
-  const qualified = [];
+  const qualified: SourceLead[] = [];
+  const executiveReviewCandidates: Array<{ lead: SourceLead; decision: VegaLeadDecision }> = [];
+  const decisionDiagnostics = newDecisionDiagnostics();
   for (const lead of sourceResult.leads as SourceLead[]) {
     const evaluation = evaluateSourceLead(lead, policy);
     if (!evaluation.ok) {
       skip(evaluation.reason);
       continue;
     }
-    qualified.push(lead);
+    const decision = evaluateVegaLeadDecision(lead, policy);
+    recordDecision(decisionDiagnostics, lead, decision);
+    if (decision.lane === "auto-send") {
+      qualified.push(lead);
+    } else if (decision.lane === "executive-review") {
+      executiveReviewCandidates.push({ lead, decision });
+      skip("executive-review");
+    } else {
+      skip(decision.lane);
+    }
     if (qualified.length >= queueLimit) break;
   }
 
   const queued: QueuedEntry[] = [];
   const manualQueued: ManualQueuedEntry[] = [];
+  const executiveQueued: ManualQueuedEntry[] = [];
 
   for (const sourceLead of qualified) {
     const imported = await importSourceLead(
@@ -990,14 +1043,71 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     queued.push({ lead: imported.lead, item, slack, approval });
   }
 
+  const executiveReviewCapacity = Math.max(0, policy.caps.executiveReviewLimit - policy.usage.executiveReviewPending);
+  for (const { lead: sourceLead, decision } of executiveReviewCandidates.slice(0, executiveReviewCapacity)) {
+    const imported = await importSourceLead(
+      sourceLead,
+      workspace.id,
+      {
+        ...(partnerService ? { nextAction: partnerServiceNextAction(sourceLead, partnerService) } : {}),
+        campaignName,
+        partnerService,
+        location: input.location || process.env.AGENT_SOURCE_LOCATION || "United States",
+      },
+    );
+    if (imported.skipped) {
+      skip(`executive-${imported.reason}`);
+      continue;
+    }
+
+    const generated = partnerService
+      ? { provider: "partner-service-template", text: "" }
+      : await generateSalesText({
+          kind: "outreach",
+          lead: {
+            name: imported.lead.name,
+            companyName: imported.lead.companyName,
+            niche: imported.lead.niche,
+            stage: imported.lead.stage,
+            score: imported.lead.score,
+            value: imported.lead.value,
+            source: imported.lead.source,
+            nextAction: imported.lead.nextAction,
+          },
+          input: "Executive-review first-touch email. Keep it conservative, compliant, and easy for Stephen to approve or reject.",
+        });
+
+    const copy = partnerService
+      ? partnerServiceOutreachCopy(sourceLead, partnerService)
+      : improveGeneratedOutreach(parseGeneratedOutreach(generated.text, imported.lead.companyName), sourceLead);
+    const item = await prisma.outreachQueueItem.create({
+      data: {
+        workspaceId: workspace.id,
+        leadId: imported.lead.id,
+        channel: "email",
+        provider: "sendgrid",
+        subject: copy.subject,
+        body: copy.body,
+        status: "pending",
+        reason: executiveReviewReason(sourceLead, decision),
+      },
+      include: { lead: true },
+    });
+
+    const slack = await notifySlackOutreachApproval(item);
+    executiveQueued.push({ lead: imported.lead, item, slack });
+  }
+
   const manualCandidates = [
     ...(sourceResult.leads as SourceLead[]),
     ...((sourceResult.reviewLeads || []) as SourceLead[]),
   ].filter((lead) => {
-    if (queued.some((entry) => entry.lead.companyName === lead.companyName)) return false;
+    if ([...queued, ...executiveQueued].some((entry) => entry.lead.companyName === lead.companyName)) return false;
     if (lead.score < minScore) return false;
     if (!lead.phone && !(lead as SourceLead & { website?: string }).website) return false;
-    if (lead.email) return false;
+    const decision = evaluateVegaLeadDecision(lead, policy);
+    recordDecision(decisionDiagnostics, lead, decision);
+    if (decision.lane !== "call-first") return false;
     if (!lead.companyName?.trim() || !lead.name?.trim()) return false;
     return true;
   });
@@ -1048,6 +1158,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     }),
     policySkipped: skipped,
     searchRuns: sourceResult.runs,
+    decisionEngine: decisionDiagnostics,
   };
   const approvalResults = queued.map((entry) => entry.approval).filter(Boolean) as Array<
     | {
@@ -1101,7 +1212,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       sourceMessage: sourceResult.message || null,
       found: sourceResult.leads.length,
       qualified: qualified.length,
-      queued: queued.length + manualQueued.length,
+      queued: queued.length + manualQueued.length + executiveQueued.length,
       reviewReady: diagnostics.reviewReady,
       skipped,
       diagnostics,
@@ -1114,6 +1225,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         blocked: blockedCompanies.length,
         failed: failedCompanies.length,
         callAssistQueued: callAssistTasks.length,
+        executiveReview: executiveQueued.length,
       },
     },
   });
@@ -1123,12 +1235,12 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     found: sourceResult.leads.length,
     rawFound: diagnostics.rawFound,
     qualified: qualified.length,
-    queued: queued.length + manualQueued.length,
-    reviewReady: diagnostics.reviewReady,
+    queued: queued.length + manualQueued.length + executiveQueued.length,
+    reviewReady: executiveQueued.length,
     skipped,
     diagnostics,
     guardrails: policy,
-    items: [...queued.map((entry) => entry.item), ...manualQueued.map((entry) => entry.item)],
+    items: [...queued.map((entry) => entry.item), ...executiveQueued.map((entry) => entry.item), ...manualQueued.map((entry) => entry.item)],
     autoSendSummary: {
       attempted: approvalResults.length,
       sent: sentCompanies.length,
@@ -1139,19 +1251,20 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       dryRunCompanies,
       blockedCompanies,
       failedCompanies,
+      executiveReviewCompanies: executiveQueued.map((entry) => entry.lead.companyName),
       manualCompanies: manualQueued.map((entry) => entry.lead.companyName),
       callAssistTasks,
     },
     message:
-      queued.length + manualQueued.length > 0
+      queued.length + executiveQueued.length + manualQueued.length > 0
         ? autoSend
-          ? `AI operator cleaned copy and attempted ${approvalResults.length} live sends: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued, ${callAssistTasks.length} phone assists queued.`
+          ? `Vega Decision Engine attempted ${approvalResults.length} safe sends: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued, ${executiveQueued.length} executive review, ${manualQueued.length} call-first/manual tasks, ${callAssistTasks.length} phone assists queued.`
           : manualQueued.length
-            ? `AI operator queued ${queued.length} email approvals and ${manualQueued.length} manual contact tasks.`
-            : `AI operator queued ${queued.length} approval-ready emails.`
+            ? `Vega queued ${queued.length} email drafts, ${executiveQueued.length} executive reviews, and ${manualQueued.length} manual contact tasks.`
+            : `Vega queued ${executiveQueued.length ? `${executiveQueued.length} executive reviews` : `${queued.length} email drafts`}.`
         : sourceResult.message ||
-          (diagnostics.reviewReady > 0
-            ? `AI operator found ${diagnostics.reviewReady} review-ready leads, but none passed the current email/score policy for outreach.`
+          (decisionDiagnostics.executiveReview > 0
+            ? `Vega found ${decisionDiagnostics.executiveReview} executive-review leads, but none fit today's review capacity.`
             : "AI operator did not find new qualified leads to queue."),
   };
 }

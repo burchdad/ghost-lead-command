@@ -421,10 +421,10 @@ export async function runCadenceOrchestrator(input: { limit?: number } = {}): Pr
     title: "Cadence Orchestrator",
     status: result.queued ? "done" : result.blocked ? "blocked" : "needs_review",
     summary: `Queued ${result.queued} due follow-up steps and skipped ${result.skipped}.`,
-    metrics: { queued: result.queued, skipped: result.skipped, capacity: capacity.capacity, pendingApprovals: capacity.usage.pendingApprovals },
+    metrics: { queued: result.queued, skipped: result.skipped, senderCapacity: capacity.capacity, executiveReview: capacity.usage.executiveReviewPending },
     nextMove: result.blocked
-      ? capacity.blockedReasons.join(" ") || "Cadence is blocked by queue capacity."
-      : "Keep the approval queue moving so due follow-ups do not pile up.",
+      ? capacity.blockedReasons.join(" ") || "Cadence is blocked by sender capacity."
+      : "Let Vega send safe follow-ups and reserve review time for exception accounts.",
   };
 }
 

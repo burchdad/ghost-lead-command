@@ -616,10 +616,11 @@ export async function GET() {
 
     const ready = agents.filter((agent) => agent.status === "ready").length;
     const blocked = agents.filter((agent) => agent.status === "blocked").length;
+    const executiveReviewFull = pending >= caps.executiveReviewLimit;
     const directorBlockers = [
       ...(sourceConfigured ? [] : ["No sourcing provider is configured."]),
-      ...(pending >= caps.maxPendingApprovals ? ["Approval queue is at capacity."] : []),
-      ...(canSend ? [] : ["Live SendGrid sending is not fully enabled; approval mode is still usable."]),
+      ...(executiveReviewFull ? ["Executive review lane is full."] : []),
+      ...(canSend ? [] : ["Live SendGrid sending is not fully enabled; Vega can still prepare executive-review and call-first tasks."]),
       ...(canBook ? [] : ["Booking link or calendar automation is incomplete."]),
     ];
 
@@ -627,19 +628,20 @@ export async function GET() {
       director: {
         name: "Lead Gen Director Agent",
         mandate: "Own the daily path from source selection to queued outreach, reply classification, booked calls, and source learning.",
-        status: sourceConfigured && pending < caps.maxPendingApprovals ? "ready" : "needs-work",
+        status: sourceConfigured && !executiveReviewFull ? "ready" : "needs-work",
         health:
-          sourceConfigured && pending < caps.maxPendingApprovals
+          sourceConfigured && !executiveReviewFull
             ? "Ready to run specialist lanes"
-            : "Needs source or queue capacity attention",
+            : "Needs source or executive-review lane attention",
         nextMove:
           pending > 0
-            ? "Approve pending outreach before adding more volume."
+            ? "Clear executive-review exceptions while Vega keeps safe sends and call-first work moving."
             : "Run a director sprint against Google Maps first, then broaden with PDL or Sales Nav enrichment.",
         lastEvent: summarizeEvent(recentDirectorEvent || recentAgentEvent || null),
         blockers: directorBlockers,
         metrics: {
-          "pending approvals": pending,
+          "executive review": pending,
+          "safe send budget": caps.dailySafeSendLimit,
           "hot replies": hotReplies,
           "booked calls": bookedTasks,
           "sources online": [sourceStatus.googleMapsConfigured, sourceStatus.pdlConfigured, sourceStatus.ghostLeadAgentConfigured].filter(Boolean).length,

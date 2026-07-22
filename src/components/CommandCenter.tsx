@@ -3247,13 +3247,13 @@ export default function Home() {
       label: "Operator guardrails",
       ok: Boolean(integrations.operator?.configured),
       detail: integrations.operator?.configured
-        ? `Daily source cap ${integrations.operator.dailySourceLimit}, queue cap ${integrations.operator.dailyQueueLimit}, pending cap ${integrations.operator.maxPendingApprovals}. Auto-send ${integrations.operator.autoSend ? "on" : "off"}.`
+        ? `Daily source cap ${integrations.operator.dailySourceLimit}, safe send budget ${integrations.operator.dailySafeSendLimit}, executive review cap ${integrations.operator.executiveReviewLimit}. Auto-send ${integrations.operator.autoSend ? "on" : "off"}.`
         : "Autonomous runs need daily caps before unattended sourcing.",
     },
     {
-      label: "Approval queue",
+      label: "Executive review",
       ok: queueItems.filter((item) => item.status === "pending").length < 25,
-      detail: `${queueItems.filter((item) => item.status === "pending").length} drafts waiting for approval.`,
+      detail: `${queueItems.filter((item) => item.status === "pending").length} exception items waiting for review.`,
     },
   ];
 

@@ -199,7 +199,9 @@ export async function runLeadGenDirector(input: DirectorRunInput = {}) {
     guardrails: {
       dailySourceLimit: caps.dailySourceLimit,
       dailyQueueLimit: caps.dailyQueueLimit,
-      maxPendingApprovals: caps.maxPendingApprovals,
+      dailySafeSendLimit: caps.dailySafeSendLimit,
+      executiveReviewLimit: caps.executiveReviewLimit,
+      autoSendTrustThreshold: caps.autoSendTrustThreshold,
       outreachMode: outreach.mode,
       autoSend,
     },
