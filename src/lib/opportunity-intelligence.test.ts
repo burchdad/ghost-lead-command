@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Lead, OutreachQueueItem } from "@prisma/client";
+import { buildSignalScoreboard, signalScoreboardSummary } from "@/lib/intent-scoreboard";
 import { evaluateOpportunityQueueItem, softenUnsupportedPainClaims } from "@/lib/opportunity-intelligence";
 
 function lead(overrides: Partial<Lead> = {}): Lead {
@@ -90,6 +91,22 @@ test("research cards separate ICP fit from confirmed buyer intent", () => {
   assert.match(decision.proposedOutreachAngle, /inquiry follow-up|lead-response/i);
   assert.ok(decision.reasons.some((reason) => /active buying intent not confirmed/i.test(reason)));
   assert.ok(!decision.reasons.some((reason) => /buyer-intent trigger present/i.test(reason)));
+});
+
+test("signal summaries label weak service-market signals as hypotheses", () => {
+  const scoreboard = buildSignalScoreboard({
+    companyName: "Rooftop Roofing and Remodeling LLC",
+    niche: "Roofing Contractor",
+    score: 91,
+    source: "google-maps",
+    nextAction: "public web or Google context exists; buyer role is unclear; no contact path yet",
+  });
+  const summary = signalScoreboardSummary(scoreboard);
+
+  assert.equal(scoreboard.confirmedBuyingIntent, false);
+  assert.doesNotMatch(summary, /buyer-intent trigger present/i);
+  assert.match(summary, /Proposed offer hypothesis/i);
+  assert.match(summary, /active buying intent is not confirmed/i);
 });
 
 test("verified sendgrid email can remain approval-ready", () => {

@@ -35,6 +35,13 @@ function slackEphemeral(text: string) {
   });
 }
 
+function slackReplaceOriginal(text: string) {
+  return NextResponse.json({
+    replace_original: true,
+    text,
+  });
+}
+
 async function recordOutreachSlackAction(input: {
   action: string;
   itemId?: string;
@@ -168,7 +175,7 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
     const researchResult = await runContactPathAgent({ itemId: updated.id, limit: 1 });
     const summary = `Vega moved ${updated.lead?.companyName || "that lead"} into contact research and ran the Contact Path Agent. ${researchResult.summary} No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
     await recordOutreachSlackAction({ action: "research", itemId, ok: true, summary, payload });
-    return slackEphemeral(summary);
+    return slackReplaceOriginal(`VEGA RESEARCH INITIATED\n\n${summary}\n\nNext lane: ${researchResult.nextMove}`);
   }
 
   if (actionName === "outreach_redo") {

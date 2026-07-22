@@ -17,6 +17,7 @@ export type SignalScoreboard = {
   risks: string[];
   nextBestChannel: "email" | "phone" | "contact-form" | "linkedin-task" | "enrich" | "suppress-review";
   offerAngle: string;
+  confirmedBuyingIntent: boolean;
   nextMove: string;
 };
 
@@ -88,6 +89,33 @@ function offerAngle(input: ScoreboardInput, text: string) {
   return "lightweight AI follow-up layer that turns stale or missed conversations into booked calls";
 }
 
+function hasConfirmedBuyingIntent(text: string) {
+  return includesAny(text, [
+    "form submission",
+    "submitted",
+    "requested pricing",
+    "asked for pricing",
+    "reply",
+    "replied",
+    "clicked",
+    "email click",
+    "booked",
+    "meeting requested",
+    "recent hiring",
+    "hiring for",
+    "new location",
+    "expansion",
+    "funding",
+    "active ad",
+    "ad increase",
+    "public post asking",
+    "technology change",
+    "direct inquiry",
+    "estimate request from",
+    "quote request from",
+  ]);
+}
+
 function nextChannel(input: ScoreboardInput, risks: string[]) {
   const { email, phone, website } = contactPaths(input);
   const text = signalText(input);
@@ -137,7 +165,14 @@ export function buildSignalScoreboard(input: ScoreboardInput): SignalScoreboard 
       Math.min(8, (input.intentSignals || []).length * 2),
     20,
   );
-  if (buyingIntent >= 12) reasons.push("buyer-intent trigger present");
+  const confirmedBuyingIntent = hasConfirmedBuyingIntent(text);
+  if (buyingIntent >= 12) {
+    reasons.push(
+      confirmedBuyingIntent
+        ? "confirmed buyer-intent evidence present"
+        : "ICP and market-fit signals support further research; active buying intent is not confirmed",
+    );
+  }
   if (buyingIntent < 6) risks.push("needs stronger trigger evidence");
 
   const webProof = cap(
@@ -205,13 +240,21 @@ export function buildSignalScoreboard(input: ScoreboardInput): SignalScoreboard 
     risks: risks.slice(0, 5),
     nextBestChannel,
     offerAngle: angle,
+    confirmedBuyingIntent,
     nextMove,
   };
 }
 
 export function signalScoreboardSummary(scoreboard: SignalScoreboard) {
+  const unconfirmedIntentNote = "active buying intent is not confirmed";
   const reasons = scoreboard.reasons.length ? scoreboard.reasons.join("; ") : "needs more evidence";
+  const why = scoreboard.confirmedBuyingIntent || reasons.includes(unconfirmedIntentNote)
+    ? reasons
+    : `${reasons}; ${unconfirmedIntentNote}`;
   const risks = scoreboard.risks.length ? ` Risk: ${scoreboard.risks.join("; ")}.` : "";
-  return `Signal score ${scoreboard.total} (${scoreboard.tier}). Channel: ${scoreboard.nextBestChannel}. Offer: ${scoreboard.offerAngle}. Why: ${reasons}.${risks}`;
+  const offerLabel = scoreboard.confirmedBuyingIntent ? "Offer" : "Proposed offer hypothesis";
+  const offer = scoreboard.confirmedBuyingIntent
+    ? scoreboard.offerAngle
+    : "lead-response and estimate follow-up improvement";
+  return `Signal score ${scoreboard.total} (${scoreboard.tier}). Channel: ${scoreboard.nextBestChannel}. ${offerLabel}: ${offer}. Why: ${why}.${risks}`;
 }
-
