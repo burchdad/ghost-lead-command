@@ -155,6 +155,7 @@ export async function GET(request: Request) {
       contactName: snapshot.lead?.name || "Unknown contact",
       trustScore: snapshot.trustScore,
       overallConfidence: snapshot.overallConfidence,
+      snapshotType: snapshot.snapshotType,
       decisionLane: snapshot.decisionLane,
       recommendedChannel: snapshot.recommendedChannel,
       recommendedAction: snapshot.recommendedAction,
@@ -170,6 +171,7 @@ export async function GET(request: Request) {
       leadId: snapshot.leadId,
       companyName: snapshot.lead?.companyName || "Unknown company",
       contactName: snapshot.lead?.name || "Unknown contact",
+      snapshotType: snapshot.snapshotType,
       decisionLane: snapshot.decisionLane,
       reason:
         snapshot.explanation && typeof snapshot.explanation === "object" && !Array.isArray(snapshot.explanation) && "reason" in snapshot.explanation
@@ -187,6 +189,7 @@ export async function GET(request: Request) {
       leadId: snapshot.leadId,
       companyName: snapshot.lead?.companyName || "Unknown company",
       contactName: snapshot.lead?.name || "Unknown contact",
+      snapshotType: snapshot.snapshotType,
       meetingLikelihood: probabilityBand(snapshot.meetingProbability),
       trustScore: snapshot.trustScore,
       recommendedAction: snapshot.recommendedAction,
@@ -197,6 +200,7 @@ export async function GET(request: Request) {
     .map((snapshot) => ({
       leadId: snapshot.leadId,
       companyName: snapshot.lead?.companyName || "Unknown company",
+      snapshotType: snapshot.snapshotType,
       senderHealth: snapshot.senderHealth,
       bounceRisk: probabilityBand(snapshot.bounceProbability),
       recommendedAction: snapshot.recommendedAction,

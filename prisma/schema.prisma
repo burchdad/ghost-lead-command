@@ -121,6 +121,21 @@ enum HumanReviewStatus {
   CANCELED
 }
 
+enum IntelligenceSnapshotType {
+  QUALIFICATION
+  SIGNAL_UPDATE
+  DECISION
+  PRE_EXECUTION
+  DELIVERY_EVENT
+  ENGAGEMENT_EVENT
+  REPLY
+  CALL_OUTCOME
+  MEETING_EVENT
+  MANUAL_OVERRIDE
+  POLICY_CHANGE
+  OUTCOME
+}
+
 model Company {
   id                     String                  @id @default(cuid())
   workspaceId            String
@@ -249,6 +264,7 @@ model OpportunityIntelligenceSnapshot {
   recommendedAction            String
   decisionLane                 String
   overallConfidence            Int
+  snapshotType                 IntelligenceSnapshotType @default(DECISION)
   explanation                  Json
   evidence                     Json
   blockers                     Json
@@ -260,6 +276,7 @@ model OpportunityIntelligenceSnapshot {
 
   @@index([workspaceId, leadId, createdAt])
   @@index([workspaceId, campaignId, createdAt])
+  @@index([workspaceId, snapshotType, createdAt])
 }
 
 model Opportunity {

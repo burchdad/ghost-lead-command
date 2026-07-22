@@ -15,7 +15,7 @@ import {
   VEGA_INTELLIGENCE_VERSION,
   VEGA_POLICY_VERSION,
 } from "@/lib/vega-intelligence-fusion";
-import { MEANINGFUL_INTELLIGENCE_TRIGGERS } from "@/lib/vega-intelligence-snapshots";
+import { MEANINGFUL_INTELLIGENCE_TRIGGERS, snapshotTypeForTrigger } from "@/lib/vega-intelligence-snapshots";
 
 const now = new Date("2026-07-22T15:00:00.000Z");
 
@@ -428,4 +428,12 @@ test("intelligence snapshots are limited to meaningful operational triggers", ()
 test("intelligence versions are explicit for snapshot reconciliation", () => {
   assert.equal(VEGA_INTELLIGENCE_VERSION, "vega-intelligence-fusion.v1");
   assert.equal(VEGA_POLICY_VERSION, "vega-trust-policy.v2");
+});
+
+test("snapshot trigger types map to typed intelligence categories", () => {
+  assert.equal(snapshotTypeForTrigger("lead_qualified"), "QUALIFICATION");
+  assert.equal(snapshotTypeForTrigger("send_decision"), "DECISION");
+  assert.equal(snapshotTypeForTrigger("email_event"), "DELIVERY_EVENT");
+  assert.equal(snapshotTypeForTrigger("reply_received"), "REPLY");
+  assert.equal(snapshotTypeForTrigger("manual_override"), "MANUAL_OVERRIDE");
 });

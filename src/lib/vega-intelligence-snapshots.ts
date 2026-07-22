@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { IntelligenceSnapshotType, type Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma";
 import {
   buildVegaIntelligenceGraph,
@@ -32,6 +32,20 @@ type PersistSnapshotInput = {
   intelligence?: OpportunityIntelligence | null;
   evidence?: unknown;
 };
+
+export function snapshotTypeForTrigger(triggerType: string) {
+  if (triggerType === "lead_qualified") return IntelligenceSnapshotType.QUALIFICATION;
+  if (triggerType === "new_intent_signal") return IntelligenceSnapshotType.SIGNAL_UPDATE;
+  if (triggerType === "outreach_generated") return IntelligenceSnapshotType.PRE_EXECUTION;
+  if (triggerType === "send_decision") return IntelligenceSnapshotType.DECISION;
+  if (triggerType === "email_event") return IntelligenceSnapshotType.DELIVERY_EVENT;
+  if (triggerType === "reply_received") return IntelligenceSnapshotType.REPLY;
+  if (triggerType === "call_outcome") return IntelligenceSnapshotType.CALL_OUTCOME;
+  if (triggerType === "meeting_requested" || triggerType === "meeting_booked") return IntelligenceSnapshotType.MEETING_EVENT;
+  if (triggerType === "campaign_policy_change") return IntelligenceSnapshotType.POLICY_CHANGE;
+  if (triggerType === "manual_override") return IntelligenceSnapshotType.MANUAL_OVERRIDE;
+  return IntelligenceSnapshotType.DECISION;
+}
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   if (value === undefined || value === null) return {};
@@ -98,6 +112,7 @@ export async function persistOpportunityIntelligenceSnapshot(input: PersistSnaps
       recommendedAction: intelligence.recommendedAction,
       decisionLane: intelligence.decisionLane,
       overallConfidence: intelligence.overallConfidence,
+      snapshotType: snapshotTypeForTrigger(input.triggerType),
       explanation: toJson(intelligence.explanation),
       evidence: toJson(jsonArray(evidence)),
       blockers: toJson(jsonArray(intelligence.explanation.blockers)),

@@ -565,6 +565,7 @@ type WaitlistDashboard = {
 
 type IntelligenceSnapshot = {
   id: string;
+  snapshotType: string;
   triggerType: string;
   createdAt: string;
   trustScore: number;
@@ -609,6 +610,7 @@ type IntelligenceDashboard = {
       trustScore: number;
       overallConfidence: number;
       decisionLane: string;
+      snapshotType?: string;
       recommendedChannel: string;
       recommendedAction: string;
       meetingLikelihood: string;
@@ -620,6 +622,7 @@ type IntelligenceDashboard = {
       companyName: string;
       contactName: string;
       decisionLane: string;
+      snapshotType?: string;
       reason: string;
       recommendedAction: string;
       trustScore: number;
@@ -629,6 +632,7 @@ type IntelligenceDashboard = {
       leadId: string;
       companyName: string;
       contactName: string;
+      snapshotType?: string;
       meetingLikelihood: string;
       trustScore: number;
       recommendedAction: string;
@@ -636,6 +640,7 @@ type IntelligenceDashboard = {
     senderRisks: {
       leadId: string;
       companyName: string;
+      snapshotType?: string;
       senderHealth: number;
       bounceRisk: string;
       recommendedAction: string;
@@ -4909,7 +4914,7 @@ export default function Home() {
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <p className="text-xs uppercase tracking-[0.14em] text-[#83d0c2]">{item.decisionLane} - {item.recommendedChannel}</p>
+                            <p className="text-xs uppercase tracking-[0.14em] text-[#83d0c2]">{item.snapshotType || "DECISION"} - {item.decisionLane} - {item.recommendedChannel}</p>
                             <h4 className="mt-1 font-semibold text-white">{item.companyName}</h4>
                             <p className="mt-1 text-sm text-[#aebbb7]">{item.contactName}</p>
                           </div>
@@ -4932,7 +4937,7 @@ export default function Home() {
                         <div key={`${item.leadId}-${item.createdAt}`} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="text-xs uppercase tracking-[0.14em] text-[#83d0c2]">{item.decisionLane}</p>
+                              <p className="text-xs uppercase tracking-[0.14em] text-[#83d0c2]">{item.snapshotType || "DECISION"} - {item.decisionLane}</p>
                               <h3 className="mt-1 font-semibold text-white">{item.companyName}</h3>
                             </div>
                             <span className="font-mono text-[#d8ff5f]">{item.trustScore}</span>
@@ -6552,7 +6557,7 @@ function LeadIntelligencePanel({ graph }: { graph?: LeadIntelligenceGraph["graph
       <div className="mt-4 grid gap-2 sm:grid-cols-3">
         <MiniMetric label="Confidence" value={String(source?.overallConfidence ?? "n/a")} />
         <MiniMetric label="Meeting likelihood" value={likelihoodBand(intelligence?.predictedMeetingProbability ?? latestSnapshot?.meetingProbability)} />
-        <MiniMetric label="Calibration" value={latestSnapshot?.confidenceLabel || "Directional"} />
+        <MiniMetric label="Snapshot" value={latestSnapshot?.snapshotType || "Live"} />
       </div>
 
       <div className="mt-4 rounded-md bg-white/[0.04] p-3 text-sm text-[#c4d3ce]">

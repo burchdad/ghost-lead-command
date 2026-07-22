@@ -90,6 +90,7 @@ export type VegaIntelligenceGraph = {
 
 export type OpportunityIntelligenceSnapshotView = {
   id: string;
+  snapshotType: string;
   triggerType: string;
   triggerId?: string | null;
   createdAt: Date;
@@ -641,6 +642,7 @@ export async function buildVegaIntelligenceGraph(input: { workspaceId: string; l
   });
   const snapshots: OpportunityIntelligenceSnapshotView[] = rawSnapshots.map((snapshot) => ({
     id: snapshot.id,
+    snapshotType: snapshot.snapshotType,
     triggerType: snapshot.triggerType,
     triggerId: snapshot.triggerId,
     createdAt: snapshot.createdAt,
