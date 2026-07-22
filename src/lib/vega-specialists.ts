@@ -77,12 +77,14 @@ function contactPathBody(input: {
   ].filter(Boolean).join("\n");
 }
 
-export async function runContactPathAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
+export async function runContactPathAgent(input: { limit?: number; itemId?: string } = {}): Promise<SpecialistResult> {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const limit = Math.min(25, Math.max(1, Number(input.limit || 10)));
   const manualItems = await prisma.outreachQueueItem.findMany({
-    where: { workspaceId: workspace.id, status: "pending", channel: "manual" },
+    where: input.itemId
+      ? { workspaceId: workspace.id, id: input.itemId, status: "pending" }
+      : { workspaceId: workspace.id, status: "pending", channel: { in: ["manual", "research"] } },
     orderBy: { createdAt: "asc" },
     take: limit,
     include: { lead: { include: { contact: true, company: true } } },
@@ -123,6 +125,7 @@ export async function runContactPathAgent(input: { limit?: number } = {}): Promi
     await prisma.outreachQueueItem.update({
       where: { id: item.id },
       data: {
+        channel: "manual",
         provider: "phone-website",
         subject: `Manual contact path for ${lead.companyName}`,
         body: contactPathBody({

@@ -16,6 +16,7 @@ import {
   type SlackInteractionPayload,
 } from "@/lib/slack";
 import { getPrisma } from "@/lib/prisma";
+import { runContactPathAgent } from "@/lib/vega-specialists";
 
 function parseActionValue(value?: string) {
   if (!value) return {} as { action?: string; limit?: number; itemId?: string; plan?: AgentPlan };
@@ -164,7 +165,8 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
         channelId: payload.channel?.id,
       },
     });
-    const summary = `Vega moved ${updated.lead?.companyName || "that lead"} into contact research. No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
+    const researchResult = await runContactPathAgent({ itemId: updated.id, limit: 1 });
+    const summary = `Vega moved ${updated.lead?.companyName || "that lead"} into contact research and ran the Contact Path Agent. ${researchResult.summary} No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
     await recordOutreachSlackAction({ action: "research", itemId, ok: true, summary, payload });
     return slackEphemeral(summary);
   }
