@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Lead, OutreachQueueItem, Prisma } from "@prisma/client";
 import { approveOutreachQueueItem } from "@/lib/approval";
 import { generateSalesText } from "@/lib/ai";
 import { createAutomationEvent } from "@/lib/automation";
@@ -6,6 +6,7 @@ import type { CallAssistTask } from "@/lib/human-followup";
 import { buildSignalScoreboard, signalScoreboardSummary } from "@/lib/intent-scoreboard";
 import { sanitizeCustomerMessage, sanitizeInternalReason, sanitizeSubject } from "@/lib/message-sanitizer";
 import { improveOfferCopy } from "@/lib/offer-copy-brain";
+import { softenUnsupportedPainClaims } from "@/lib/opportunity-intelligence";
 import { evaluateSourceLead, evaluateVegaLeadDecision, prepareOperatorRun, type OperatorRunPolicy, type VegaLeadDecision } from "@/lib/operator-policy";
 import { getPrisma } from "@/lib/prisma";
 import { searchFreshLeads, type SourceDiagnostics, type SourceLead, type SourceProvider } from "@/lib/sourcing";
@@ -307,7 +308,7 @@ function parseGeneratedOutreach(text: string, companyName: string) {
 
 function improveGeneratedOutreach(copy: { subject: string; body: string }, lead: SourceLead) {
   const scoreboard = buildSignalScoreboard(lead);
-  return improveOfferCopy({
+  const improved = improveOfferCopy({
     subject: copy.subject,
     body: copy.body,
     lead: {
@@ -320,6 +321,10 @@ function improveGeneratedOutreach(copy: { subject: string; body: string }, lead:
     },
     mode: "first-touch",
   });
+  return softenUnsupportedPainClaims(
+    improved,
+    [lead.signalSummary, lead.buyerFit, ...(lead.intentSignals || []), signalScoreboardSummary(scoreboard)].filter(Boolean).join(" "),
+  );
 }
 
 function newDecisionDiagnostics(): DecisionDiagnostics {
@@ -350,7 +355,7 @@ function executiveReviewReason(sourceLead: SourceLead, decision: VegaLeadDecisio
       decision.reasons.length ? `Reasons: ${decision.reasons.join("; ")}.` : "",
       signalScoreboardSummary(buildSignalScoreboard(sourceLead)),
     ].filter(Boolean).join(" "),
-  );
+  ) || "Executive review required before outreach.";
 }
 
 function defaultNextAction(lead: SourceLead) {
@@ -375,7 +380,7 @@ function manualContactBody(sourceLead: SourceLead) {
     website ? `Website/contact form: ${website}` : "",
     signals ? `Why this lead: ${signals}` : "",
     `Vega read: ${signalScoreboardSummary(scoreboard)}`,
-    "Operator move: call the business or use the website contact form. Approving this card marks the manual task ready; it does not send a SendGrid email.",
+    "Operator move: find a direct email, call the business, or use the website contact form before adding this lead to email outreach.",
   ].filter(Boolean).join("\n");
 }
 
@@ -572,6 +577,63 @@ async function importSourceLead(
   return { skipped: false as const, lead };
 }
 
+type QueueItemWithLead = OutreachQueueItem & { lead: Lead | null };
+
+async function createOrRefreshFirstTouchQueueItem(input: {
+  workspaceId: string;
+  leadId: string;
+  channel: string;
+  provider: string;
+  subject: string;
+  body: string;
+  reason: string;
+}): Promise<{ skipped: true; reason: string } | { skipped: false; item: QueueItemWithLead; refreshed: boolean }> {
+  const prisma = getPrisma();
+  const existing = await prisma.outreachQueueItem.findFirst({
+    where: {
+      workspaceId: input.workspaceId,
+      leadId: input.leadId,
+      channel: input.channel,
+      provider: input.provider,
+      status: { in: ["pending", "queued", "sent"] },
+    },
+    orderBy: { createdAt: "desc" },
+    include: { lead: true },
+  });
+
+  if (existing?.status === "sent") {
+    return { skipped: true, reason: "active-first-touch-exists" };
+  }
+
+  if (existing) {
+    const item = await prisma.outreachQueueItem.update({
+      where: { id: existing.id },
+      data: {
+        subject: input.subject,
+        body: input.body,
+        reason: sanitizeInternalReason(`${input.reason} Refreshed existing active first-touch draft instead of creating a duplicate.`),
+      },
+      include: { lead: true },
+    });
+    return { skipped: false, item: item as QueueItemWithLead, refreshed: true };
+  }
+
+  const item = await prisma.outreachQueueItem.create({
+    data: {
+      workspaceId: input.workspaceId,
+      leadId: input.leadId,
+      channel: input.channel,
+      provider: input.provider,
+      subject: input.subject,
+      body: input.body,
+      status: "pending",
+      reason: input.reason,
+    },
+    include: { lead: true },
+  });
+  return { skipped: false, item: item as QueueItemWithLead, refreshed: false };
+}
+
 async function runLocalManualFallback(input: {
   workspaceId: string;
   provider: SourceProvider;
@@ -588,7 +650,6 @@ async function runLocalManualFallback(input: {
   partnerService?: string;
   campaignName?: string;
 }) {
-  const prisma = getPrisma();
   const skipped: Record<string, number> = {};
 
   function skip(reason: string) {
@@ -667,20 +728,22 @@ async function runLocalManualFallback(input: {
       const copy = partnerService
         ? partnerServiceOutreachCopy(sourceLead, partnerService)
         : improveGeneratedOutreach(parseGeneratedOutreach(generated.text, imported.lead.companyName), sourceLead);
+      const copyReason = "reason" in copy ? copy.reason : "Offer copy improved by Vega.";
 
-      const item = await prisma.outreachQueueItem.create({
-        data: {
-          workspaceId: input.workspaceId,
-          leadId: imported.lead.id,
-          channel: "email",
-          provider: "sendgrid",
-          subject: copy.subject,
-          body: copy.body,
-          status: "pending",
-          reason: sanitizeInternalReason(`Queued by Vega during local fallback because a public website email was discovered. ${copy.reason} ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))} Generated via ${generated.provider}.`),
-        },
-        include: { lead: true },
+      const queueResult = await createOrRefreshFirstTouchQueueItem({
+        workspaceId: input.workspaceId,
+        leadId: imported.lead.id,
+        channel: "email",
+        provider: "sendgrid",
+        subject: copy.subject,
+        body: copy.body,
+        reason: sanitizeInternalReason(`Queued by Vega during local fallback because a public website email was discovered. ${copyReason} ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))} Generated via ${generated.provider}.`) || "Prepared for operator approval.",
       });
+      if (queueResult.skipped) {
+        skip(`email-${queueResult.reason}`);
+        continue;
+      }
+      const item = queueResult.item;
 
       const approval = await approveOutreachQueueItem(item.id);
       emailQueued.push({
@@ -713,19 +776,20 @@ async function runLocalManualFallback(input: {
       continue;
     }
 
-    const item = await prisma.outreachQueueItem.create({
-      data: {
-        workspaceId: input.workspaceId,
-        leadId: imported.lead.id,
-        channel: "manual",
-        provider: "phone-website",
-        subject: `Manual contact path for ${imported.lead.companyName}`,
-        body: manualContactBody(sourceLead),
-        status: "pending",
-        reason: sanitizeInternalReason(`Queued by Vega as a local-service call-first fallback while sender capacity or trust policy blocked automatic email. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`),
-      },
-      include: { lead: true },
+    const queueResult = await createOrRefreshFirstTouchQueueItem({
+      workspaceId: input.workspaceId,
+      leadId: imported.lead.id,
+      channel: "manual",
+      provider: "phone-website",
+      subject: `Manual contact path for ${imported.lead.companyName}`,
+      body: manualContactBody(sourceLead),
+      reason: sanitizeInternalReason(`Queued by Vega as a local-service call-first fallback while sender capacity or trust policy blocked automatic email. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`) || "Manual contact research required.",
     });
+    if (queueResult.skipped) {
+      skip(`manual-${queueResult.reason}`);
+      continue;
+    }
+    const item = queueResult.item;
 
     const slack = await notifySlackOutreachApproval(item);
     manualQueued.push({ lead: imported.lead, item, slack });
@@ -832,7 +896,6 @@ async function runLocalManualFallback(input: {
 }
 
 export async function runLeadCommandAgent(input: AgentRunInput = {}) {
-  const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const provider = input.provider || "pdl";
   const autoSend = input.autoSend ?? boolFromEnv("AGENT_AUTO_SEND", false);
@@ -1024,19 +1087,21 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     const copy = partnerService
       ? partnerServiceOutreachCopy(sourceLead, partnerService)
       : improveGeneratedOutreach(parseGeneratedOutreach(generated.text, imported.lead.companyName), sourceLead);
-    const item = await prisma.outreachQueueItem.create({
-      data: {
-        workspaceId: workspace.id,
-        leadId: imported.lead.id,
-        channel: "email",
-        provider: "sendgrid",
-        subject: copy.subject,
-        body: copy.body,
-        status: "pending",
-        reason: sanitizeInternalReason(`${copy.reason} ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))} Generated via ${generated.provider}.`),
-      },
-      include: { lead: true },
+    const copyReason = "reason" in copy ? copy.reason : "Offer copy improved by Vega.";
+    const queueResult = await createOrRefreshFirstTouchQueueItem({
+      workspaceId: workspace.id,
+      leadId: imported.lead.id,
+      channel: "email",
+      provider: "sendgrid",
+      subject: copy.subject,
+      body: copy.body,
+      reason: sanitizeInternalReason(`${copyReason} ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))} Generated via ${generated.provider}.`) || "Prepared for operator approval.",
     });
+    if (queueResult.skipped) {
+      skip(queueResult.reason);
+      continue;
+    }
+    const item = queueResult.item;
 
     const slack = autoSend ? { sent: false, skipped: true, reason: "Auto-send enabled; Slack approval card skipped." } : await notifySlackOutreachApproval(item);
     const approval = autoSend ? await approveOutreachQueueItem(item.id) : null;
@@ -1080,19 +1145,20 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     const copy = partnerService
       ? partnerServiceOutreachCopy(sourceLead, partnerService)
       : improveGeneratedOutreach(parseGeneratedOutreach(generated.text, imported.lead.companyName), sourceLead);
-    const item = await prisma.outreachQueueItem.create({
-      data: {
-        workspaceId: workspace.id,
-        leadId: imported.lead.id,
-        channel: "email",
-        provider: "sendgrid",
-        subject: copy.subject,
-        body: copy.body,
-        status: "pending",
-        reason: executiveReviewReason(sourceLead, decision),
-      },
-      include: { lead: true },
+    const queueResult = await createOrRefreshFirstTouchQueueItem({
+      workspaceId: workspace.id,
+      leadId: imported.lead.id,
+      channel: "email",
+      provider: "sendgrid",
+      subject: copy.subject,
+      body: copy.body,
+      reason: executiveReviewReason(sourceLead, decision),
     });
+    if (queueResult.skipped) {
+      skip(`executive-${queueResult.reason}`);
+      continue;
+    }
+    const item = queueResult.item;
 
     const slack = await notifySlackOutreachApproval(item);
     executiveQueued.push({ lead: imported.lead, item, slack });
@@ -1129,19 +1195,20 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       continue;
     }
 
-    const item = await prisma.outreachQueueItem.create({
-      data: {
-        workspaceId: workspace.id,
-        leadId: imported.lead.id,
-        channel: "manual",
-        provider: "phone-website",
-        subject: `Manual contact path for ${imported.lead.companyName}`,
-        body: manualContactBody(sourceLead),
-        status: "pending",
-        reason: sanitizeInternalReason(`Queued by Vega because this lead has phone/website context but no public email yet. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`),
-      },
-      include: { lead: true },
+    const queueResult = await createOrRefreshFirstTouchQueueItem({
+      workspaceId: workspace.id,
+      leadId: imported.lead.id,
+      channel: "manual",
+      provider: "phone-website",
+      subject: `Manual contact path for ${imported.lead.companyName}`,
+      body: manualContactBody(sourceLead),
+      reason: sanitizeInternalReason(`Queued by Vega because this lead has phone/website context but no public email yet. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`) || "Manual contact research required.",
     });
+    if (queueResult.skipped) {
+      skip(`manual-${queueResult.reason}`);
+      continue;
+    }
+    const item = queueResult.item;
 
     const slack = await notifySlackOutreachApproval(item);
     manualQueued.push({ lead: imported.lead, item, slack });

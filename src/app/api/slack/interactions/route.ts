@@ -15,6 +15,7 @@ import {
   notifySlackVegaLeadRequestResult,
   type SlackInteractionPayload,
 } from "@/lib/slack";
+import { getPrisma } from "@/lib/prisma";
 
 function parseActionValue(value?: string) {
   if (!value) return {} as { action?: string; limit?: number; itemId?: string; plan?: AgentPlan };
@@ -70,6 +71,45 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
       : `Approval failed: ${result.body.error || "Unknown approval failure."}`;
     await recordOutreachSlackAction({ action: "approve", itemId, ok: result.ok, summary, payload });
     return slackEphemeral(result.ok ? `Vega approved it. ${summary}` : summary);
+  }
+
+  if (actionName === "outreach_call_task") {
+    const prisma = getPrisma();
+    const item = await prisma.outreachQueueItem.findUnique({
+      where: { id: itemId },
+      include: { lead: true },
+    });
+    if (!item) {
+      return slackEphemeral("Vega could not find that queue item.");
+    }
+    if (item.status !== "pending") {
+      return slackEphemeral(`Vega cannot create the call task because this item is already ${item.status}.`);
+    }
+    const updated = await prisma.outreachQueueItem.update({
+      where: { id: item.id },
+      data: {
+        channel: "manual",
+        provider: "phone-website",
+        status: "queued",
+        approvedAt: new Date(),
+        reason: "Converted from Slack research card into a call/contact-form task. No SendGrid email was sent.",
+      },
+      include: { lead: true },
+    });
+    if (updated.lead) {
+      await prisma.interaction.create({
+        data: {
+          leadId: updated.leadId,
+          channel: "manual:phone-website",
+          direction: "outbound",
+          body: updated.body,
+          classification: "queued",
+        },
+      });
+    }
+    const summary = `Vega created a call/contact-form task for ${updated.lead?.companyName || "that lead"}. No SendGrid email was sent.`;
+    await recordOutreachSlackAction({ action: "call_task", itemId, ok: true, summary, payload });
+    return slackEphemeral(summary);
   }
 
   if (actionName === "outreach_redo") {

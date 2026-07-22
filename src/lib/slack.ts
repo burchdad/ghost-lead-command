@@ -4,6 +4,7 @@ import type { AgentPlan } from "@/lib/autopilot";
 import type { CallAssistTask } from "@/lib/human-followup";
 import { buildSignalScoreboard, signalScoreboardSummary } from "@/lib/intent-scoreboard";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
+import { evaluateOpportunityQueueItem } from "@/lib/opportunity-intelligence";
 import { getOperatorCaps } from "@/lib/operator-policy";
 
 function clean(value: string | undefined) {
@@ -33,7 +34,7 @@ function actionToken() {
   return clean(process.env.SLACK_ACTION_TOKEN) || clean(process.env.LEAD_COMMAND_ACCESS_KEY);
 }
 
-function outreachActionValue(itemId: string, action: "approve" | "redo" | "discard" | "suppress") {
+function outreachActionValue(itemId: string, action: "approve" | "redo" | "discard" | "suppress" | "call_task") {
   return JSON.stringify({
     action: `outreach_${action}`,
     itemId,
@@ -279,11 +280,11 @@ export async function notifySlackOutreachApproval(
 
   const lead = item.lead;
   const title = lead?.companyName || "Lead Command outreach";
-  const score = typeof lead?.score === "number" ? String(lead.score) : "n/a";
   const value = typeof lead?.value === "number" ? `$${lead.value.toLocaleString()}` : "n/a";
   const subject = sanitizeSubject(item.subject || `Quick idea for ${title}`);
   const body = sanitizeCustomerMessage(item.body, { channel: item.channel });
   const preview = body.length > 420 ? `${body.slice(0, 417)}...` : body;
+  const intelligence = evaluateOpportunityQueueItem(item);
   const scoreboard = lead
     ? buildSignalScoreboard({
         companyName: lead.companyName,
@@ -299,28 +300,98 @@ export async function notifySlackOutreachApproval(
   const signalSummary = scoreboard ? signalScoreboardSummary(scoreboard) : clean(item.reason || undefined);
   const signalPreview = signalSummary.length > 620 ? `${signalSummary.slice(0, 617)}...` : signalSummary;
   const queueUrl = new URL("/?view=queue", appBaseUrl()).toString();
-  const isManualTask = item.channel === "manual";
-  const headerText = isManualTask ? "Lead Command manual contact ready" : "Lead Command approval ready";
-  const actionHelp = isManualTask
-    ? "Approve marks this manual phone/contact-form task ready. No SendGrid email is sent from this card. Redo rewrites instructions. Discard rejects it."
-    : "Approve sends in live mode or records a dry-run approval. Redo marks it for rewrite. Discard rejects it.";
-  const approveText = isManualTask ? "Approve Manual" : "Approve";
+  const sourceUrl = new URL("/?view=source", appBaseUrl()).toString();
+  const metricsLine = [
+    `Lead fit: ${intelligence.leadFit ?? "n/a"}`,
+    `Intent: ${intelligence.intent}`,
+    `Opportunity trust: ${intelligence.opportunityTrust}`,
+    `Contact confidence: ${intelligence.contactConfidence}`,
+    `Decision lane: ${intelligence.decisionLane.replace(/_/g, " ")}`,
+  ].join(" | ");
+  const actionHelp = intelligence.sendReady
+    ? "Approve sends in live mode or records a dry-run approval. Redo marks it for rewrite. Discard rejects it."
+    : `${intelligence.nextAction} Research/manual cards cannot send SendGrid email from Slack.`;
+  const decisionNotes = [
+    intelligence.reasons.length ? `*Why:*\n${intelligence.reasons.map((reason) => `- ${reason}`).join("\n")}` : "",
+    intelligence.risks.length ? `*Risks:*\n${intelligence.risks.map((risk) => `- ${risk}`).join("\n")}` : "",
+    `*Recommended next action:* ${intelligence.nextAction}`,
+  ].filter(Boolean).join("\n");
+  const actionElements = intelligence.sendReady
+    ? [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Approve", emoji: false },
+          style: "primary",
+          action_id: "outreach_approve",
+          value: outreachActionValue(item.id, "approve"),
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Redo", emoji: false },
+          action_id: "outreach_redo",
+          value: outreachActionValue(item.id, "redo"),
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Discard", emoji: false },
+          style: "danger",
+          action_id: "outreach_discard",
+          value: outreachActionValue(item.id, "discard"),
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Suppress", emoji: false },
+          style: "danger",
+          action_id: "outreach_suppress",
+          value: outreachActionValue(item.id, "suppress"),
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Open Queue", emoji: false },
+          url: queueUrl,
+        },
+      ]
+    : [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Research Contact", emoji: false },
+          url: sourceUrl,
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Create Call Task", emoji: false },
+          action_id: "outreach_call_task",
+          value: outreachActionValue(item.id, "call_task"),
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Open Queue", emoji: false },
+          url: queueUrl,
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Suppress", emoji: false },
+          style: "danger",
+          action_id: "outreach_suppress",
+          value: outreachActionValue(item.id, "suppress"),
+        },
+      ];
 
   const response = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      text: `${isManualTask ? "Manual contact ready" : "Approval ready"}: ${title}`,
+      text: intelligence.cardText,
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: headerText, emoji: false },
+          text: { type: "plain_text", text: intelligence.cardTitle, emoji: false },
         },
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${title}*\n${item.channel}:${item.provider} | score ${score} | ${value}\n*Subject:* ${subject}`,
+            text: `*${title}*\n${item.channel}:${item.provider} | ${value}\n${metricsLine}\n*Subject:* ${subject}`,
           },
         },
         {
@@ -335,6 +406,14 @@ export async function notifySlackOutreachApproval(
               },
             ]
           : []),
+        ...(decisionNotes
+          ? [
+              {
+                type: "section",
+                text: { type: "mrkdwn", text: decisionNotes },
+              },
+            ]
+          : []),
         {
           type: "context",
           elements: [
@@ -346,40 +425,7 @@ export async function notifySlackOutreachApproval(
         },
         {
           type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: { type: "plain_text", text: approveText, emoji: false },
-              style: "primary",
-              action_id: "outreach_approve",
-              value: outreachActionValue(item.id, "approve"),
-            },
-            {
-              type: "button",
-              text: { type: "plain_text", text: "Redo", emoji: false },
-              action_id: "outreach_redo",
-              value: outreachActionValue(item.id, "redo"),
-            },
-            {
-              type: "button",
-              text: { type: "plain_text", text: "Discard", emoji: false },
-              style: "danger",
-              action_id: "outreach_discard",
-              value: outreachActionValue(item.id, "discard"),
-            },
-            {
-              type: "button",
-              text: { type: "plain_text", text: "Suppress", emoji: false },
-              style: "danger",
-              action_id: "outreach_suppress",
-              value: outreachActionValue(item.id, "suppress"),
-            },
-            {
-              type: "button",
-              text: { type: "plain_text", text: "Open Queue", emoji: false },
-              url: queueUrl,
-            },
-          ],
+          elements: actionElements,
         },
       ],
     }),
