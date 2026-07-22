@@ -51,6 +51,8 @@ model Workspace {
   agencyMemberships      AgencyMembership[]
   agencyClientWorkspaces AgencyClientWorkspace[]
   intelligenceSnapshots  OpportunityIntelligenceSnapshot[]
+  sendGridEventLogs      SendGridEventLog[]
+  sendGridMessageOutcomes SendGridMessageOutcome[]
 }
 
 enum VegaLaunchAgentType {
@@ -134,6 +136,28 @@ enum IntelligenceSnapshotType {
   MANUAL_OVERRIDE
   POLICY_CHANGE
   OUTCOME
+}
+
+enum SendGridMessageOutcomeStatus {
+  PROCESSED
+  DELIVERED
+  HARD_BOUNCE
+  SOFT_BOUNCE
+  DROPPED
+  BLOCKED
+  DEFERRED
+  SPAM_COMPLAINT
+  UNSUBSCRIBED
+  UNKNOWN
+}
+
+enum SenderGovernorState {
+  INSUFFICIENT_DATA
+  HEALTHY
+  CAUTION
+  RESTRICTED
+  RECOVERY
+  STOP
 }
 
 model Company {
@@ -232,6 +256,8 @@ model Lead {
   inboundMessages      InboundMessage[]
   lookalikeSeeds       LookalikeSeed[]
   intelligenceSnapshots OpportunityIntelligenceSnapshot[]
+  sendGridEventLogs     SendGridEventLog[]
+  sendGridMessageOutcomes SendGridMessageOutcome[]
 
   @@index([workspaceId])
   @@index([stage])
@@ -277,6 +303,59 @@ model OpportunityIntelligenceSnapshot {
   @@index([workspaceId, leadId, createdAt])
   @@index([workspaceId, campaignId, createdAt])
   @@index([workspaceId, snapshotType, createdAt])
+}
+
+model SendGridEventLog {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  leadId            String?
+  provider          String   @default("sendgrid")
+  providerEventId   String?
+  providerMessageId String
+  eventType         String
+  eventTimestamp    DateTime?
+  payload           Json
+  createdAt         DateTime @default(now())
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead              Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, provider, providerEventId])
+  @@index([workspaceId, providerMessageId])
+  @@index([workspaceId, eventType, createdAt])
+}
+
+model SendGridMessageOutcome {
+  id                String                       @id @default(cuid())
+  workspaceId       String
+  leadId            String?
+  campaignId        String?
+  queueItemId       String?
+  provider          String                       @default("sendgrid")
+  providerMessageId String
+  senderEmail       String?
+  senderDomain      String?
+  sendingIdentity   String?
+  sourceProvider    String?
+  campaignName      String?
+  recipientEmail    String?
+  finalOutcome      SendGridMessageOutcomeStatus @default(UNKNOWN)
+  final             Boolean                      @default(false)
+  severity          Int                          @default(0)
+  lastEventType     String?
+  firstEventAt      DateTime?
+  lastEventAt       DateTime?
+  eventCount        Int                          @default(0)
+  rawEvents         Json?
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+  workspace         Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead              Lead?                        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, provider, providerMessageId])
+  @@index([workspaceId, senderEmail, finalOutcome, lastEventAt])
+  @@index([workspaceId, campaignName, finalOutcome, lastEventAt])
+  @@index([workspaceId, sourceProvider, finalOutcome, lastEventAt])
+  @@index([workspaceId, senderDomain, finalOutcome, lastEventAt])
 }
 
 model Opportunity {

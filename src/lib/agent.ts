@@ -658,7 +658,7 @@ async function runLocalManualFallback(input: {
   const emailQueued: QueuedEntry[] = [];
   const manualQueued: ManualQueuedEntry[] = [];
 
-  const senderCanSend = input.policy.sender.remaining > 0 && input.policy.sender.mode !== "stop";
+  const senderCanSend = input.policy.sender.remaining > 0 && !["stop", "recovery", "restricted"].includes(input.policy.sender.mode);
   if (input.autoSend && senderCanSend) {
     for (const sourceLead of fallbackCandidates.filter((lead) => clean(lead.email))) {
       if (emailQueued.length >= fallbackLimit) break;

@@ -236,9 +236,9 @@ export async function computeConversionLearning(): Promise<ConversionLearning> {
     failed > 0
       ? `Review ${failed} failed sends and suppress repeated bounce domains before increasing volume.`
       : "Deliverability is clean enough for a cautious volume increase.",
-    senderHealth.mode !== "clear"
+    senderHealth.mode !== "healthy"
       ? `Hold or reduce auto-send volume: sender health is ${senderHealth.mode} with ${senderHealth.bounceRate}% risky SendGrid events.`
-      : `Sender health is clear at ${senderHealth.bounceRate}% risky SendGrid events.`,
+      : `Sender health is healthy at ${senderHealth.bounceRate}% risky SendGrid events.`,
     overallReplyRate < 3
       ? "Keep daily volume moderate and test sharper signal-first copy before scaling auto-send."
       : "Reply rate is viable; increase queue cap only on the top-performing source/signal pair.",
@@ -247,7 +247,7 @@ export async function computeConversionLearning(): Promise<ConversionLearning> {
   const nextActions = [
     recommendedPlayIds.length ? `Activate or refresh these source plays: ${recommendedPlayIds.join(", ")}.` : "",
     socialSignalCoverage < 25 ? "Run Vega social intent scout to add LinkedIn/competitor-style trigger evidence." : "",
-    failed || senderHealth.mode !== "clear" ? "Run Vega protect deliverability before increasing send volume." : "",
+    failed || senderHealth.mode !== "healthy" ? "Run Vega protect deliverability before increasing send volume." : "",
     replies.length ? "Run Vega work replies and push bookings after each send batch." : "Approve a small reviewed batch, then watch SendGrid events before adding more volume.",
   ].filter(Boolean);
 

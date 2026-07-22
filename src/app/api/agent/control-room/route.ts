@@ -295,13 +295,13 @@ export async function GET() {
         id: "conversion-audit",
         name: "Conversion Audit Agent",
         role: "Verify the full path from sourced lead to valid contact, delivered email, reply, confirmed opportunity, and booked calendar event.",
-        status: senderHealth.mode === "stop" ? "needs-work" : leads.length || queue.length ? "ready" : "needs-work",
+        status: ["stop", "recovery", "restricted"].includes(senderHealth.mode) ? "needs-work" : leads.length || queue.length ? "ready" : "needs-work",
         health:
-          senderHealth.mode === "clear"
-            ? "Sender health clear"
+          senderHealth.mode === "healthy"
+            ? "Sender health healthy"
             : senderHealth.mode === "caution"
               ? "Sender health caution"
-              : "Sender health stop",
+              : `Sender health ${senderHealth.mode}`,
         detail:
           "Use this before scaling sends. It tells Vega where conversion is leaking: contact quality, generic inboxes, risky sends, missing replies, booking handoffs, or source fit.",
         lastEvent: recentConversionAuditEvent,

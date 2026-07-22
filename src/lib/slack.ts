@@ -808,6 +808,11 @@ export async function notifySlackVegaOpsBrief(input: {
             },
             {
               type: "button",
+              text: { type: "plain_text", text: "Open Sender Health", emoji: false },
+              url: appViewUrl("intelligence"),
+            },
+            {
+              type: "button",
               text: { type: "plain_text", text: "Open Source", emoji: false },
               url: appViewUrl("source"),
             },
@@ -1055,7 +1060,32 @@ export async function notifySlackBatchApprovalResult(input: {
   callAssistTasks?: CallAssistTask[];
   blocked?: boolean;
   blockReason?: string;
-  health?: { mode?: string; bounceRate?: number; targetBounceRate?: number };
+  health?: {
+    mode?: string;
+    bounceRate?: number;
+    targetBounceRate?: number;
+    uniqueSendsEvaluated?: number;
+    delivered?: number;
+    hardBounced?: number;
+    softBounced?: number;
+    dropped?: number;
+    blocked?: number;
+    complaints?: number;
+    unsubscribes?: number;
+    deferredPending?: number;
+    providerFailureRate?: number;
+    sampleConfidence?: string;
+  };
+  recovery?: {
+    heldPipeline?: {
+      emailQualifiedHeld?: number;
+      recoveryVerified?: number;
+      callFirst?: number;
+      research?: number;
+      suppressed?: number;
+    };
+    recommendedActions?: string[];
+  };
 }) {
   const channelName = clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
   const callAssistLine = input.callAssistTasks?.length
@@ -1065,7 +1095,7 @@ export async function notifySlackBatchApprovalResult(input: {
         .join("; ")}${input.callAssistTasks.length > 5 ? ` +${input.callAssistTasks.length - 5} more` : ""}`
     : "";
   const summary = input.blocked
-    ? `Paused by Vega quality gate: ${input.blockReason || "sender health or contact quality needs review."}`
+    ? `SENDER RECOVERY REQUIRED: ${input.blockReason || "sender health or contact quality needs review."}`
     : input.attempted
       ? `Approved ${input.approved}/${input.attempted}. Sent ${input.sent}. Phone assists ${input.callAssistQueued || 0}. Dry-run queued ${input.dryRunQueued}. Failed ${input.failed}.`
       : `No SendGrid-ready email approvals found. Manual pending ${input.manualPending}; other pending ${input.otherPending}.`;
@@ -1090,6 +1120,32 @@ export async function notifySlackBatchApprovalResult(input: {
             text: `*Channel:* #${channelName}\n*Status:* ${summary}${callAssistLine}`,
           },
         },
+        ...(input.blocked
+          ? [
+              {
+                type: "section",
+                fields: [
+                  { type: "mrkdwn", text: `*State*\n${input.health?.mode?.toUpperCase() || "UNKNOWN"}` },
+                  { type: "mrkdwn", text: `*Unique sends evaluated*\n${input.health?.uniqueSendsEvaluated ?? 0}` },
+                  { type: "mrkdwn", text: `*Delivered*\n${input.health?.delivered ?? 0}` },
+                  { type: "mrkdwn", text: `*Hard bounce*\n${input.health?.hardBounced ?? 0}` },
+                  { type: "mrkdwn", text: `*Soft bounce*\n${input.health?.softBounced ?? 0}` },
+                  { type: "mrkdwn", text: `*Dropped / blocked*\n${(input.health?.dropped ?? 0) + (input.health?.blocked ?? 0)}` },
+                  { type: "mrkdwn", text: `*Deferred pending*\n${input.health?.deferredPending ?? 0}` },
+                  { type: "mrkdwn", text: `*Complaints*\n${input.health?.complaints ?? 0}` },
+                  { type: "mrkdwn", text: `*Unsubscribes*\n${input.health?.unsubscribes ?? 0}` },
+                  { type: "mrkdwn", text: `*Sample confidence*\n${input.health?.sampleConfidence || "Low"}` },
+                ],
+              },
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `*Held pipeline:*\nEmail-qualified held ${input.recovery?.heldPipeline?.emailQualifiedHeld ?? input.emailReadyBefore}; recovery-verified ${input.recovery?.heldPipeline?.recoveryVerified ?? 0}; call-first ${input.recovery?.heldPipeline?.callFirst ?? input.manualPending}; research ${input.recovery?.heldPipeline?.research ?? 0}; suppressed ${input.recovery?.heldPipeline?.suppressed ?? 0}.\n\n*Recommended recovery actions:*\n${(input.recovery?.recommendedActions || ["Suppress invalid contacts.", "Reverify held emails.", "Build a controlled recovery batch.", "Work phone tasks."]).slice(0, 5).map((item) => `- ${item}`).join("\n")}`,
+                },
+              },
+            ]
+          : []),
         {
           type: "section",
           fields: [

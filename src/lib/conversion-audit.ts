@@ -143,7 +143,7 @@ export async function runVegaConversionAudit(input: { days?: number; createEvent
   }
 
   const nextMoves = [
-    health.mode !== "clear" ? "Vega, protect deliverability" : "",
+    health.mode !== "healthy" ? "Vega, protect deliverability" : "",
     bookingReady ? "Vega, push bookings" : "",
     hotReplies ? "Vega, work replies" : "",
     genericPending || manual ? "Vega, work contact paths" : "",

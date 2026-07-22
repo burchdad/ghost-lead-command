@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAutomationEvent } from "@/lib/automation";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
+import { recordSendGridEvent, recalculateSourceQualityFromOutcomes } from "@/lib/sender-health";
 import { addSuppressionRecord } from "@/lib/suppression";
 import { persistOpportunityIntelligenceSnapshot } from "@/lib/vega-intelligence-snapshots";
 import { getDefaultWorkspace } from "@/lib/workspace";
@@ -12,6 +13,8 @@ type SendGridEvent = {
   reason?: string;
   response?: string;
   sg_message_id?: string;
+  sg_event_id?: string;
+  "smtp-id"?: string;
   url?: string;
   timestamp?: number;
 };
@@ -49,6 +52,10 @@ function eventBody(event: SendGridEvent) {
   const detail = clean(event.reason) || clean(event.response) || clean(event.url);
   const messageId = clean(event.sg_message_id);
   return [`SendGrid ${type}`, detail, messageId ? `message ${messageId}` : ""].filter(Boolean).join(" - ").slice(0, 500);
+}
+
+function providerMessageId(event: SendGridEvent) {
+  return clean(event.sg_message_id).split(".")[0] || clean(event["smtp-id"]) || "";
 }
 
 async function queueClickIntentFollowUp(input: {
@@ -203,6 +210,21 @@ export async function POST(request: Request) {
       }
     }
 
+    await recordSendGridEvent({
+      workspaceId: workspace.id,
+      leadId: lead?.id || null,
+      event: {
+        providerEventId: clean(event.sg_event_id) || null,
+        providerMessageId: providerMessageId(event),
+        eventType: type,
+        email,
+        reason: event.reason,
+        response: event.response,
+        timestamp: event.timestamp,
+        rawPayload: event as Record<string, unknown>,
+      },
+    }).catch(() => undefined);
+
     if (!suppressibleEvent(type)) continue;
 
     await addSuppressionRecord({
@@ -246,6 +268,8 @@ export async function POST(request: Request) {
     type: "sendgrid",
     payload: { count: events.length, tracked, suppressed, markedFailed },
   }).catch(() => undefined);
+
+  await recalculateSourceQualityFromOutcomes({ workspaceId: workspace.id }).catch(() => undefined);
 
   return NextResponse.json({ ok: true, processed: events.length, tracked, suppressed, markedFailed }, { status: 202 });
 }

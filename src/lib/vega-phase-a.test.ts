@@ -16,6 +16,7 @@ import {
   VEGA_POLICY_VERSION,
 } from "@/lib/vega-intelligence-fusion";
 import { MEANINGFUL_INTELLIGENCE_TRIGGERS, snapshotTypeForTrigger } from "@/lib/vega-intelligence-snapshots";
+import { classifySenderHealth, reconcileSendGridEvents } from "@/lib/sender-health";
 
 const now = new Date("2026-07-22T15:00:00.000Z");
 
@@ -436,4 +437,91 @@ test("snapshot trigger types map to typed intelligence categories", () => {
   assert.equal(snapshotTypeForTrigger("email_event"), "DELIVERY_EVENT");
   assert.equal(snapshotTypeForTrigger("reply_received"), "REPLY");
   assert.equal(snapshotTypeForTrigger("manual_override"), "MANUAL_OVERRIDE");
+});
+
+test("sendgrid reconciliation counts processed then delivered as one delivered message", () => {
+  const [message] = reconcileSendGridEvents([
+    { providerMessageId: "msg-1", eventType: "processed", timestamp: 1 },
+    { providerMessageId: "msg-1", eventType: "delivered", timestamp: 2 },
+  ]);
+
+  assert.equal(message.providerMessageId, "msg-1");
+  assert.equal(message.finalOutcome, "DELIVERED");
+  assert.equal(message.final, true);
+  assert.equal(message.eventCount, 2);
+});
+
+test("sendgrid reconciliation resolves deferred messages by their final outcome", () => {
+  const delivered = reconcileSendGridEvents([
+    { providerMessageId: "msg-2", eventType: "deferred", timestamp: 1 },
+    { providerMessageId: "msg-2", eventType: "delivered", timestamp: 2 },
+  ]);
+  const hardBounced = reconcileSendGridEvents([
+    { providerMessageId: "msg-3", eventType: "deferred", timestamp: 1 },
+    { providerMessageId: "msg-3", eventType: "bounce", reason: "550 mailbox unavailable", timestamp: 2 },
+  ]);
+
+  assert.equal(delivered[0].finalOutcome, "DELIVERED");
+  assert.equal(hardBounced[0].finalOutcome, "HARD_BOUNCE");
+});
+
+test("sendgrid reconciliation deduplicates duplicate webhook rows by message id", () => {
+  const messages = reconcileSendGridEvents([
+    { providerMessageId: "msg-4", eventType: "processed", timestamp: 1 },
+    { providerMessageId: "msg-4", eventType: "processed", timestamp: 1 },
+    { providerMessageId: "msg-4", eventType: "bounce", timestamp: 2 },
+    { providerMessageId: "msg-5", eventType: "delivered", timestamp: 2 },
+  ]);
+
+  assert.equal(messages.length, 2);
+  assert.equal(messages.find((message) => message.providerMessageId === "msg-4")?.finalOutcome, "HARD_BOUNCE");
+  assert.equal(messages.find((message) => message.providerMessageId === "msg-5")?.finalOutcome, "DELIVERED");
+});
+
+test("sendgrid reconciliation separates unsubscribe from provider failure", () => {
+  const [message] = reconcileSendGridEvents([
+    { providerMessageId: "msg-6", eventType: "delivered", timestamp: 1 },
+    { providerMessageId: "msg-6", eventType: "unsubscribe", timestamp: 2 },
+  ]);
+
+  assert.equal(message.finalOutcome, "UNSUBSCRIBED");
+  assert.equal(message.severity, 20);
+});
+
+test("sender health classification stops on complaints and respects sample confidence", () => {
+  assert.equal(classifySenderHealth({
+    evaluated: 50,
+    hardBounceRate: 0,
+    softBounceRate: 0,
+    droppedRate: 0,
+    blockedRate: 0,
+    complaintRate: 0.1,
+  }), "stop");
+  assert.equal(classifySenderHealth({
+    evaluated: 3,
+    hardBounceRate: 0,
+    softBounceRate: 0,
+    droppedRate: 0,
+    blockedRate: 0,
+    complaintRate: 0,
+  }), "insufficient_data");
+});
+
+test("sender health classification gates broad first-touch recovery states", () => {
+  assert.equal(classifySenderHealth({
+    evaluated: 20,
+    hardBounceRate: 5,
+    softBounceRate: 0,
+    droppedRate: 0,
+    blockedRate: 0,
+    complaintRate: 0,
+  }), "recovery");
+  assert.equal(classifySenderHealth({
+    evaluated: 50,
+    hardBounceRate: 1,
+    softBounceRate: 0,
+    droppedRate: 2,
+    blockedRate: 1,
+    complaintRate: 0,
+  }), "restricted");
 });

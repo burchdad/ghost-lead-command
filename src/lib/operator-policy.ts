@@ -137,8 +137,8 @@ export async function prepareOperatorRun(input: PrepareRunInput): Promise<Operat
   if (remainingSource <= 0) blockedReasons.push("Daily source cap reached.");
   if (remainingQueue <= 0) blockedReasons.push("Daily outreach queue cap reached.");
   if (remainingSender <= 0) blockedReasons.push("Today's safe sender capacity reached.");
-  if (senderHealth.mode === "stop" && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false)) {
-    blockedReasons.push(`Sender governor stopped sending at ${senderHealth.bounceRate}% risky events.`);
+  if (["stop", "recovery", "restricted"].includes(senderHealth.mode) && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false)) {
+    blockedReasons.push(`Sender governor ${senderHealth.mode.toUpperCase()}: ${senderHealth.providerFailureRate}% provider failure rate across ${senderHealth.uniqueSendsEvaluated} unique messages.`);
   }
   if (queueLimit <= 0) blockedReasons.push("No safe sender capacity remains for this run.");
   if (size <= 0) blockedReasons.push("No sourcing capacity remains for this run.");
@@ -191,8 +191,8 @@ export async function getOperatorQueueCapacity(workspaceId: string) {
 
   if (remainingQueue <= 0) blockedReasons.push("Daily outreach queue cap reached.");
   if (remainingSender <= 0) blockedReasons.push("Today's safe sender capacity reached.");
-  if (senderHealth.mode === "stop" && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false)) {
-    blockedReasons.push(`Sender governor stopped sending at ${senderHealth.bounceRate}% risky events.`);
+  if (["stop", "recovery", "restricted"].includes(senderHealth.mode) && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false)) {
+    blockedReasons.push(`Sender governor ${senderHealth.mode.toUpperCase()}: ${senderHealth.providerFailureRate}% provider failure rate across ${senderHealth.uniqueSendsEvaluated} unique messages.`);
   }
 
   return {

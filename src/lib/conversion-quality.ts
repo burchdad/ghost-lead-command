@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma";
-import { getDefaultWorkspace } from "@/lib/workspace";
+import { getSenderHealth as getNormalizedSenderHealth } from "@/lib/sender-health";
 
 type QueueItemForQuality = Prisma.OutreachQueueItemGetPayload<{
   include: { lead: { include: { contact: true; company: true } } };
@@ -27,12 +27,6 @@ function boolFromEnv(name: string, fallback: boolean) {
   if (["1", "true", "yes", "on"].includes(value)) return true;
   if (["0", "false", "no", "off"].includes(value)) return false;
   return fallback;
-}
-
-function startOfWindow(days: number) {
-  const date = new Date();
-  date.setDate(date.getDate() - Math.max(1, days));
-  return date;
 }
 
 export function isValidBusinessEmail(email?: string | null) {
@@ -69,51 +63,7 @@ export function emailQualityTier(email?: string | null) {
 }
 
 export async function getSenderHealth(input: { workspaceId?: string; days?: number } = {}) {
-  const prisma = getPrisma();
-  const workspace = input.workspaceId ? { id: input.workspaceId } : await getDefaultWorkspace();
-  const since = startOfWindow(input.days || numberFromEnv("VEGA_SENDER_HEALTH_WINDOW_DAYS", 7));
-  const [delivered, bounced, dropped, spamReports, unsubscribes, failedQueue, sentQueue] = await Promise.all([
-    prisma.interaction.count({
-      where: { lead: { is: { workspaceId: workspace.id } }, channel: "email:sendgrid", classification: "delivered", createdAt: { gte: since } },
-    }),
-    prisma.interaction.count({
-      where: { lead: { is: { workspaceId: workspace.id } }, channel: "email:sendgrid", classification: "bounce", createdAt: { gte: since } },
-    }),
-    prisma.interaction.count({
-      where: { lead: { is: { workspaceId: workspace.id } }, channel: "email:sendgrid", classification: "dropped", createdAt: { gte: since } },
-    }),
-    prisma.interaction.count({
-      where: { lead: { is: { workspaceId: workspace.id } }, channel: "email:sendgrid", classification: "spamreport", createdAt: { gte: since } },
-    }),
-    prisma.interaction.count({
-      where: { lead: { is: { workspaceId: workspace.id } }, channel: "email:sendgrid", classification: { in: ["unsubscribe", "group_unsubscribe"] }, createdAt: { gte: since } },
-    }),
-    prisma.outreachQueueItem.count({ where: { workspaceId: workspace.id, channel: "email", status: "failed", updatedAt: { gte: since } } }),
-    prisma.outreachQueueItem.count({ where: { workspaceId: workspace.id, channel: "email", status: "sent", sentAt: { gte: since } } }),
-  ]);
-  const risky = bounced + dropped + spamReports;
-  const observedVolume = Math.max(delivered + risky, sentQueue + failedQueue, 1);
-  const bounceRate = Math.round((risky / observedVolume) * 1000) / 10;
-  const targetBounceRate = numberFromEnv("VEGA_TARGET_BOUNCE_RATE", 3);
-  const hardStopBounceRate = numberFromEnv("VEGA_HARD_STOP_BOUNCE_RATE", 8);
-  const mode = bounceRate >= hardStopBounceRate ? "stop" : bounceRate >= targetBounceRate ? "caution" : "clear";
-
-  return {
-    mode,
-    delivered,
-    bounced,
-    dropped,
-    spamReports,
-    unsubscribes,
-    failedQueue,
-    sentQueue,
-    risky,
-    observedVolume,
-    bounceRate,
-    targetBounceRate,
-    hardStopBounceRate,
-    canScale: mode === "clear",
-  };
+  return getNormalizedSenderHealth(input);
 }
 
 export async function evaluateQueueItemForConversionSend(item: QueueItemForQuality) {
@@ -132,12 +82,15 @@ export async function evaluateQueueItemForConversionSend(item: QueueItemForQuali
   if (tier === "personal") warnings.push("Personal/free email domain; verify before scaling.");
   if (tier === "generic") {
     warnings.push("Generic role inbox; named buyer email is preferred for auto-send.");
-    if (health.mode !== "clear" || leadScore < numberFromEnv("VEGA_GENERIC_EMAIL_MIN_SCORE", 90)) {
+    if (health.mode !== "healthy" || leadScore < numberFromEnv("VEGA_GENERIC_EMAIL_MIN_SCORE", 90)) {
       reasons.push("Generic role inbox needs manual review or named-buyer enrichment before auto email.");
     }
   }
   if (health.mode === "stop" && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false)) {
-    reasons.push(`Sender health stop: ${health.bounceRate}% risky events vs ${health.hardStopBounceRate}% hard stop.`);
+    reasons.push(`Sender health STOP: ${health.providerFailureRate}% provider failure rate across ${health.uniqueSendsEvaluated} unique messages.`);
+  }
+  if (health.mode === "recovery" || health.mode === "restricted") {
+    reasons.push(`Sender recovery required: ${health.providerFailureRate}% provider failure rate. Broad first-touch email is paused.`);
   }
 
   return {

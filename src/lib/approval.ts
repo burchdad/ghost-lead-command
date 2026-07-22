@@ -6,6 +6,7 @@ import { improveOfferCopy } from "@/lib/offer-copy-brain";
 import { evaluateQueueItemForConversionSend, getSenderHealth } from "@/lib/conversion-quality";
 import { queueHumanCallAssistAfterEmail } from "@/lib/human-followup";
 import { getPrisma } from "@/lib/prisma";
+import { buildSenderRecoveryPlan, recordSendGridEvent } from "@/lib/sender-health";
 import { getDefaultWorkspace } from "@/lib/workspace";
 import { findSuppressionMatch } from "@/lib/suppression";
 
@@ -118,6 +119,21 @@ export async function approveOutreachQueueItem(
     },
   });
 
+  if (item.channel === "email" && delivery.provider === "sendgrid" && "providerId" in delivery && delivery.providerId) {
+    await recordSendGridEvent({
+      workspaceId: item.workspaceId,
+      leadId: item.leadId,
+      event: {
+        providerMessageId: delivery.providerId,
+        eventType: delivery.status === "sent" ? "processed" : "dropped",
+        email: item.lead.contact?.email,
+        reason: delivery.message,
+        timestamp: Math.floor(Date.now() / 1000),
+        rawPayload: { source: "approval-send", queueItemId: item.id, delivery },
+      },
+    }).catch(() => undefined);
+  }
+
   await prisma.lead.update({
     where: { id: item.lead.id },
     data: { lastTouch: "Just now", stage: item.lead.stage === "Imported" ? "Contacted" : item.lead.stage },
@@ -174,15 +190,17 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
     }),
   ]);
 
-  if (health.mode === "stop" && !["true", "1", "yes", "on"].includes(String(process.env.VEGA_ALLOW_HIGH_BOUNCE_SEND || "").toLowerCase())) {
+  if (["stop", "recovery", "restricted"].includes(health.mode) && !["true", "1", "yes", "on"].includes(String(process.env.VEGA_ALLOW_HIGH_BOUNCE_SEND || "").toLowerCase())) {
+    const recovery = await buildSenderRecoveryPlan({ workspaceId: workspace.id });
     return {
       requested: limit,
       attempted: 0,
       approved: 0,
       failed: 0,
       blocked: true,
-      blockReason: `Sender health stop: ${health.bounceRate}% risky SendGrid events. Target is below ${health.targetBounceRate}%; hard stop is ${health.hardStopBounceRate}%.`,
+      blockReason: `Sender ${health.mode.toUpperCase()} requires recovery: ${health.providerFailureRate}% provider failure rate across ${health.uniqueSendsEvaluated} unique messages. Broad first-touch email remains blocked.`,
       health,
+      recovery,
       emailReadyBefore: emailReady,
       manualPending,
       otherPending,

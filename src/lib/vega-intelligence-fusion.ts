@@ -186,10 +186,12 @@ function probability(score: number, floor = 1, ceiling = 95) {
 }
 
 function normalizeSenderMode(mode: string) {
-  const value = clean(mode).toUpperCase();
+  const value = clean(mode).replace(/-/g, "_").toUpperCase();
   if (value === "STOP") return "STOP";
   if (value === "CAUTION") return "CAUTION";
   if (value === "RESTRICTED") return "RESTRICTED";
+  if (value === "RECOVERY") return "RESTRICTED";
+  if (value === "INSUFFICIENT_DATA") return "CAUTION";
   return "HEALTHY";
 }
 
