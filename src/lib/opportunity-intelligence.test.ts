@@ -64,6 +64,34 @@ test("manual or enrich queue items are not send-ready approval cards", () => {
   assert.ok(decision.risks.some((risk) => /decision-maker|email|enrichment/i.test(risk)));
 });
 
+test("research cards separate ICP fit from confirmed buyer intent", () => {
+  const decision = evaluateOpportunityQueueItem({
+    ...item({
+      channel: "email",
+      provider: "sendgrid",
+      subject: "Following up on open quotes?",
+      body: "No contact path yet. Website/contact form: https://hvac.example",
+      reason:
+        "Signal score 68 (research). Channel: enrich. Why: ICP match is strong enough for a money-path test; buyer-intent trigger present; public web signal supports context. Risk: buyer role is unclear; no contact path yet.",
+    }),
+    lead: lead({
+      nextAction:
+        "Vega read: Signal score 68 (research). Channel: enrich. Why: ICP match is strong enough for a money-path test; buyer-intent trigger present; public web signal supports context.",
+      score: 91,
+    }),
+  });
+
+  assert.equal(decision.sendReady, false);
+  assert.equal(decision.decisionLane, "RESEARCH");
+  assert.equal(decision.leadFit, 91);
+  assert.equal(decision.researchSignalScore, 68);
+  assert.match(decision.executionStatus, /Blocked pending enrichment/i);
+  assert.match(decision.researchObjective, /owner|operator|office manager|verified business email/i);
+  assert.match(decision.proposedOutreachAngle, /inquiry follow-up|lead-response/i);
+  assert.ok(decision.reasons.some((reason) => /active buying intent not confirmed/i.test(reason)));
+  assert.ok(!decision.reasons.some((reason) => /buyer-intent trigger present/i.test(reason)));
+});
+
 test("verified sendgrid email can remain approval-ready", () => {
   const decision = evaluateOpportunityQueueItem({
     ...item({

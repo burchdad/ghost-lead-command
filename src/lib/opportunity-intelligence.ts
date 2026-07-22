@@ -11,12 +11,16 @@ export type OpportunityDecisionLane =
 export type OpportunityIntelligence = {
   leadFit: number | null;
   intent: number;
+  researchSignalScore: number | null;
   opportunityTrust: number;
   contactConfidence: number;
   decisionLane: OpportunityDecisionLane;
   sendReady: boolean;
   cardTitle: string;
   cardText: string;
+  executionStatus: string;
+  researchObjective: string;
+  proposedOutreachAngle: string;
   reasons: string[];
   risks: string[];
   nextAction: string;
@@ -37,6 +41,10 @@ function hasBusinessEmail(item: QueueItemWithLead) {
 function extractScore(text: string, label: RegExp) {
   const match = text.match(label);
   return match ? Number(match[1]) : null;
+}
+
+function hasConfirmedBuyerIntent(text: string) {
+  return /form submission|submitted|requested pricing|asked for pricing|reply|replied|clicked|email click|booked|meeting requested|recent hiring|hiring for|new location|expansion|funding|active ad|ad increase|public post asking|technology change|direct inquiry|estimate request from|quote request from/i.test(text);
 }
 
 function contactConfidence(item: QueueItemWithLead) {
@@ -67,6 +75,7 @@ export function evaluateOpportunityQueueItem(item: QueueItemWithLead): Opportuni
   const allText = [item.channel, item.provider, item.subject, item.body, item.reason, lead?.nextAction].join(" ");
   const parsedSignal = extractScore(allText, /Signal score\s+(\d+)/i);
   const intent = clamp(parsedSignal ?? scoreboard?.total ?? lead?.score ?? 0);
+  const confirmedIntent = hasConfirmedBuyerIntent(allText);
   const leadFit = typeof lead?.score === "number" ? clamp(lead.score) : null;
   const confidence = contactConfidence(item);
   const risks = [
@@ -79,8 +88,11 @@ export function evaluateOpportunityQueueItem(item: QueueItemWithLead): Opportuni
   const reasons = [
     ...(scoreboard?.reasons || []),
     leadFit && leadFit >= 80 ? "Strong ICP fit." : "",
+    leadFit && leadFit >= 80 && !confirmedIntent ? "Market-fit signal present; active buying intent not confirmed." : "",
     confidence >= 80 ? "Verified email path available." : "",
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .filter((reason) => confirmedIntent || !/buyer-intent trigger present/i.test(reason));
 
   let decisionLane: OpportunityDecisionLane = "RESEARCH";
   const emailEligible = item.channel === "email" && item.provider === "sendgrid" && confidence >= 80;
@@ -114,16 +126,39 @@ export function evaluateOpportunityQueueItem(item: QueueItemWithLead): Opportuni
         : decisionLane === "SUPPRESS_REVIEW"
           ? "Review suppression and deliverability risk before any outreach."
           : "Find the owner, operator, office manager, or verified business email before drafting outreach.";
+  const executionStatus = sendReady
+    ? `${item.channel}:${item.provider}`
+    : item.channel === "email"
+      ? `Proposed channel: Email | Provider: ${item.provider || "n/a"} | Execution status: Blocked pending enrichment`
+      : item.channel === "manual"
+        ? `Proposed channel: Manual | Provider: ${item.provider || "operator"} | Execution status: Contact path research required`
+        : `Proposed channel: ${item.channel || "n/a"} | Provider: ${item.provider || "n/a"} | Execution status: Blocked pending decision`;
+  const researchObjective =
+    decisionLane === "CALL_FIRST"
+      ? "Confirm the best phone/contact-form path and identify who handles sales, estimates, operations, or vendor conversations."
+      : decisionLane === "SUPPRESS_REVIEW"
+        ? "Verify whether this lead, domain, or contact should stay suppressed before any new outreach."
+        : "Identify the owner, operator, office manager, or verified business email.";
+  const proposedOutreachAngle =
+    confirmedIntent && scoreboard?.offerAngle && !/stale|missed|estimate request|quote request|old form|slow follow-up|slow response/i.test(scoreboard.offerAngle)
+      ? scoreboard.offerAngle
+      : lead?.niche
+        ? `${lead.niche} inquiry follow-up and lead-response improvement`
+        : "Lead-response and follow-up improvement";
 
   return {
     leadFit,
     intent,
+    researchSignalScore: parsedSignal,
     opportunityTrust,
     contactConfidence: confidence,
     decisionLane,
     sendReady,
     cardTitle,
     cardText: `${cardTitle}: ${lead?.companyName || "Lead Command lead"}`,
+    executionStatus,
+    researchObjective,
+    proposedOutreachAngle,
     reasons: [...new Set(reasons)].slice(0, 4),
     risks: [...new Set(risks)].slice(0, 4),
     nextAction,

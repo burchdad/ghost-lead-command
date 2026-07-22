@@ -112,6 +112,63 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
     return slackEphemeral(summary);
   }
 
+  if (actionName === "outreach_research") {
+    const prisma = getPrisma();
+    const item = await prisma.outreachQueueItem.findUnique({
+      where: { id: itemId },
+      include: { lead: true },
+    });
+    if (!item) {
+      return slackEphemeral("Vega could not find that queue item.");
+    }
+    if (item.status !== "pending") {
+      return slackEphemeral(`Vega cannot start research because this item is already ${item.status}.`);
+    }
+
+    const researchInstruction =
+      "Research requested from Slack. Objective: identify owner/operator/office manager, verified email, phone confidence, and best contact path; then rebuild Opportunity Intelligence before any outreach draft.";
+    const updated = await prisma.outreachQueueItem.update({
+      where: { id: item.id },
+      data: {
+        channel: "research",
+        provider: "contact-enrichment",
+        reason: researchInstruction,
+        subject: `Research contact path for ${item.lead?.companyName || "lead"}`,
+        body: [
+          `Research contact path for ${item.lead?.companyName || "this lead"}.`,
+          "Find owner/operator/office manager or a verified business email.",
+          "Verify phone and website/contact-form path.",
+          "Recalculate contact confidence and opportunity trust before creating outreach.",
+        ].join("\n"),
+      },
+      include: { lead: true },
+    });
+    if (updated.lead) {
+      await prisma.lead.update({
+        where: { id: updated.lead.id },
+        data: {
+          nextAction: "Vega research lane: identify verified decision-maker and contact path before drafting outreach.",
+        },
+      });
+    }
+    await createAutomationEvent({
+      title: "Vega contact research requested",
+      detail: `Research lane started for ${updated.lead?.companyName || "lead"}.`,
+      status: "running",
+      type: "agent",
+      payload: {
+        itemId: updated.id,
+        leadId: updated.leadId,
+        companyName: updated.lead?.companyName,
+        requestedBy: payload.user?.id,
+        channelId: payload.channel?.id,
+      },
+    });
+    const summary = `Vega moved ${updated.lead?.companyName || "that lead"} into contact research. No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
+    await recordOutreachSlackAction({ action: "research", itemId, ok: true, summary, payload });
+    return slackEphemeral(summary);
+  }
+
   if (actionName === "outreach_redo") {
     const result = await redoOutreachQueueItem(itemId);
     if (result.ok) {

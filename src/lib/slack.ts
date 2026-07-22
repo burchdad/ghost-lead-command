@@ -34,7 +34,7 @@ function actionToken() {
   return clean(process.env.SLACK_ACTION_TOKEN) || clean(process.env.LEAD_COMMAND_ACCESS_KEY);
 }
 
-function outreachActionValue(itemId: string, action: "approve" | "redo" | "discard" | "suppress" | "call_task") {
+function outreachActionValue(itemId: string, action: "approve" | "redo" | "discard" | "suppress" | "call_task" | "research") {
   return JSON.stringify({
     action: `outreach_${action}`,
     itemId,
@@ -300,14 +300,16 @@ export async function notifySlackOutreachApproval(
   const signalSummary = scoreboard ? signalScoreboardSummary(scoreboard) : clean(item.reason || undefined);
   const signalPreview = signalSummary.length > 620 ? `${signalSummary.slice(0, 617)}...` : signalSummary;
   const queueUrl = new URL("/?view=queue", appBaseUrl()).toString();
-  const sourceUrl = new URL("/?view=source", appBaseUrl()).toString();
+  const websiteMatch = body.match(/https?:\/\/[^\s)]+/i);
+  const companyUrl = websiteMatch?.[0] || new URL("/?view=source", appBaseUrl()).toString();
   const metricsLine = [
     `Lead fit: ${intelligence.leadFit ?? "n/a"}`,
-    `Intent: ${intelligence.intent}`,
+    `Intent score: ${intelligence.intent}`,
+    intelligence.researchSignalScore !== null ? `Research signal score: ${intelligence.researchSignalScore}` : "",
     `Opportunity trust: ${intelligence.opportunityTrust}`,
     `Contact confidence: ${intelligence.contactConfidence}`,
     `Decision lane: ${intelligence.decisionLane.replace(/_/g, " ")}`,
-  ].join(" | ");
+  ].filter(Boolean).join(" | ");
   const actionHelp = intelligence.sendReady
     ? "Approve sends in live mode or records a dry-run approval. Redo marks it for rewrite. Discard rejects it."
     : `${intelligence.nextAction} Research/manual cards cannot send SendGrid email from Slack.`;
@@ -355,7 +357,8 @@ export async function notifySlackOutreachApproval(
         {
           type: "button",
           text: { type: "plain_text", text: "Research Contact", emoji: false },
-          url: sourceUrl,
+          action_id: "outreach_research",
+          value: outreachActionValue(item.id, "research"),
         },
         {
           type: "button",
@@ -365,8 +368,8 @@ export async function notifySlackOutreachApproval(
         },
         {
           type: "button",
-          text: { type: "plain_text", text: "Open Queue", emoji: false },
-          url: queueUrl,
+          text: { type: "plain_text", text: "Open Company", emoji: false },
+          url: companyUrl,
         },
         {
           type: "button",
@@ -391,13 +394,31 @@ export async function notifySlackOutreachApproval(
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${title}*\n${item.channel}:${item.provider} | ${value}\n${metricsLine}\n*Subject:* ${subject}`,
+            text: intelligence.sendReady
+              ? `*${title}*\n${intelligence.executionStatus} | ${value}\n${metricsLine}\n*Subject:* ${subject}`
+              : `*${title}*\n${intelligence.executionStatus} | ${value}\n${metricsLine}`,
           },
         },
-        {
-          type: "section",
-          text: { type: "mrkdwn", text: `\`\`\`${preview}\`\`\`` },
-        },
+        ...(intelligence.sendReady
+          ? [
+              {
+                type: "section",
+                text: { type: "mrkdwn", text: `\`\`\`${preview}\`\`\`` },
+              },
+            ]
+          : [
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: [
+                    `*Research objective:*\n${intelligence.researchObjective}`,
+                    `*Proposed outreach angle:*\n${intelligence.proposedOutreachAngle}`,
+                    "No outreach draft will be created until a valid contact path is found.",
+                  ].join("\n\n"),
+                },
+              },
+            ]),
         ...(signalPreview
           ? [
               {
