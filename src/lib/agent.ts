@@ -11,6 +11,7 @@ import { getPrisma } from "@/lib/prisma";
 import { searchFreshLeads, type SourceDiagnostics, type SourceLead, type SourceProvider } from "@/lib/sourcing";
 import { findSuppressionMatch } from "@/lib/suppression";
 import { notifySlackNicheRecommendation, notifySlackOutreachApproval } from "@/lib/slack";
+import { persistOpportunityIntelligenceSnapshot } from "@/lib/vega-intelligence-snapshots";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 type AgentRunInput = {
@@ -76,6 +77,13 @@ type DecisionDiagnostics = {
   suppress: number;
   executiveReview: number;
   trustScores: Record<string, number>;
+  opportunityIntelligence: Record<string, {
+    overallConfidence: number;
+    recommendedChannel: string;
+    recommendedAction: string;
+    predictedConversationProbability: number;
+    predictedMeetingProbability: number;
+  }>;
 };
 
 const nichePlaybook: NicheRecommendation[] = [
@@ -330,6 +338,7 @@ function newDecisionDiagnostics(): DecisionDiagnostics {
     suppress: 0,
     executiveReview: 0,
     trustScores: {},
+    opportunityIntelligence: {},
   };
 }
 
@@ -340,6 +349,13 @@ function recordDecision(diagnostics: DecisionDiagnostics, lead: SourceLead, deci
   if (decision.lane === "suppress") diagnostics.suppress += 1;
   if (decision.lane === "executive-review") diagnostics.executiveReview += 1;
   diagnostics.trustScores[lead.companyName || lead.id] = decision.trustScore;
+  diagnostics.opportunityIntelligence[lead.companyName || lead.id] = {
+    overallConfidence: decision.opportunityIntelligence.overallConfidence,
+    recommendedChannel: decision.opportunityIntelligence.recommendedChannel,
+    recommendedAction: decision.opportunityIntelligence.recommendedAction,
+    predictedConversationProbability: decision.opportunityIntelligence.predictedConversationProbability,
+    predictedMeetingProbability: decision.opportunityIntelligence.predictedMeetingProbability,
+  };
 }
 
 function executiveReviewReason(sourceLead: SourceLead, decision: VegaLeadDecision) {
@@ -441,7 +457,7 @@ function canRunLocalManualFallback(provider: SourceProvider, policy: OperatorRun
 async function importSourceLead(
   sourceLead: SourceLead,
   workspaceId: string,
-  input: { nextAction?: string; campaignName?: string; partnerService?: string; location?: string } = {},
+  input: { nextAction?: string; campaignName?: string; partnerService?: string; location?: string; decision?: VegaLeadDecision } = {},
 ) {
   const prisma = getPrisma();
   const email = clean(sourceLead.email).toLowerCase();
@@ -568,6 +584,21 @@ async function importSourceLead(
     },
     include: { contact: true, company: true },
   });
+
+  await persistOpportunityIntelligenceSnapshot({
+    workspaceId,
+    leadId: lead.id,
+    companyId: lead.companyId,
+    contactId: lead.contactId,
+    triggerType: "lead_qualified",
+    triggerId: sourceLead.id,
+    intelligence: input.decision?.opportunityIntelligence,
+    evidence: [
+      sourceLead.signalSummary,
+      ...(sourceLead.intentSignals || []),
+      signalScoreboardSummary(scoreboard),
+    ].filter(Boolean),
+  }).catch(() => undefined);
 
   return { skipped: false as const, lead };
 }
@@ -964,6 +995,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
 
   const qualified: SourceLead[] = [];
   const executiveReviewCandidates: Array<{ lead: SourceLead; decision: VegaLeadDecision }> = [];
+  const decisionsByLeadKey = new Map<string, VegaLeadDecision>();
   const decisionDiagnostics = newDecisionDiagnostics();
   for (const lead of sourceResult.leads as SourceLead[]) {
     const evaluation = evaluateSourceLead(lead, policy);
@@ -972,6 +1004,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       continue;
     }
     const decision = evaluateVegaLeadDecision(lead, policy);
+    decisionsByLeadKey.set(sourceLeadKey(lead), decision);
     recordDecision(decisionDiagnostics, lead, decision);
     if (decision.lane === "auto-send") {
       qualified.push(lead);
@@ -989,6 +1022,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   const executiveQueued: ManualQueuedEntry[] = [];
 
   for (const sourceLead of qualified) {
+    const decision = decisionsByLeadKey.get(sourceLeadKey(sourceLead)) || evaluateVegaLeadDecision(sourceLead, policy);
     const imported = await importSourceLead(
       sourceLead,
       workspace.id,
@@ -997,6 +1031,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         campaignName,
         partnerService,
         location: input.location || process.env.AGENT_SOURCE_LOCATION || "United States",
+        decision,
       },
     );
     if (imported.skipped) {
@@ -1038,6 +1073,17 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       include: { lead: true },
     });
 
+    await persistOpportunityIntelligenceSnapshot({
+      workspaceId: workspace.id,
+      leadId: imported.lead.id,
+      companyId: imported.lead.companyId,
+      contactId: imported.lead.contactId,
+      triggerType: "send_decision",
+      triggerId: item.id,
+      intelligence: decision.opportunityIntelligence,
+      evidence: decision.opportunityIntelligence.explanation.evidence,
+    }).catch(() => undefined);
+
     const slack = autoSend ? { sent: false, skipped: true, reason: "Auto-send enabled; Slack approval card skipped." } : await notifySlackOutreachApproval(item);
     const approval = autoSend ? await approveOutreachQueueItem(item.id) : null;
     queued.push({ lead: imported.lead, item, slack, approval });
@@ -1053,6 +1099,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         campaignName,
         partnerService,
         location: input.location || process.env.AGENT_SOURCE_LOCATION || "United States",
+        decision,
       },
     );
     if (imported.skipped) {
@@ -1094,6 +1141,17 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       include: { lead: true },
     });
 
+    await persistOpportunityIntelligenceSnapshot({
+      workspaceId: workspace.id,
+      leadId: imported.lead.id,
+      companyId: imported.lead.companyId,
+      contactId: imported.lead.contactId,
+      triggerType: "send_decision",
+      triggerId: item.id,
+      intelligence: decision.opportunityIntelligence,
+      evidence: decision.opportunityIntelligence.explanation.evidence,
+    }).catch(() => undefined);
+
     const slack = await notifySlackOutreachApproval(item);
     executiveQueued.push({ lead: imported.lead, item, slack });
   }
@@ -1106,6 +1164,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     if (lead.score < minScore) return false;
     if (!lead.phone && !(lead as SourceLead & { website?: string }).website) return false;
     const decision = evaluateVegaLeadDecision(lead, policy);
+    decisionsByLeadKey.set(sourceLeadKey(lead), decision);
     recordDecision(decisionDiagnostics, lead, decision);
     if (decision.lane !== "call-first") return false;
     if (!lead.companyName?.trim() || !lead.name?.trim()) return false;
@@ -1114,6 +1173,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
 
   for (const sourceLead of manualCandidates) {
     if (manualQueued.length >= Math.max(0, queueLimit - queued.length)) break;
+    const decision = decisionsByLeadKey.get(sourceLeadKey(sourceLead)) || evaluateVegaLeadDecision(sourceLead, policy);
     const imported = await importSourceLead(
       sourceLead,
       workspace.id,
@@ -1122,6 +1182,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
         campaignName,
         partnerService,
         location: input.location || process.env.AGENT_SOURCE_LOCATION || "United States",
+        decision,
       },
     );
     if (imported.skipped) {
@@ -1142,6 +1203,17 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       },
       include: { lead: true },
     });
+
+    await persistOpportunityIntelligenceSnapshot({
+      workspaceId: workspace.id,
+      leadId: imported.lead.id,
+      companyId: imported.lead.companyId,
+      contactId: imported.lead.contactId,
+      triggerType: "send_decision",
+      triggerId: item.id,
+      intelligence: decision.opportunityIntelligence,
+      evidence: decision.opportunityIntelligence.explanation.evidence,
+    }).catch(() => undefined);
 
     const slack = await notifySlackOutreachApproval(item);
     manualQueued.push({ lead: imported.lead, item, slack });

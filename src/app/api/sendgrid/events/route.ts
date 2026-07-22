@@ -3,6 +3,7 @@ import { createAutomationEvent } from "@/lib/automation";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
 import { addSuppressionRecord } from "@/lib/suppression";
+import { persistOpportunityIntelligenceSnapshot } from "@/lib/vega-intelligence-snapshots";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 type SendGridEvent = {
@@ -161,6 +162,16 @@ export async function POST(request: Request) {
         },
       });
       tracked += 1;
+
+      await persistOpportunityIntelligenceSnapshot({
+        workspaceId: workspace.id,
+        leadId: lead.id,
+        companyId: lead.companyId,
+        contactId: lead.contactId,
+        triggerType: "email_event",
+        triggerId: clean(event.sg_message_id) || type,
+        evidence: [eventBody(event), event.url].filter(Boolean),
+      }).catch(() => undefined);
 
       if (["delivered", "open", "click"].includes(type)) {
         const nextAction =

@@ -5,6 +5,7 @@ import type { CallAssistTask } from "@/lib/human-followup";
 import { buildSignalScoreboard, signalScoreboardSummary } from "@/lib/intent-scoreboard";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getOperatorCaps } from "@/lib/operator-policy";
+import { getLatestOpportunityIntelligenceSnapshot } from "@/lib/vega-intelligence-snapshots";
 
 function clean(value: string | undefined) {
   return value?.trim() || "";
@@ -109,6 +110,14 @@ function compactReasonCounts(label: string, counts?: Record<string, number>) {
     .slice(0, 5);
   if (!entries.length) return "";
   return `*${label}:* ${entries.map(([reason, count]) => `${reason} ${count}`).join(", ")}`;
+}
+
+function probabilityBand(value: number | null | undefined) {
+  const n = Number(value || 0);
+  if (n >= 75) return "high";
+  if (n >= 45) return "medium";
+  if (n > 0) return "low";
+  return "unknown";
 }
 
 async function postSlackPayload(input: {
@@ -298,6 +307,22 @@ export async function notifySlackOutreachApproval(
     : null;
   const signalSummary = scoreboard ? signalScoreboardSummary(scoreboard) : clean(item.reason || undefined);
   const signalPreview = signalSummary.length > 620 ? `${signalSummary.slice(0, 617)}...` : signalSummary;
+  const intelligence = lead?.id
+    ? await getLatestOpportunityIntelligenceSnapshot({ workspaceId: item.workspaceId, leadId: lead.id }).catch(() => null)
+    : null;
+  const explanation = intelligence?.explanation && typeof intelligence.explanation === "object" && !Array.isArray(intelligence.explanation)
+    ? intelligence.explanation as { reason?: string; evidence?: unknown; blockers?: unknown }
+    : null;
+  const evidenceCount = Array.isArray(intelligence?.evidence) ? intelligence.evidence.length : 0;
+  const blockerCount = Array.isArray(intelligence?.blockers) ? intelligence.blockers.length : 0;
+  const intelligenceLine = intelligence
+    ? [
+        `*Vega decision:* ${intelligence.decisionLane} | trust ${intelligence.trustScore} | confidence ${intelligence.overallConfidence}`,
+        `*Channel:* ${intelligence.recommendedChannel} | meeting likelihood ${probabilityBand(intelligence.meetingProbability)}`,
+        `*Basis:* ${evidenceCount} evidence item${evidenceCount === 1 ? "" : "s"}, ${blockerCount} blocker${blockerCount === 1 ? "" : "s"}. Heuristic v1, calibrating.`,
+        explanation?.reason ? `*Why:* ${String(explanation.reason).slice(0, 220)}` : "",
+      ].filter(Boolean).join("\n")
+    : "";
   const queueUrl = new URL("/?view=queue", appBaseUrl()).toString();
   const isManualTask = item.channel === "manual";
   const headerText = isManualTask ? "Lead Command manual contact ready" : "Lead Command approval ready";
@@ -332,6 +357,14 @@ export async function notifySlackOutreachApproval(
               {
                 type: "section",
                 text: { type: "mrkdwn", text: `*Vega signal read:*\n${signalPreview}` },
+              },
+            ]
+          : []),
+        ...(intelligenceLine
+          ? [
+              {
+                type: "section",
+                text: { type: "mrkdwn", text: intelligenceLine },
               },
             ]
           : []),

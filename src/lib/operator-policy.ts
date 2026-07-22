@@ -1,6 +1,11 @@
 import type { SourceLead } from "@/lib/sourcing";
-import { emailQualityTier, getSenderHealth, isDecisionMakerTitle, isValidBusinessEmail } from "@/lib/conversion-quality";
+import { getSenderHealth } from "@/lib/conversion-quality";
 import { getPrisma } from "@/lib/prisma";
+import {
+  buildOpportunityIntelligenceFromSourceLead,
+  type OpportunityIntelligence,
+  type VegaDecisionLane,
+} from "@/lib/vega-intelligence-fusion";
 
 type PrepareRunInput = {
   workspaceId: string;
@@ -50,8 +55,6 @@ export type OperatorRunPolicy = {
   blockedReasons: string[];
 };
 
-export type VegaDecisionLane = "auto-send" | "call-first" | "research" | "suppress" | "executive-review";
-
 export type VegaLeadDecision = {
   lane: VegaDecisionLane;
   trustScore: number;
@@ -62,6 +65,7 @@ export type VegaLeadDecision = {
     deliverability: number;
   };
   reasons: string[];
+  opportunityIntelligence: OpportunityIntelligence;
 };
 
 function clean(value: string | undefined) {
@@ -220,76 +224,32 @@ export function evaluateSourceLead(lead: SourceLead, policy: OperatorRunPolicy) 
   return { ok: true as const };
 }
 
-function clampScore(value: number) {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
-
-function hasStrategicReviewRisk(lead: SourceLead) {
-  const text = `${lead.companyName} ${lead.niche} ${lead.title} ${lead.signalSummary}`.toLowerCase();
-  if (/\b(fortune\s*500|enterprise|hospital|health system|medical center|attorney|law firm|legal|bank|financial institution|government|municipal|school|university)\b/.test(text)) {
-    return true;
-  }
-  return false;
-}
-
 export function evaluateVegaLeadDecision(lead: SourceLead, policy: OperatorRunPolicy): VegaLeadDecision {
-  const reasons: string[] = [];
-  const email = clean(lead.email);
-  const hasPhone = Boolean(clean(lead.phone));
-  const hasWebsite = Boolean(clean(lead.website));
-  const hasSignal = Boolean(clean(lead.signalSummary) || lead.intentSignals?.length);
-  const validEmail = isValidBusinessEmail(email);
-  const emailTier = emailQualityTier(email);
-  const decisionMaker = isDecisionMakerTitle(lead.title);
-
-  const leadQuality = clampScore(Math.max(Number(lead.score || 0), hasSignal ? 78 : 0) + (decisionMaker ? 4 : 0));
-  const emailConfidence = validEmail
-    ? emailTier === "named-business"
-      ? 98
-      : emailTier === "generic"
-        ? 84
-        : 72
-    : 0;
-  const copyConfidence = clampScore(88 + (hasSignal ? 6 : -8) + (decisionMaker ? 3 : 0) - (hasStrategicReviewRisk(lead) ? 8 : 0));
-  const deliverability = clampScore(
-    policy.sender.mode === "clear"
-      ? 96
-      : policy.sender.mode === "caution"
-        ? 82
-        : 35,
-  );
-  const trustScore = clampScore((leadQuality * 0.34) + (emailConfidence * 0.26) + (copyConfidence * 0.2) + (deliverability * 0.2));
-
-  if (!lead.companyName?.trim()) reasons.push("missing company");
-  if (!lead.name?.trim()) reasons.push("unknown contact");
-  if (!hasSignal) reasons.push("missing buyer signal");
-  if (hasStrategicReviewRisk(lead)) reasons.push("strategic or regulated account");
-  if (emailTier === "generic") reasons.push("generic inbox");
-  if (policy.sender.remaining <= 0) reasons.push("sender capacity exhausted");
-  if (policy.sender.mode === "stop") reasons.push("sender health stop");
-
-  if (policy.sender.mode === "stop" || /institutional|vendor risk/i.test(lead.buyerFit || "")) {
-    return { lane: "suppress", trustScore, scores: { leadQuality, emailConfidence, copyConfidence, deliverability }, reasons };
-  }
-  if (!validEmail) {
-    return {
-      lane: hasPhone || hasWebsite ? "call-first" : "research",
-      trustScore,
-      scores: { leadQuality, emailConfidence, copyConfidence, deliverability },
-      reasons: reasons.length ? reasons : ["no verified email"],
-    };
-  }
-  if (hasStrategicReviewRisk(lead) || trustScore >= policy.caps.executiveReviewTrustThreshold && trustScore < policy.caps.autoSendTrustThreshold) {
-    return { lane: "executive-review", trustScore, scores: { leadQuality, emailConfidence, copyConfidence, deliverability }, reasons };
-  }
-  if (trustScore >= policy.caps.autoSendTrustThreshold && policy.sender.remaining > 0) {
-    return { lane: "auto-send", trustScore, scores: { leadQuality, emailConfidence, copyConfidence, deliverability }, reasons };
-  }
+  const intelligence = buildOpportunityIntelligenceFromSourceLead({
+    lead,
+    policy: {
+      minScore: policy.effective.minScore,
+      autoSendTrustThreshold: policy.caps.autoSendTrustThreshold,
+      executiveReviewTrustThreshold: policy.caps.executiveReviewTrustThreshold,
+      senderMode: policy.sender.mode,
+      senderRemaining: policy.sender.remaining,
+      senderBounceRate: policy.sender.bounceRate,
+      workspaceAllowsAutoEmail: true,
+      campaignAllowsAutoEmail: true,
+    },
+  });
   return {
-    lane: trustScore >= policy.caps.executiveReviewTrustThreshold ? "executive-review" : "research",
-    trustScore,
-    scores: { leadQuality, emailConfidence, copyConfidence, deliverability },
-    reasons: reasons.length ? reasons : ["trust below auto-send threshold"],
+    lane: intelligence.decisionLane,
+    trustScore: intelligence.trustScore,
+    scores: {
+      leadQuality: intelligence.leadScore,
+      emailConfidence: intelligence.contactConfidence,
+      copyConfidence: intelligence.messageQuality,
+      deliverability: intelligence.senderHealth,
+    },
+    reasons: intelligence.explanation.blockers.length
+      ? intelligence.explanation.blockers
+      : intelligence.explanation.evidence,
+    opportunityIntelligence: intelligence,
   };
 }

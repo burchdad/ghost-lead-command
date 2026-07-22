@@ -6,6 +6,16 @@ import { scoreSourceQuality } from "@/lib/source-quality-v2";
 import { canAutoApplyLearning, requiresExperimentApproval, transitionExperimentStatus } from "@/lib/experiment-engine";
 import { hasVegaCapability } from "@/lib/vega-entitlements";
 import { isVegaFeatureEnabled } from "@/lib/vega-feature-flags";
+import {
+  buildOpportunityIntelligence,
+  buildCampaignHealth,
+  buildExecutiveDashboard,
+  buildUnifiedCompanyTimeline,
+  buildUnifiedMemory,
+  VEGA_INTELLIGENCE_VERSION,
+  VEGA_POLICY_VERSION,
+} from "@/lib/vega-intelligence-fusion";
+import { MEANINGFUL_INTELLIGENCE_TRIGGERS } from "@/lib/vega-intelligence-snapshots";
 
 const now = new Date("2026-07-22T15:00:00.000Z");
 
@@ -227,4 +237,195 @@ test("entitlements and feature flags are conservative for external workspaces", 
   assert.equal(hasVegaCapability("VEGA_MANAGED", "controlled_experiments"), true);
   assert.equal(isVegaFeatureEnabled("VEGA_SOCIAL_SIGNALS", { workspaceSlug: "client-shop" }), false);
   assert.equal(isVegaFeatureEnabled("VEGA_SOCIAL_SIGNALS", { workspaceSlug: "ghost-ai-solutions" }), true);
+});
+
+test("opportunity intelligence fuses scores into one explainable auto-send decision", () => {
+  const intelligence = buildOpportunityIntelligence({
+    leadScore: 96,
+    email: "owner@acmeroofing.com",
+    phone: "+15555550123",
+    title: "Owner",
+    companyName: "Acme Roofing",
+    niche: "Roofing",
+    signalSummary: "Owner clicked pricing and requested faster estimate follow-up.",
+    intentSignals: [
+      {
+        signalType: "EMAIL_CLICK",
+        observedAt: now,
+        confidence: 1,
+        intentStrength: 1,
+        scoreImpact: 55,
+        accountLevel: true,
+        personLevel: true,
+        verified: true,
+        summary: "Owner clicked pricing.",
+      },
+    ],
+    sourceQualityMetrics: {
+      recordsReturned: 80,
+      validBusinessCount: 75,
+      verifiedEmailCount: 62,
+      phoneAvailableCount: 70,
+      decisionMakerCount: 60,
+      sentCount: 40,
+      deliveredCount: 39,
+      hardBounceCount: 1,
+      replyCount: 5,
+      reachedContactCount: 8,
+      conversationCount: 3,
+      meetingCount: 1,
+    },
+    campaignApproved: true,
+    policy: {
+      minScore: 82,
+      autoSendTrustThreshold: 90,
+      executiveReviewTrustThreshold: 80,
+      senderMode: "clear",
+      senderRemaining: 12,
+      senderBounceRate: 1.2,
+    },
+  });
+
+  assert.equal(intelligence.decisionLane, "auto-send");
+  assert.equal(intelligence.recommendedChannel, "AUTO_EMAIL");
+  assert.ok(intelligence.trustScore >= 90);
+  assert.ok(intelligence.explanation.metrics.some((metric) => metric.label === "Overall Trust"));
+  assert.ok(intelligence.explanation.reason.includes("Vega"));
+});
+
+test("opportunity intelligence routes uncertain or strategic accounts to one exception lane", () => {
+  const intelligence = buildOpportunityIntelligence({
+    leadScore: 91,
+    email: "info@regionalhospital.com",
+    phone: "+15555550123",
+    title: "Operations Director",
+    companyName: "Regional Hospital",
+    niche: "Healthcare",
+    signalSummary: "Hospital scheduling complaints surfaced in public reviews.",
+    campaignApproved: true,
+    policy: {
+      minScore: 82,
+      autoSendTrustThreshold: 90,
+      executiveReviewTrustThreshold: 80,
+      senderMode: "clear",
+      senderRemaining: 20,
+      senderBounceRate: 0.8,
+    },
+  });
+
+  assert.equal(intelligence.decisionLane, "executive-review");
+  assert.equal(intelligence.recommendedChannel, "APPROVAL_EMAIL");
+  assert.ok(intelligence.explanation.blockers.some((blocker) => blocker.includes("Strategic") || blocker.includes("regulated")));
+});
+
+test("company timeline and memory are unified into one ordered history", () => {
+  const timeline = buildUnifiedCompanyTimeline({
+    lead: {
+      createdAt: new Date("2026-07-20T10:00:00.000Z"),
+      source: "google-maps",
+      stage: "Imported",
+      score: 88,
+      companyName: "ABC Roofing",
+    },
+    intentSignals: [
+      {
+        observedAt: new Date("2026-07-20T11:00:00.000Z"),
+        summary: "Website has missed-call complaint pattern.",
+        sourceProvider: "reviews",
+        signalType: "MISSED_CALL_REVIEW_SIGNAL",
+      },
+    ],
+    queueItems: [
+      {
+        createdAt: new Date("2026-07-20T12:00:00.000Z"),
+        updatedAt: new Date("2026-07-20T12:00:00.000Z"),
+        channel: "email",
+        provider: "sendgrid",
+        status: "sent",
+        reason: "Trust 94 auto-send.",
+      },
+    ],
+    replies: [
+      {
+        createdAt: new Date("2026-07-21T09:00:00.000Z"),
+        classification: "hot",
+        body: "Interested. Call me tomorrow.",
+        source: "sendgrid",
+      },
+    ],
+  });
+  const memory = buildUnifiedMemory({
+    companyName: "ABC Roofing",
+    contacts: [{ name: "Amy Owner", email: "amy@abcroofing.com", phone: "+15555550123", title: "Owner" }],
+    timeline,
+    campaignName: "East Texas Roofing",
+    workspaceName: "Ghost AI Solutions",
+  });
+
+  assert.deepEqual(timeline.map((event) => event.label), ["Prospect Found", "Intent Signal", "EMAIL sent", "Reply hot"]);
+  assert.equal(new Set(timeline.map((event) => event.type)).size, 4);
+  assert.ok(memory.company.some((item) => item.includes("Recent reply")));
+  assert.ok(memory.contacts["Amy Owner"].some((item) => item.includes("Email known")));
+  assert.ok(memory.campaign[0].includes("East Texas Roofing"));
+});
+
+test("executive dashboard turns campaign health into recommendations", () => {
+  const fleet = buildCampaignHealth({
+    name: "Fleet Detailing",
+    leads: 40,
+    sent: 30,
+    replies: 5,
+    conversations: 4,
+    meetings: 2,
+    revenue: 28000,
+    riskyEvents: 0,
+    sourceQuality: 88,
+    trust: 92,
+  });
+  const roofing = buildCampaignHealth({
+    name: "Roofing",
+    leads: 70,
+    sent: 50,
+    replies: 0,
+    conversations: 0,
+    meetings: 0,
+    revenue: 0,
+    riskyEvents: 7,
+    sourceQuality: 42,
+    trust: 61,
+  });
+  const dashboard = buildExecutiveDashboard({
+    opportunities: [{ value: 28000, probability: 55 }, { value: 12000, probability: 30 }],
+    conversationsToday: 4,
+    meetings: 2,
+    humanTasks: 3,
+    campaigns: [fleet, roofing],
+    sourcePerformance: [
+      { source: "google-maps", score: 86 },
+      { source: "pdl", score: 58 },
+    ],
+  });
+
+  assert.equal(fleet.momentum, "Growing");
+  assert.equal(fleet.requiresStephenApproval, true);
+  assert.equal(roofing.risk, "High");
+  assert.equal(dashboard.revenuePipeline, 40000);
+  assert.equal(dashboard.estimatedRevenue, 19000);
+  assert.equal(dashboard.bestPerformingSource, "google-maps");
+  assert.ok(dashboard.recommendedActions.some((action) => action.includes("Fleet")));
+  assert.ok(dashboard.biggestBottleneck.includes("Human tasks"));
+});
+
+test("intelligence snapshots are limited to meaningful operational triggers", () => {
+  assert.ok(MEANINGFUL_INTELLIGENCE_TRIGGERS.has("lead_qualified"));
+  assert.ok(MEANINGFUL_INTELLIGENCE_TRIGGERS.has("send_decision"));
+  assert.ok(MEANINGFUL_INTELLIGENCE_TRIGGERS.has("reply_received"));
+  assert.ok(MEANINGFUL_INTELLIGENCE_TRIGGERS.has("manual_override"));
+  assert.equal(MEANINGFUL_INTELLIGENCE_TRIGGERS.has("page_load"), false);
+  assert.equal(MEANINGFUL_INTELLIGENCE_TRIGGERS.has("poll_refresh"), false);
+});
+
+test("intelligence versions are explicit for snapshot reconciliation", () => {
+  assert.equal(VEGA_INTELLIGENCE_VERSION, "vega-intelligence-fusion.v1");
+  assert.equal(VEGA_POLICY_VERSION, "vega-trust-policy.v2");
 });

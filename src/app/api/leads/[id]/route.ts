@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrisma } from "@/lib/prisma";
+import { persistOpportunityIntelligenceSnapshot } from "@/lib/vega-intelligence-snapshots";
 
 const allowedStages = new Set([
   "Imported",
@@ -79,6 +80,21 @@ export async function PATCH(
       },
     },
   });
+
+  await persistOpportunityIntelligenceSnapshot({
+    workspaceId: lead.workspaceId,
+    leadId: lead.id,
+    companyId: lead.companyId,
+    contactId: lead.contactId,
+    triggerType: "manual_override",
+    triggerId: lead.id,
+    evidence: [
+      stage ? `Stage changed to ${stage}` : "",
+      body.score === undefined ? "" : `Score set to ${body.score}`,
+      body.value === undefined ? "" : `Value set to ${body.value}`,
+      body.nextAction === undefined ? "" : `Next action: ${body.nextAction}`,
+    ].filter(Boolean),
+  }).catch(() => undefined);
 
   return NextResponse.json({ lead });
 }

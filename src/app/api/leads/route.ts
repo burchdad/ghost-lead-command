@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrisma } from "@/lib/prisma";
+import { persistOpportunityIntelligenceSnapshot } from "@/lib/vega-intelligence-snapshots";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export async function GET() {
@@ -82,6 +83,16 @@ export async function POST(request: Request) {
     },
     include: { opportunities: true },
   });
+
+  await persistOpportunityIntelligenceSnapshot({
+    workspaceId: workspace.id,
+    leadId: lead.id,
+    companyId: lead.companyId,
+    contactId: lead.contactId,
+    triggerType: "lead_qualified",
+    triggerId: "manual-create",
+    evidence: [lead.nextAction, lead.source, lead.stage].filter(Boolean),
+  }).catch(() => undefined);
 
   return NextResponse.json({ lead }, { status: 201 });
 }

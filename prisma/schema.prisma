@@ -50,6 +50,7 @@ model Workspace {
   experimentProposals    ExperimentProposal[]
   agencyMemberships      AgencyMembership[]
   agencyClientWorkspaces AgencyClientWorkspace[]
+  intelligenceSnapshots  OpportunityIntelligenceSnapshot[]
 }
 
 enum VegaLaunchAgentType {
@@ -215,11 +216,50 @@ model Lead {
   inboundConversations InboundConversation[]
   inboundMessages      InboundMessage[]
   lookalikeSeeds       LookalikeSeed[]
+  intelligenceSnapshots OpportunityIntelligenceSnapshot[]
 
   @@index([workspaceId])
   @@index([stage])
   @@index([score])
   @@index([crmSyncStatus])
+}
+
+model OpportunityIntelligenceSnapshot {
+  id                           String    @id @default(cuid())
+  workspaceId                  String
+  campaignId                   String?
+  leadId                       String
+  companyId                    String?
+  contactId                    String?
+  intelligenceVersion          String
+  policyVersion                String
+  leadScore                    Int
+  intentScore                  Int
+  trustScore                   Int
+  contactConfidence            Int
+  sourceQuality                Int
+  messageQuality               Int?
+  campaignFit                  Int
+  senderHealth                 Int
+  conversationProbability      Float?
+  meetingProbability           Float?
+  closeProbability             Float?
+  bounceProbability            Float?
+  recommendedChannel           String
+  recommendedAction            String
+  decisionLane                 String
+  overallConfidence            Int
+  explanation                  Json
+  evidence                     Json
+  blockers                     Json
+  triggerType                  String
+  triggerId                    String?
+  createdAt                    DateTime  @default(now())
+  workspace                    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead                         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, leadId, createdAt])
+  @@index([workspaceId, campaignId, createdAt])
 }
 
 model Opportunity {

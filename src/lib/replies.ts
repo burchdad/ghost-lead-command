@@ -4,6 +4,7 @@ import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitize
 import { getPrisma } from "@/lib/prisma";
 import { notifySlackOutreachApproval, notifySlackReplyAlert } from "@/lib/slack";
 import { addSuppressionRecord } from "@/lib/suppression";
+import { persistOpportunityIntelligenceSnapshot } from "@/lib/vega-intelligence-snapshots";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 type RecordInboundReplyInput = {
@@ -355,6 +356,16 @@ export async function recordInboundReply(input: RecordInboundReplyInput) {
       },
     },
   });
+
+  await persistOpportunityIntelligenceSnapshot({
+    workspaceId: workspace.id,
+    leadId,
+    companyId: matchedLead.companyId,
+    contactId: matchedLead.contactId,
+    triggerType: classification === "booked" ? "meeting_requested" : "reply_received",
+    triggerId: reply.id,
+    evidence: [replyBody, route.nextAction, opportunity.opportunity?.stage].filter(Boolean),
+  }).catch(() => undefined);
 
   const booking =
     ["hot", "booked"].includes(classification)

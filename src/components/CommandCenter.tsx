@@ -563,6 +563,123 @@ type WaitlistDashboard = {
   leads: WaitlistContestant[];
 };
 
+type IntelligenceSnapshot = {
+  id: string;
+  triggerType: string;
+  createdAt: string;
+  trustScore: number;
+  overallConfidence: number;
+  decisionLane: string;
+  recommendedChannel: string;
+  recommendedAction: string;
+  meetingProbability?: number | null;
+  confidenceLabel?: string;
+  evidenceBasis?: string;
+  calibrationStatus?: string;
+  explanation?: { reason?: string; blockers?: string[]; evidence?: string[] };
+};
+
+type IntelligenceDashboard = {
+  executiveDashboard: {
+    revenuePipeline: number;
+    todaysConversations: number;
+    meetings: number;
+    estimatedRevenue: number;
+    humanTasks: number;
+    biggestBottleneck: string;
+    recommendedActions: string[];
+  };
+  campaigns: {
+    name: string;
+    health: number;
+    momentum: string;
+    risk: string;
+    trust: number;
+    conversationRate: number;
+    meetingRate: number;
+    recommendation: string;
+  }[];
+  intelligence: {
+    snapshotCount: number;
+    latestByLeadCount: number;
+    bestOpportunitiesToday: {
+      leadId: string;
+      companyName: string;
+      contactName: string;
+      trustScore: number;
+      overallConfidence: number;
+      decisionLane: string;
+      recommendedChannel: string;
+      recommendedAction: string;
+      meetingLikelihood: string;
+      evidenceBasis: string;
+      createdAt: string;
+    }[];
+    humanInterventions: {
+      leadId: string;
+      companyName: string;
+      contactName: string;
+      decisionLane: string;
+      reason: string;
+      recommendedAction: string;
+      trustScore: number;
+      createdAt: string;
+    }[];
+    highestExpectedValueCalls: {
+      leadId: string;
+      companyName: string;
+      contactName: string;
+      meetingLikelihood: string;
+      trustScore: number;
+      recommendedAction: string;
+    }[];
+    senderRisks: {
+      leadId: string;
+      companyName: string;
+      senderHealth: number;
+      bounceRisk: string;
+      recommendedAction: string;
+    }[];
+    calibrationStatus: string;
+  };
+};
+
+type LeadIntelligenceGraph = {
+  graph?: {
+    opportunityIntelligence?: {
+      trustScore: number;
+      overallConfidence: number;
+      recommendedChannel: string;
+      recommendedAction: string;
+      decisionLane: string;
+      leadScore: number;
+      intentScore: number;
+      contactConfidence: number;
+      sourceQuality: number;
+      messageQuality: number;
+      senderHealth: number;
+      predictedMeetingProbability: number;
+      explanation: { reason: string; blockers: string[]; evidence: string[] };
+    } | null;
+    snapshots: IntelligenceSnapshot[];
+    snapshotComparison?: {
+      trustDelta: number;
+      meetingProbabilityDelta: number;
+      confidenceDelta: number;
+      decisionChanged: boolean;
+      actionChanged: boolean;
+    } | null;
+    timeline: { at: string; type: string; label: string; detail: string; source: string }[];
+    memory: {
+      company: string[];
+      contacts: Record<string, string[]>;
+      campaign: string[];
+      workspace: string[];
+      operator: string[];
+    };
+  };
+};
+
 function formatIntegrationValue(value: IntegrationPayloadValue): string {
   if (value == null) return "missing";
   if (typeof value === "boolean") return value ? "true" : "false";
@@ -791,13 +908,14 @@ const nav = [
   { id: "agents", label: "Agents", icon: Bot },
   { id: "source", label: "Source", icon: Target },
   { id: "pipeline", label: "Pipeline", icon: Layers3 },
+  { id: "intelligence", label: "Intelligence", icon: Brain },
   { id: "waitlist", label: "Vega Waitlist", icon: Users },
   { id: "relationships", label: "QR Relationships", icon: Radar },
   { id: "revival", label: "Revival", icon: Flame },
   { id: "outreach", label: "Outreach", icon: Send },
   { id: "queue", label: "Queue", icon: ClipboardList },
   { id: "inbox", label: "Inbox", icon: Inbox },
-  { id: "analytics", label: "Analytics", icon: Brain },
+  { id: "analytics", label: "Analytics", icon: Gauge },
   { id: "readiness", label: "Readiness", icon: CheckCircle2 },
   { id: "proposal", label: "Proposal", icon: FileText },
   { id: "library", label: "Library", icon: Bot },
@@ -1028,6 +1146,8 @@ export default function Home() {
   const [directorResult, setDirectorResult] = useState<LeadGenDirectorResult | null>(null);
   const [novaBriefResult, setNovaBriefResult] = useState<NovaBriefResult | null>(null);
   const [leadCommandAudit, setLeadCommandAudit] = useState<LeadCommandAuditResult | null>(null);
+  const [intelligenceDashboard, setIntelligenceDashboard] = useState<IntelligenceDashboard | null>(null);
+  const [leadIntelligence, setLeadIntelligence] = useState<LeadIntelligenceGraph | null>(null);
   const [bookingTasks, setBookingTasks] = useState<BookingTask[]>([]);
   const [sequenceQueue, setSequenceQueue] = useState<SequenceQueueStep[]>([]);
   const [waitlistDashboard, setWaitlistDashboard] = useState<WaitlistDashboard | null>(null);
@@ -1383,6 +1503,7 @@ export default function Home() {
         const sequenceResponse = await fetch("/api/automation/sequence");
         const agentControlResponse = await fetch("/api/agent/control-room");
         const learningResponse = await fetch("/api/agent/learning");
+        const intelligenceResponse = await fetch("/api/agent/intelligence");
         const waitlistResponse = await fetch("/api/waitlist/dashboard");
 
         if (!cancelled && leadsResponse.ok) {
@@ -1487,6 +1608,10 @@ export default function Home() {
           setLearningLoop(await learningResponse.json());
         }
 
+        if (!cancelled && intelligenceResponse.ok) {
+          setIntelligenceDashboard(await intelligenceResponse.json());
+        }
+
         if (!cancelled && waitlistResponse.ok) {
           setWaitlistDashboard(await waitlistResponse.json());
         }
@@ -1504,6 +1629,24 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLeadIntelligence() {
+      if (!selectedLead.id || forceDemoMode) {
+        setLeadIntelligence(null);
+        return;
+      }
+      const response = await fetch(`/api/agent/intelligence?leadId=${encodeURIComponent(selectedLead.id)}`);
+      if (!cancelled && response.ok) {
+        setLeadIntelligence(await response.json());
+      }
+    }
+    void loadLeadIntelligence();
+    return () => {
+      cancelled = true;
+    };
+  }, [forceDemoMode, selectedLead.id]);
 
   async function refreshLeads(ignoreDemoGuard = false) {
     if (forceDemoMode && !ignoreDemoGuard) {
@@ -1892,6 +2035,7 @@ export default function Home() {
     const sequenceResponse = await fetch("/api/automation/sequence");
     const agentControlResponse = await fetch("/api/agent/control-room");
     const learningResponse = await fetch("/api/agent/learning");
+    const intelligenceResponse = await fetch("/api/agent/intelligence");
 
     if (campaignsResponse.ok) setSourceCampaigns((await campaignsResponse.json()).campaigns || []);
     if (queueResponse.ok) setQueueItems((await queueResponse.json()).items || []);
@@ -1907,6 +2051,7 @@ export default function Home() {
     if (sequenceResponse.ok) setSequenceQueue(((await sequenceResponse.json()).steps || []));
     if (agentControlResponse.ok) setAgentControlRoom(await agentControlResponse.json());
     if (learningResponse.ok) setLearningLoop(await learningResponse.json());
+    if (intelligenceResponse.ok) setIntelligenceDashboard(await intelligenceResponse.json());
   }
 
   async function saveSourceCampaign() {
@@ -4709,6 +4854,7 @@ export default function Home() {
                 </Panel>
                 <LeadDetailPanel
                   lead={selectedLead}
+                  intelligenceGraph={leadIntelligence?.graph}
                   editScore={editScore}
                   editValue={editValue}
                   editNextAction={editNextAction}
@@ -4718,6 +4864,123 @@ export default function Home() {
                   onSave={saveLeadEdits}
                   onStageChange={(stage) => updateLead(selectedLead.id, { stage })}
                 />
+              </div>
+            )}
+
+            {active === "intelligence" && (
+              <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                <Panel title="Executive Intelligence" icon={Brain}>
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <MetricCard title="Snapshots" value={String(intelligenceDashboard?.intelligence.snapshotCount || 0)} detail="Meaningful events stored" icon={DatabaseZap} />
+                    <MetricCard title="Best Leads" value={String(intelligenceDashboard?.intelligence.bestOpportunitiesToday.length || 0)} detail="Highest safe action priority" icon={Target} />
+                    <MetricCard title="Human Work" value={String(intelligenceDashboard?.intelligence.humanInterventions.length || 0)} detail="Executive review or call-first" icon={Users} />
+                    <MetricCard title="Meetings" value={String(intelligenceDashboard?.executiveDashboard.meetings || 0)} detail="Pipeline meeting signals" icon={CalendarClock} />
+                  </div>
+
+                  <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-semibold text-white">AI Director Recommendation</h3>
+                        <p className="mt-1 text-sm text-[#aebbb7]">{intelligenceDashboard?.executiveDashboard.biggestBottleneck || "Vega is waiting for intelligence snapshots."}</p>
+                      </div>
+                      <span className="rounded-sm bg-[#d8ff5f]/15 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#d8ff5f]">
+                        {intelligenceDashboard?.intelligence.calibrationStatus ? "Calibrating" : "Pending"}
+                      </span>
+                    </div>
+                    <div className="mt-4 grid gap-2">
+                      {(intelligenceDashboard?.executiveDashboard.recommendedActions || []).slice(0, 5).map((action) => (
+                        <p key={action} className="rounded-sm bg-white/[0.04] px-3 py-2 text-sm text-[#c4d3ce]">{action}</p>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3">
+                    <h3 className="font-semibold text-white">Best Opportunities Today</h3>
+                    {(intelligenceDashboard?.intelligence.bestOpportunitiesToday || []).slice(0, 8).map((item) => (
+                      <button
+                        key={`${item.leadId}-${item.createdAt}`}
+                        type="button"
+                        onClick={() => {
+                          const lead = leads.find((candidate) => candidate.id === item.leadId);
+                          if (lead) selectLead(lead);
+                          setActive("pipeline");
+                        }}
+                        className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-left transition hover:border-[#83d0c2]/60"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.14em] text-[#83d0c2]">{item.decisionLane} - {item.recommendedChannel}</p>
+                            <h4 className="mt-1 font-semibold text-white">{item.companyName}</h4>
+                            <p className="mt-1 text-sm text-[#aebbb7]">{item.contactName}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-mono text-xl text-[#d8ff5f]">{item.trustScore}</p>
+                            <p className="text-xs text-[#9fb0a8]">{item.meetingLikelihood} meeting likelihood</p>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-sm text-[#c4d3ce]">{item.recommendedAction}</p>
+                        <p className="mt-2 text-xs text-[#8fa09a]">{item.evidenceBasis}. Predictions shown as bands while Vega calibrates.</p>
+                      </button>
+                    ))}
+                  </div>
+                </Panel>
+
+                <div className="grid gap-6">
+                  <Panel title="Human Intervention" icon={Users}>
+                    <div className="grid gap-3">
+                      {(intelligenceDashboard?.intelligence.humanInterventions || []).slice(0, 6).map((item) => (
+                        <div key={`${item.leadId}-${item.createdAt}`} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.14em] text-[#83d0c2]">{item.decisionLane}</p>
+                              <h3 className="mt-1 font-semibold text-white">{item.companyName}</h3>
+                            </div>
+                            <span className="font-mono text-[#d8ff5f]">{item.trustScore}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-[#b6c4bf]">{item.reason}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Panel>
+
+                  <Panel title="Campaign Health" icon={Gauge}>
+                    <div className="grid gap-3">
+                      {(intelligenceDashboard?.campaigns || []).slice(0, 6).map((campaign) => (
+                        <div key={campaign.name} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <h3 className="font-semibold text-white">{campaign.name}</h3>
+                            <span className={`rounded-sm px-2 py-1 text-xs font-semibold ${campaign.risk === "High" ? "bg-[#ff6b6b]/20 text-[#ffb3b3]" : "bg-[#d8ff5f]/15 text-[#d8ff5f]"}`}>
+                              {campaign.risk}
+                            </span>
+                          </div>
+                          <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                            <span className="rounded-sm bg-[#101417] px-2 py-2">Health {campaign.health}</span>
+                            <span className="rounded-sm bg-[#101417] px-2 py-2">{campaign.momentum}</span>
+                            <span className="rounded-sm bg-[#101417] px-2 py-2">Trust {campaign.trust}</span>
+                          </div>
+                          <p className="mt-3 text-sm text-[#b6c4bf]">{campaign.recommendation}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Panel>
+
+                  <Panel title="Sender And Call Risks" icon={PhoneCall}>
+                    <div className="grid gap-3">
+                      {(intelligenceDashboard?.intelligence.highestExpectedValueCalls || []).slice(0, 4).map((item) => (
+                        <div key={item.leadId} className="rounded-md bg-white/[0.04] p-3 text-sm">
+                          <p className="font-semibold text-white">{item.companyName}</p>
+                          <p className="mt-1 text-[#aebbb7]">{item.meetingLikelihood} meeting likelihood - trust {item.trustScore}</p>
+                        </div>
+                      ))}
+                      {(intelligenceDashboard?.intelligence.senderRisks || []).slice(0, 4).map((item) => (
+                        <div key={`${item.leadId}-sender`} className="rounded-md bg-[#ff6b6b]/10 p-3 text-sm">
+                          <p className="font-semibold text-[#ffb3b3]">{item.companyName}</p>
+                          <p className="mt-1 text-[#d6dfdc]">Sender health {item.senderHealth}; bounce risk {item.bounceRisk}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Panel>
+                </div>
               </div>
             )}
 
@@ -4870,6 +5133,7 @@ export default function Home() {
                 </Panel>
                 <LeadDetailPanel
                   lead={selectedLead}
+                  intelligenceGraph={leadIntelligence?.graph}
                   editScore={editScore}
                   editValue={editValue}
                   editNextAction={editNextAction}
@@ -6140,6 +6404,7 @@ function PipelineCard({
 
 function LeadDetailPanel({
   lead,
+  intelligenceGraph,
   editScore,
   editValue,
   editNextAction,
@@ -6150,6 +6415,7 @@ function LeadDetailPanel({
   onStageChange,
 }: {
   lead: Lead;
+  intelligenceGraph?: LeadIntelligenceGraph["graph"];
   editScore: string;
   editValue: string;
   editNextAction: string;
@@ -6197,6 +6463,7 @@ function LeadDetailPanel({
       >
         Save Lead
       </button>
+      <LeadIntelligencePanel graph={intelligenceGraph} />
       <div className="mt-5">
         <p className="mb-2 text-xs uppercase tracking-[0.14em] text-[#9fb0a8]">
           Stage
@@ -6240,6 +6507,103 @@ function LeadDetailPanel({
         </div>
       </div>
     </Panel>
+  );
+}
+
+function likelihoodBand(value?: number | null) {
+  const n = Number(value || 0);
+  if (n >= 75) return "High";
+  if (n >= 45) return "Medium";
+  if (n > 0) return "Low";
+  return "Unknown";
+}
+
+function LeadIntelligencePanel({ graph }: { graph?: LeadIntelligenceGraph["graph"] }) {
+  const intelligence = graph?.opportunityIntelligence;
+  const latestSnapshot = graph?.snapshots?.[0];
+  const comparison = graph?.snapshotComparison;
+  if (!intelligence && !latestSnapshot) {
+    return (
+      <div className="mt-5 rounded-md border border-white/10 bg-[#101417] p-4 text-sm text-[#9fb0a8]">
+        Vega has not stored an intelligence snapshot for this lead yet.
+      </div>
+    );
+  }
+
+  const source = intelligence || latestSnapshot;
+  const explanation = intelligence?.explanation || latestSnapshot?.explanation;
+  const evidence = explanation?.evidence || [];
+  const blockers = explanation?.blockers || [];
+
+  return (
+    <div className="mt-5 rounded-md border border-[#83d0c2]/30 bg-[#101417] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.14em] text-[#83d0c2]">Vega intelligence</p>
+          <h3 className="mt-1 font-semibold text-white">{source?.decisionLane || "research"} - {source?.recommendedChannel || "channel pending"}</h3>
+          <p className="mt-1 text-sm text-[#aebbb7]">{source?.recommendedAction}</p>
+        </div>
+        <div className="text-left sm:text-right">
+          <p className="font-mono text-2xl text-[#d8ff5f]">{source?.trustScore ?? "n/a"}</p>
+          <p className="text-xs text-[#9fb0a8]">trust score</p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <MiniMetric label="Confidence" value={String(source?.overallConfidence ?? "n/a")} />
+        <MiniMetric label="Meeting likelihood" value={likelihoodBand(intelligence?.predictedMeetingProbability ?? latestSnapshot?.meetingProbability)} />
+        <MiniMetric label="Calibration" value={latestSnapshot?.confidenceLabel || "Directional"} />
+      </div>
+
+      <div className="mt-4 rounded-md bg-white/[0.04] p-3 text-sm text-[#c4d3ce]">
+        <p className="font-semibold text-white">Why</p>
+        <p className="mt-1 leading-5">{explanation?.reason || "No explanation stored yet."}</p>
+        <p className="mt-2 text-xs text-[#8fa09a]">
+          {latestSnapshot?.evidenceBasis || `${evidence.length} evidence item${evidence.length === 1 ? "" : "s"}`} - {latestSnapshot?.calibrationStatus || "Heuristic v1; calibrating."}
+        </p>
+      </div>
+
+      {blockers.length ? (
+        <div className="mt-3 grid gap-2">
+          {blockers.slice(0, 3).map((blocker) => (
+            <p key={blocker} className="rounded-sm bg-[#ff6b6b]/12 px-3 py-2 text-xs text-[#ffb3b3]">{blocker}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {evidence.length ? (
+        <div className="mt-3 grid gap-2">
+          {evidence.slice(0, 3).map((item) => (
+            <p key={item} className="rounded-sm bg-white/[0.04] px-3 py-2 text-xs text-[#b6c4bf]">{item}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {comparison ? (
+        <div className="mt-4 grid gap-2 text-xs sm:grid-cols-3">
+          <span className="rounded-sm bg-white/[0.04] px-3 py-2">Trust delta {comparison.trustDelta >= 0 ? "+" : ""}{comparison.trustDelta}</span>
+          <span className="rounded-sm bg-white/[0.04] px-3 py-2">Meeting band delta {comparison.meetingProbabilityDelta >= 0 ? "+" : ""}{comparison.meetingProbabilityDelta}</span>
+          <span className="rounded-sm bg-white/[0.04] px-3 py-2">{comparison.decisionChanged ? "Decision changed" : "Decision steady"}</span>
+        </div>
+      ) : null}
+
+      {graph?.timeline?.length ? (
+        <div className="mt-4">
+          <p className="mb-2 text-xs uppercase tracking-[0.14em] text-[#9fb0a8]">Company graph</p>
+          <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+            {graph.timeline.slice(-8).reverse().map((event) => (
+              <div key={`${event.at}-${event.label}`} className="rounded-sm bg-white/[0.04] px-3 py-2 text-xs">
+                <div className="flex items-center justify-between gap-3 text-[#83d0c2]">
+                  <span>{event.label}</span>
+                  <span>{cardTime(event.at)}</span>
+                </div>
+                <p className="mt-1 text-[#b6c4bf]">{event.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
