@@ -24,6 +24,7 @@ Legal/public footer attribution:
 - Do not position Vega as the company.
 - Do not add trademark or registered-mark claims.
 - Use `src/config/brand.ts` for product, company, URL, support, metadata, and attribution copy.
+- Vega Discover, Vega Signal, Vega Reach, Vega Engage, Vega Convert, and Vega Intelligence are capability groups inside Ghost Lead Command, not legal entities or separate product brands.
 
 ## Future Rename Path
 

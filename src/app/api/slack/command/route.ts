@@ -10,6 +10,7 @@ import {
 import { approvePendingOutreachBatch } from "@/lib/approval";
 import { createAutomationEvent } from "@/lib/automation";
 import { isConversionAuditRequest, runVegaConversionAudit } from "@/lib/conversion-audit";
+import { runIntentFeedScout } from "@/lib/intent-feed";
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { runMorningStandup } from "@/lib/morning-standup";
@@ -111,6 +112,11 @@ function parseApprovalLimit(text: string) {
   return match ? Number(match[1]) : undefined;
 }
 
+function isSignalReportRequest(text: string) {
+  const normalized = text.trim().toLowerCase();
+  return /\b(?:strongest signals|linkedin intent|social intent|intent signals|signal timeline|refresh intent feed)\b/.test(normalized);
+}
+
 export async function POST(request: Request) {
   const raw = await request.text();
   const form = new URLSearchParams(raw);
@@ -151,6 +157,23 @@ export async function POST(request: Request) {
       );
     });
     return slackText("Vega is running the seven-day production proof and learning report now.");
+  }
+
+  if (isSignalReportRequest(text)) {
+    after(async () => {
+      const result = await runIntentFeedScout({ limit: 10, enrich: normalized.includes("refresh") || normalized.includes("strongest") });
+      await postSlackCommandResponse(
+        responseUrl,
+        [
+          `Vega Signal ranked ${result.items.length} warm-signal accounts. Perplexity: ${result.perplexity.configured ? "configured" : "not configured"}.`,
+          ...result.items.slice(0, 8).map((item, index) =>
+            `${index + 1}. ${item.companyName} (${item.signalScore}) - ${item.signalType}. ${item.signalSummary.slice(0, 180)} Next: ${item.nextMove}`,
+          ),
+          "No unauthorized LinkedIn/social messages were sent; signal lanes create research/manual/email/call actions only.",
+        ].join("\n"),
+      );
+    });
+    return slackText("Vega Signal is ranking the strongest intent and social-style evidence now.");
   }
 
   if (isClosingSprintRequest(text)) {

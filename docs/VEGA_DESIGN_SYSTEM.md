@@ -38,3 +38,7 @@ The public Vega kit lives in `src/components/vega`.
 
 Use Vega identity on public and onboarding surfaces. Do not decorate every internal operator screen with public-brand flourishes.
 Keep "Online" and "Ready" labels for real configured state, and avoid fake live-status claims in public preview panels.
+
+## Phase A Productization Note
+
+The six capability groups are operational labels, not separate brands: Vega Discover, Vega Signal, Vega Reach, Vega Engage, Vega Convert, and Vega Intelligence. UI should show evidence, policy state, and next action without exposing provider secrets, raw prompts, chain-of-thought, or cross-workspace data.

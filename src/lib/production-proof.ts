@@ -8,6 +8,8 @@ import {
 } from "@/lib/phone-assist";
 import { getPrisma } from "@/lib/prisma";
 import { notifySlackVegaLeadRequestResult } from "@/lib/slack";
+import { VEGA_CAPABILITY_REGISTRY } from "@/lib/vega-capabilities";
+import { vegaFeatureFlagSnapshot } from "@/lib/vega-feature-flags";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 function clean(value: unknown) {
@@ -332,7 +334,17 @@ export async function runVegaProductionProof(input: { instruction?: string; post
       ? "New first-touch email is paused. Work calls/replies and suppress bad contacts."
       : senderHealth.mode === "caution"
         ? `Limit to ${recommendedSendLimit} first-touch sends across active campaigns and prioritize named-business emails.`
-        : `Vega may send up to ${recommendedSendLimit} eligible first-touch emails today, then watch replies and phone assists.`;
+      : `Vega may send up to ${recommendedSendLimit} eligible first-touch emails today, then watch replies and phone assists.`;
+  const featureFlags = vegaFeatureFlagSnapshot({ workspaceName: workspace.name, workspaceSlug: workspace.slug });
+  const enabledFoundationFlags = Object.entries(featureFlags).filter(([, enabled]) => enabled).map(([flag]) => flag);
+  const capabilityReadiness = VEGA_CAPABILITY_REGISTRY.map((entry) => ({
+    group: entry.group,
+    label: entry.label,
+    services: entry.services,
+    models: entry.models,
+    featureFlags: entry.featureFlags,
+    enabled: entry.featureFlags.length === 0 || entry.featureFlags.every((flag) => featureFlags[flag]),
+  }));
 
   const humanActionTasks = phoneTaskReport.actionable.slice(0, 3);
   const humanActions = [
@@ -412,6 +424,12 @@ export async function runVegaProductionProof(input: { instruction?: string; post
       recommendedSendLimit,
       decision: sendDecision,
     },
+    phaseA: {
+      featureFlags,
+      enabledFoundationFlags,
+      capabilityGroups: capabilityReadiness,
+      readiness: "Phase A foundation is installed: intent, channel, provider, source-quality, experiment, entitlement, and feature-flag layers are available behind policy gates.",
+    },
     campaigns: campaignRows,
     sources: learning.sources.slice(0, 5),
     recommendations: [
@@ -489,6 +507,10 @@ export async function runVegaProductionProof(input: { instruction?: string; post
     report.reconciliationWarnings.length
       ? `\nData reconciliation warning\n${report.reconciliationWarnings.map((warning) => `- ${warning}`).join("\n")}`
       : "",
+    "",
+    "Vega capability groups",
+    ...report.phaseA.capabilityGroups.map((group) => `- ${group.label}: ${group.enabled ? "enabled/gated" : "available but disabled"}`),
+    `Feature flags on: ${report.phaseA.enabledFoundationFlags.length ? report.phaseA.enabledFoundationFlags.join(", ") : "none"}`,
     "",
     "Campaign quality",
     ...(report.campaigns.length

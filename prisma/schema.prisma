@@ -8,32 +8,48 @@ datasource db {
 }
 
 model Workspace {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  companies   Company[]
-  contacts    Contact[]
-  leads       Lead[]
-  campaigns   Campaign[]
-  sourcingCampaigns SourcingCampaign[]
-  suppressionRecords SuppressionRecord[]
-  waitlistSubmissions WaitlistSubmission[]
-  outreachQueue OutreachQueueItem[]
-  replies     Reply[]
-  integrationHealth IntegrationHealth[]
-  proposals   Proposal[]
-  agents      AgentTemplate[]
-  prompts     PromptTemplate[]
-  automationEvents AutomationEvent[]
-  bookingTasks BookingTask[]
-  sequenceSteps SequenceStep[]
-  onboardingSessions AIOnboardingSession[]
-  launchAgentRuns LaunchAgentRun[]
-  pricingQuotes PricingQuote[]
-  commercialProposals CommercialProposal[]
-  humanReviewTasks HumanReviewTask[]
+  id                     String                  @id @default(cuid())
+  name                   String
+  slug                   String                  @unique
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  companies              Company[]
+  contacts               Contact[]
+  leads                  Lead[]
+  campaigns              Campaign[]
+  sourcingCampaigns      SourcingCampaign[]
+  suppressionRecords     SuppressionRecord[]
+  waitlistSubmissions    WaitlistSubmission[]
+  outreachQueue          OutreachQueueItem[]
+  replies                Reply[]
+  integrationHealth      IntegrationHealth[]
+  proposals              Proposal[]
+  agents                 AgentTemplate[]
+  prompts                PromptTemplate[]
+  automationEvents       AutomationEvent[]
+  bookingTasks           BookingTask[]
+  sequenceSteps          SequenceStep[]
+  onboardingSessions     AIOnboardingSession[]
+  launchAgentRuns        LaunchAgentRun[]
+  pricingQuotes          PricingQuote[]
+  commercialProposals    CommercialProposal[]
+  humanReviewTasks       HumanReviewTask[]
+  intentSignals          IntentSignal[]
+  socialProfileWatches   SocialProfileWatch[]
+  socialPostWatches      SocialPostWatch[]
+  socialEngagementEvents SocialEngagementEvent[]
+  socialSignalMatches    SocialSignalMatch[]
+  lookalikeSeeds         LookalikeSeed[]
+  lookalikeModelVersions LookalikeModelVersion[]
+  localMarketProfiles    LocalMarketProfile[]
+  inboundConversations   InboundConversation[]
+  qualificationPlaybooks QualificationPlaybook[]
+  communicationPolicies  CommunicationPolicy[]
+  salesPlaybooks         SalesPlaybook[]
+  sourceQualityProfiles  SourceQualityProfile[]
+  experimentProposals    ExperimentProposal[]
+  agencyMemberships      AgencyMembership[]
+  agencyClientWorkspaces AgencyClientWorkspace[]
 }
 
 enum VegaLaunchAgentType {
@@ -105,82 +121,100 @@ enum HumanReviewStatus {
 }
 
 model Company {
-  id          String   @id @default(cuid())
-  workspaceId String
-  name        String
-  niche       String
-  website     String?
-  domain      String?
-  crmSource   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  contacts    Contact[]
-  leads       Lead[]
-  opportunities Opportunity[]
+  id                     String                  @id @default(cuid())
+  workspaceId            String
+  name                   String
+  niche                  String
+  website                String?
+  domain                 String?
+  crmSource              String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  workspace              Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contacts               Contact[]
+  leads                  Lead[]
+  opportunities          Opportunity[]
+  intentSignals          IntentSignal[]
+  socialProfileWatches   SocialProfileWatch[]
+  localMarketProfiles    LocalMarketProfile[]
+  inboundConversations   InboundConversation[]
+  qualificationPlaybooks QualificationPlaybook[]
+  communicationPolicies  CommunicationPolicy[]
+  salesPlaybooks         SalesPlaybook[]
+  sourceQualityProfiles  SourceQualityProfile[]
+  experimentProposals    ExperimentProposal[]
 
   @@index([workspaceId])
   @@index([domain])
 }
 
 model Contact {
-  id          String   @id @default(cuid())
-  workspaceId String
-  companyId   String?
-  name        String
-  firstName   String?
-  lastName    String?
-  email       String?
-  phone       String?
-  role        String?
-  title       String?
-  source      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  leads       Lead[]
-  interactions Interaction[]
+  id                   String                @id @default(cuid())
+  workspaceId          String
+  companyId            String?
+  name                 String
+  firstName            String?
+  lastName             String?
+  email                String?
+  phone                String?
+  role                 String?
+  title                String?
+  source               String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  workspace            Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company              Company?              @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  leads                Lead[]
+  interactions         Interaction[]
+  intentSignals        IntentSignal[]
+  socialProfileWatches SocialProfileWatch[]
+  inboundConversations InboundConversation[]
 
   @@index([workspaceId])
   @@index([companyId])
 }
 
 model Lead {
-  id          String   @id @default(cuid())
-  workspaceId String
-  companyId   String?
-  contactId   String?
-  name        String
-  title       String?
-  description String?
-  companyName String
-  niche       String
-  stage       String
-  priority    String?
-  score       Int      @default(0)
-  leadScore   Int?
-  value       Int      @default(0)
-  source      String
-  lastTouch   String
-  nextAction  String
-  tags        Json?
-  customFields Json?
-  crmSyncStatus String @default("pending")
-  crmSyncedAt DateTime?
-  status      String   @default("active")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  contact     Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  opportunities Opportunity[]
-  interactions Interaction[]
-  outreachQueue OutreachQueueItem[]
-  replies      Reply[]
-  automationEvents AutomationEvent[]
-  bookingTasks BookingTask[]
-  sequenceSteps SequenceStep[]
+  id                   String                @id @default(cuid())
+  workspaceId          String
+  companyId            String?
+  contactId            String?
+  name                 String
+  title                String?
+  description          String?
+  companyName          String
+  niche                String
+  stage                String
+  priority             String?
+  score                Int                   @default(0)
+  leadScore            Int?
+  value                Int                   @default(0)
+  source               String
+  lastTouch            String
+  nextAction           String
+  tags                 Json?
+  customFields         Json?
+  crmSyncStatus        String                @default("pending")
+  crmSyncedAt          DateTime?
+  status               String                @default("active")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  workspace            Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company              Company?              @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contact              Contact?              @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  opportunities        Opportunity[]
+  interactions         Interaction[]
+  outreachQueue        OutreachQueueItem[]
+  replies              Reply[]
+  automationEvents     AutomationEvent[]
+  bookingTasks         BookingTask[]
+  sequenceSteps        SequenceStep[]
+  intentSignals        IntentSignal[]
+  socialPostWatches    SocialPostWatch[]
+  socialSignalMatches  SocialSignalMatch[]
+  inboundConversations InboundConversation[]
+  inboundMessages      InboundMessage[]
+  lookalikeSeeds       LookalikeSeed[]
 
   @@index([workspaceId])
   @@index([stage])
@@ -189,18 +223,18 @@ model Lead {
 }
 
 model Opportunity {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   companyId   String
   leadId      String?
   title       String
   stage       String
   value       Int
-  probability Int      @default(50)
+  probability Int        @default(50)
   closeDate   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead        Lead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
   proposals   Proposal[]
 
   @@index([companyId])
@@ -208,35 +242,35 @@ model Opportunity {
 }
 
 model Interaction {
-  id          String   @id @default(cuid())
-  leadId      String?
-  contactId   String?
-  channel     String
-  direction   String
-  body        String
+  id             String   @id @default(cuid())
+  leadId         String?
+  contactId      String?
+  channel        String
+  direction      String
+  body           String
   classification String?
-  metadata    Json?
-  createdAt   DateTime @default(now())
-  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  contact     Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  lead           Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact        Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
   @@index([leadId])
   @@index([contactId])
 }
 
 model WaitlistSubmission {
-  id          String   @id @default(cuid())
-  workspaceId String
-  email       String
-  payload     Json
-  status      String   @default("received")
+  id           String    @id @default(cuid())
+  workspaceId  String
+  email        String
+  payload      Json
+  status       String    @default("received")
   crmContactId String?
-  crmLeadId   String?
-  error       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  syncedAt    DateTime?
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  crmLeadId    String?
+  error        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  syncedAt     DateTime?
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([email])
@@ -244,62 +278,71 @@ model WaitlistSubmission {
 }
 
 model Campaign {
-  id          String   @id @default(cuid())
-  workspaceId String
-  name        String
-  mode        String
-  audience    String
-  status      String
-  replyTarget Float
-  bookingTarget Float
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  steps       CampaignStep[]
+  id                     String                  @id @default(cuid())
+  workspaceId            String
+  name                   String
+  mode                   String
+  audience               String
+  status                 String
+  replyTarget            Float
+  bookingTarget          Float
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  workspace              Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  steps                  CampaignStep[]
+  intentSignals          IntentSignal[]
+  socialPostWatches      SocialPostWatch[]
+  localMarketProfiles    LocalMarketProfile[]
+  inboundConversations   InboundConversation[]
+  qualificationPlaybooks QualificationPlaybook[]
+  communicationPolicies  CommunicationPolicy[]
+  salesPlaybooks         SalesPlaybook[]
+  sourceQualityProfiles  SourceQualityProfile[]
+  experimentProposals    ExperimentProposal[]
 
   @@index([workspaceId])
 }
 
 model CampaignStep {
-  id          String   @id @default(cuid())
-  campaignId  String
-  dayOffset   Int
-  channel     String
-  body        String
-  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  campaignId String
+  dayOffset  Int
+  channel    String
+  body       String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId])
 }
 
 model SourcingCampaign {
-  id          String   @id @default(cuid())
-  workspaceId String
-  name        String
-  provider    String
-  query       String
-  location    String?
-  industries  String?
-  titles      String?
-  dailyLimit  Int      @default(25)
-  scoreThreshold Int   @default(70)
-  status      String   @default("draft")
-  lastRunAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  workspaceId    String
+  name           String
+  provider       String
+  query          String
+  location       String?
+  industries     String?
+  titles         String?
+  dailyLimit     Int       @default(25)
+  scoreThreshold Int       @default(70)
+  status         String    @default("draft")
+  lastRunAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([status])
 }
 
 model SuppressionRecord {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   type        String
   value       String
   reason      String
   source      String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, type, value])
@@ -307,23 +350,23 @@ model SuppressionRecord {
 }
 
 model OutreachQueueItem {
-  id          String   @id @default(cuid())
-  workspaceId String
-  leadId      String?
-  channel     String
-  provider    String
-  subject     String?
-  body        String
-  status      String   @default("pending")
-  reason      String?
+  id           String    @id @default(cuid())
+  workspaceId  String
+  leadId       String?
+  channel      String
+  provider     String
+  subject      String?
+  body         String
+  status       String    @default("pending")
+  reason       String?
   scheduledFor DateTime?
-  approvedAt  DateTime?
-  sentAt      DateTime?
-  rejectedAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  approvedAt   DateTime?
+  sentAt       DateTime?
+  rejectedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([leadId])
@@ -331,17 +374,17 @@ model OutreachQueueItem {
 }
 
 model Reply {
-  id          String   @id @default(cuid())
-  workspaceId String
-  leadId      String?
-  channel     String
-  from        String
-  body        String
+  id             String    @id @default(cuid())
+  workspaceId    String
+  leadId         String?
+  channel        String
+  from           String
+  body           String
   classification String
-  source      String
-  createdAt   DateTime @default(now())
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  source         String
+  createdAt      DateTime  @default(now())
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead           Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([leadId])
@@ -349,12 +392,12 @@ model Reply {
 }
 
 model IntegrationHealth {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   name        String
   status      String
   detail      String
-  checkedAt   DateTime @default(now())
+  checkedAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, name])
@@ -362,64 +405,64 @@ model IntegrationHealth {
 }
 
 model Proposal {
-  id          String   @id @default(cuid())
-  workspaceId String
+  id            String       @id @default(cuid())
+  workspaceId   String
   opportunityId String?
-  title       String
-  status      String
-  setupFee    Int
-  monthlyFee  Int
-  revSharePct Float
-  summary     String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  title         String
+  status        String
+  setupFee      Int
+  monthlyFee    Int
+  revSharePct   Float
+  summary       String
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([opportunityId])
 }
 
 model AgentTemplate {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   name        String
   source      String
   useCase     String
   price       String
   demoScript  String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
 }
 
 model PromptTemplate {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   title       String
   body        String
   category    String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
 }
 
 model AutomationEvent {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   leadId      String?
   title       String
   detail      String
   status      String
-  type        String   @default("system")
+  type        String    @default("system")
   payload     Json?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  lead        Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([leadId])
@@ -428,21 +471,21 @@ model AutomationEvent {
 }
 
 model BookingTask {
-  id          String   @id @default(cuid())
-  workspaceId String
-  leadId      String?
-  ownerEmail  String?
-  status      String   @default("blocked")
-  meetingTitle String
-  meetingLink String?
+  id               String    @id @default(cuid())
+  workspaceId      String
+  leadId           String?
+  ownerEmail       String?
+  status           String    @default("blocked")
+  meetingTitle     String
+  meetingLink      String?
   calendarProvider String?
-  durationMinutes Int @default(30)
-  scheduledFor DateTime?
-  prepNotes   String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  durationMinutes  Int       @default(30)
+  scheduledFor     DateTime?
+  prepNotes        String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead             Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([leadId])
@@ -450,23 +493,23 @@ model BookingTask {
 }
 
 model SequenceStep {
-  id          String   @id @default(cuid())
-  workspaceId String
-  leadId      String?
-  stepNumber  Int
-  dayOffset   Int
-  channel     String
-  provider    String?
-  subject     String?
-  body        String
-  status      String   @default("draft")
+  id           String    @id @default(cuid())
+  workspaceId  String
+  leadId       String?
+  stepNumber   Int
+  dayOffset    Int
+  channel      String
+  provider     String?
+  subject      String?
+  body         String
+  status       String    @default("draft")
   scheduledFor DateTime?
-  approvedAt  DateTime?
-  sentAt      DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  approvedAt   DateTime?
+  sentAt       DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([leadId])
@@ -474,39 +517,39 @@ model SequenceStep {
 }
 
 model AIOnboardingSession {
-  id                       String              @id @default(cuid())
-  workspaceId              String?
-  visitorId                String?
-  authenticatedUserId      String?
-  status                   AIOnboardingStatus  @default(STARTED)
-  currentObjective         String?
-  currentAgent             VegaLaunchAgentType @default(VEGA_CONCIERGE)
-  collectedFacts           Json?
-  confirmedFacts           Json?
-  inferredFacts            Json?
-  missingRequiredFacts     Json?
-  rejectedRecommendations  Json?
-  businessProfileDraft     Json?
-  targetMarketDraft        Json?
-  offerDraft               Json?
-  campaignDraft            Json?
-  productRecommendation    Json?
-  pricingQuoteId           String?
-  proposalId               String?
-  checkoutSessionId        String?
-  subscriptionId           String?
-  provisioningStatus       String?
-  launchReadiness          LaunchReadinessStatus @default(NOT_READY)
-  lastActivityAt           DateTime            @default(now())
-  expiresAt                DateTime?
-  createdAt                DateTime            @default(now())
-  updatedAt                DateTime            @updatedAt
-  workspace                Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  messages                 AIOnboardingMessage[]
-  launchAgentRuns          LaunchAgentRun[]
-  pricingQuotes            PricingQuote[]
-  commercialProposals      CommercialProposal[]
-  humanReviewTasks         HumanReviewTask[]
+  id                      String                @id @default(cuid())
+  workspaceId             String?
+  visitorId               String?
+  authenticatedUserId     String?
+  status                  AIOnboardingStatus    @default(STARTED)
+  currentObjective        String?
+  currentAgent            VegaLaunchAgentType   @default(VEGA_CONCIERGE)
+  collectedFacts          Json?
+  confirmedFacts          Json?
+  inferredFacts           Json?
+  missingRequiredFacts    Json?
+  rejectedRecommendations Json?
+  businessProfileDraft    Json?
+  targetMarketDraft       Json?
+  offerDraft              Json?
+  campaignDraft           Json?
+  productRecommendation   Json?
+  pricingQuoteId          String?
+  proposalId              String?
+  checkoutSessionId       String?
+  subscriptionId          String?
+  provisioningStatus      String?
+  launchReadiness         LaunchReadinessStatus @default(NOT_READY)
+  lastActivityAt          DateTime              @default(now())
+  expiresAt               DateTime?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+  workspace               Workspace?            @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  messages                AIOnboardingMessage[]
+  launchAgentRuns         LaunchAgentRun[]
+  pricingQuotes           PricingQuote[]
+  commercialProposals     CommercialProposal[]
+  humanReviewTasks        HumanReviewTask[]
 
   @@index([workspaceId])
   @@index([status])
@@ -515,15 +558,15 @@ model AIOnboardingSession {
 }
 
 model AIOnboardingMessage {
-  id                  String              @id @default(cuid())
-  sessionId           String
-  role                String
-  content             String
-  structuredParts     Json?
-  visibleToCustomer   Boolean             @default(true)
-  agentType           VegaLaunchAgentType?
-  createdAt           DateTime            @default(now())
-  session             AIOnboardingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id                String               @id @default(cuid())
+  sessionId         String
+  role              String
+  content           String
+  structuredParts   Json?
+  visibleToCustomer Boolean              @default(true)
+  agentType         VegaLaunchAgentType?
+  createdAt         DateTime             @default(now())
+  session           AIOnboardingSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
   @@index([agentType])
@@ -555,21 +598,21 @@ model LaunchAgentRun {
 }
 
 model PricingQuote {
-  id                    String              @id @default(cuid())
-  workspaceId           String?
-  onboardingSessionId   String
-  productCode           VegaProductCode
-  inputConfiguration    Json
-  lineItems             Json
-  totals                Json
-  authorizedDiscounts   Json?
-  priceVersion          String
-  createdAt             DateTime            @default(now())
-  expiresAt             DateTime
-  acceptedAt            DateTime?
-  workspace             Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  onboardingSession     AIOnboardingSession @relation(fields: [onboardingSessionId], references: [id], onDelete: Cascade)
-  commercialProposals   CommercialProposal[]
+  id                  String               @id @default(cuid())
+  workspaceId         String?
+  onboardingSessionId String
+  productCode         VegaProductCode
+  inputConfiguration  Json
+  lineItems           Json
+  totals              Json
+  authorizedDiscounts Json?
+  priceVersion        String
+  createdAt           DateTime             @default(now())
+  expiresAt           DateTime
+  acceptedAt          DateTime?
+  workspace           Workspace?           @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  onboardingSession   AIOnboardingSession  @relation(fields: [onboardingSessionId], references: [id], onDelete: Cascade)
+  commercialProposals CommercialProposal[]
 
   @@index([workspaceId])
   @@index([onboardingSessionId])
@@ -578,32 +621,32 @@ model PricingQuote {
 }
 
 model CommercialProposal {
-  id                    String                   @id @default(cuid())
-  onboardingSessionId   String
-  workspaceId           String?
-  version               Int
-  productCode           VegaProductCode
-  fulfillmentMode       String
-  campaignSummary       Json
-  targetMarket          Json
-  territory             Json
-  offer                 Json
-  vegaResponsibilities  Json
+  id                       String                   @id @default(cuid())
+  onboardingSessionId      String
+  workspaceId              String?
+  version                  Int
+  productCode              VegaProductCode
+  fulfillmentMode          String
+  campaignSummary          Json
+  targetMarket             Json
+  territory                Json
+  offer                    Json
+  vegaResponsibilities     Json
   customerResponsibilities Json
-  allowances            Json
-  setupScope            Json
-  recurringScope        Json
-  billingSummary        Json
-  limitations           Json
-  termsReference        String
-  pricingQuoteId        String
-  status                CommercialProposalStatus @default(DRAFT)
-  approvedAt            DateTime?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  workspace             Workspace?               @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  onboardingSession     AIOnboardingSession      @relation(fields: [onboardingSessionId], references: [id], onDelete: Cascade)
-  pricingQuote          PricingQuote             @relation(fields: [pricingQuoteId], references: [id], onDelete: Restrict)
+  allowances               Json
+  setupScope               Json
+  recurringScope           Json
+  billingSummary           Json
+  limitations              Json
+  termsReference           String
+  pricingQuoteId           String
+  status                   CommercialProposalStatus @default(DRAFT)
+  approvedAt               DateTime?
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  workspace                Workspace?               @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  onboardingSession        AIOnboardingSession      @relation(fields: [onboardingSessionId], references: [id], onDelete: Cascade)
+  pricingQuote             PricingQuote             @relation(fields: [pricingQuoteId], references: [id], onDelete: Restrict)
 
   @@unique([onboardingSessionId, version])
   @@index([workspaceId])
@@ -612,20 +655,582 @@ model CommercialProposal {
 }
 
 model HumanReviewTask {
-  id                    String              @id @default(cuid())
-  workspaceId           String?
-  onboardingSessionId   String?
-  reason                String
-  status                HumanReviewStatus   @default(OPEN)
-  priority              String              @default("normal")
-  payload               Json?
-  resolution            Json?
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
-  workspace             Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  onboardingSession     AIOnboardingSession? @relation(fields: [onboardingSessionId], references: [id], onDelete: SetNull)
+  id                  String               @id @default(cuid())
+  workspaceId         String?
+  onboardingSessionId String?
+  reason              String
+  status              HumanReviewStatus    @default(OPEN)
+  priority            String               @default("normal")
+  payload             Json?
+  resolution          Json?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  workspace           Workspace?           @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  onboardingSession   AIOnboardingSession? @relation(fields: [onboardingSessionId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([onboardingSessionId])
   @@index([status])
+}
+
+enum IntentSignalType {
+  WEBSITE_VISIT
+  FORM_SUBMISSION
+  CONTENT_DOWNLOAD
+  EMAIL_OPEN
+  EMAIL_CLICK
+  EMAIL_REPLY
+  REPEAT_EMAIL_ENGAGEMENT
+  LINKEDIN_REACTION
+  LINKEDIN_COMMENT
+  LINKEDIN_SHARE
+  LINKEDIN_PROFILE_ENGAGEMENT
+  LINKEDIN_REPEAT_ENGAGEMENT
+  COMPETITOR_ENGAGEMENT
+  SOCIAL_MENTION
+  SOCIAL_FOLLOW
+  JOB_CHANGE
+  LEADERSHIP_CHANGE
+  COMPANY_HIRING
+  FUNDING_EVENT
+  LOCATION_EXPANSION
+  NEW_SERVICE_LAUNCH
+  TECHNOLOGY_CHANGE
+  NEGATIVE_REVIEW_PATTERN
+  MISSED_CALL_REVIEW_SIGNAL
+  SCHEDULING_COMPLAINT
+  SLOW_RESPONSE_COMPLAINT
+  WEBSITE_CONVERSION_GAP
+  WEBSITE_FORM_FAILURE
+  SEARCH_VISIBILITY_GAP
+  GOOGLE_PROFILE_GAP
+  CRM_REACTIVATION_SIGNAL
+  PREVIOUS_OPPORTUNITY_REOPENED
+  REFERRAL_SIGNAL
+  MANUAL_OPERATOR_SIGNAL
+  THIRD_PARTY_INTENT_SIGNAL
+}
+
+enum VegaCapabilityGroup {
+  VEGA_DISCOVER
+  VEGA_SIGNAL
+  VEGA_REACH
+  VEGA_ENGAGE
+  VEGA_CONVERT
+  VEGA_INTELLIGENCE
+}
+
+enum SocialProfileType {
+  CUSTOMER_TEAM_MEMBER
+  COMPETITOR
+  PARTNER
+  INDUSTRY_INFLUENCER
+  TARGET_ACCOUNT
+  INVESTOR
+  CUSTOM
+}
+
+enum SocialSignalTier {
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
+enum NextBestChannel {
+  AUTO_EMAIL
+  APPROVAL_EMAIL
+  CALL_FIRST
+  PHONE_ASSIST_AFTER_EMAIL
+  WEBSITE_CONTACT_FORM
+  LINKEDIN_MANUAL_TASK
+  SOCIAL_RESPONSE_TASK
+  SMS_INBOUND_ONLY
+  SMS_FOLLOW_UP
+  CHAT_ENGAGEMENT
+  WHATSAPP_INBOUND
+  RESEARCH_MORE
+  NURTURE
+  SUPPRESS
+  NO_ACTION
+}
+
+enum InboundConversationStatus {
+  OPEN
+  AI_ACTIVE
+  HUMAN_TAKEOVER
+  QUALIFIED
+  BOOKING_OFFERED
+  BOOKED
+  CLOSED
+  SUPPRESSED
+}
+
+enum ReplyCategory {
+  POSITIVE_INTEREST
+  PRICING_REQUEST
+  MEETING_REQUEST
+  INFORMATION_REQUEST
+  QUALIFICATION_ANSWER
+  REFERRAL
+  CORRECT_CONTACT
+  OBJECTION
+  NOT_NOW
+  NURTURE
+  NOT_INTERESTED
+  WRONG_PERSON
+  UNSUBSCRIBE
+  STOP
+  OUT_OF_OFFICE
+  SPAM
+  UNKNOWN
+}
+
+enum ConversationPolicyMode {
+  DRAFT_ONLY
+  HUMAN_APPROVAL
+  CONTROLLED_AUTO_REPLY
+  HUMAN_TAKEOVER
+}
+
+enum DeliverabilityState {
+  HEALTHY
+  CAUTION
+  RESTRICTED
+  STOP
+}
+
+enum ExperimentStatus {
+  DRAFT
+  PROPOSED
+  APPROVED
+  REJECTED
+  RUNNING
+  PAUSED
+  COMPLETED
+  INCONCLUSIVE
+  ROLLED_BACK
+}
+
+model IntentSignal {
+  id                String           @id @default(cuid())
+  workspaceId       String
+  campaignId        String?
+  leadId            String?
+  companyId         String?
+  contactId         String?
+  signalType        IntentSignalType
+  sourceProvider    String
+  sourceRecordId    String?
+  sourceUrl         String?
+  observedAt        DateTime         @default(now())
+  expiresAt         DateTime?
+  rawPayload        Json?
+  normalizedPayload Json?
+  summary           String
+  confidence        Float            @default(0)
+  intentStrength    Float            @default(0)
+  scoreImpact       Int              @default(0)
+  accountLevel      Boolean          @default(false)
+  personLevel       Boolean          @default(false)
+  verified          Boolean          @default(false)
+  evidence          Json?
+  idempotencyKey    String
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  workspace         Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign          Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  lead              Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  company           Company?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contact           Contact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, signalType])
+  @@index([workspaceId, observedAt])
+  @@index([leadId])
+  @@index([companyId])
+  @@index([contactId])
+}
+
+model SocialProfileWatch {
+  id                  String            @id @default(cuid())
+  workspaceId         String
+  platform            String
+  profileUrl          String
+  profileType         SocialProfileType
+  watchReason         String
+  associatedCompanyId String?
+  associatedContactId String?
+  active              Boolean           @default(true)
+  createdBy           String?
+  createdAt           DateTime          @default(now())
+  workspace           Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  associatedCompany   Company?          @relation(fields: [associatedCompanyId], references: [id], onDelete: SetNull)
+  associatedContact   Contact?          @relation(fields: [associatedContactId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, platform])
+  @@index([workspaceId, active])
+}
+
+model SocialPostWatch {
+  id          String                  @id @default(cuid())
+  workspaceId String
+  campaignId  String?
+  platform    String
+  postUrl     String
+  watchReason String
+  active      Boolean                 @default(true)
+  createdBy   String?
+  createdAt   DateTime                @default(now())
+  workspace   Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign    Campaign?               @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  events      SocialEngagementEvent[]
+  lead        Lead?                   @relation(fields: [leadId], references: [id])
+  leadId      String?
+
+  @@unique([workspaceId, platform, postUrl])
+  @@index([workspaceId, active])
+}
+
+model SocialEngagementEvent {
+  id                String              @id @default(cuid())
+  workspaceId       String
+  postWatchId       String?
+  platform          String
+  engagementType    String
+  engagerName       String?
+  engagerTitle      String?
+  engagerCompany    String?
+  engagerProfileUrl String?
+  sourceUrl         String?
+  rawPayload        Json?
+  observedAt        DateTime            @default(now())
+  idempotencyKey    String
+  createdAt         DateTime            @default(now())
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  postWatch         SocialPostWatch?    @relation(fields: [postWatchId], references: [id], onDelete: SetNull)
+  matches           SocialSignalMatch[]
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, platform])
+  @@index([workspaceId, observedAt])
+}
+
+model SocialSignalMatch {
+  id                String                @id @default(cuid())
+  workspaceId       String
+  eventId           String
+  leadId            String?
+  tier              SocialSignalTier
+  icpMatched        Boolean               @default(false)
+  recommendedAction NextBestChannel
+  scoreImpact       Int                   @default(0)
+  reasons           Json?
+  createdAt         DateTime              @default(now())
+  workspace         Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  event             SocialEngagementEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  lead              Lead?                 @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, tier])
+  @@index([leadId])
+}
+
+model LookalikeSeed {
+  id          String    @id @default(cuid())
+  workspaceId String
+  leadId      String?
+  outcomeType String
+  features    Json
+  selectedBy  String?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, outcomeType])
+}
+
+model LookalikeModelVersion {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  version        Int
+  seedRecords    Json
+  featureWeights Json
+  exclusions     Json?
+  generatedAt    DateTime  @default(now())
+  approvedAt     DateTime?
+  approvedBy     String?
+  active         Boolean   @default(false)
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, version])
+  @@index([workspaceId, active])
+}
+
+model LocalMarketProfile {
+  id                        String    @id @default(cuid())
+  workspaceId               String
+  campaignId                String?
+  primaryLocation           String
+  radiusMiles               Int?
+  includedCities            Json?
+  excludedCities            Json?
+  includedCounties          Json?
+  travelConstraints         Json?
+  targetBusinessCategories  Json?
+  referralPartnerCategories Json?
+  estimatedMarketSize       Int?
+  activeBusinessCount       Int?
+  reachableAccountEstimate  Int?
+  confidence                Float     @default(0)
+  evidence                  Json?
+  refreshedAt               DateTime  @default(now())
+  workspace                 Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign                  Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  company                   Company?  @relation(fields: [companyId], references: [id])
+  companyId                 String?
+
+  @@index([workspaceId, primaryLocation])
+  @@index([campaignId])
+}
+
+model InboundConversation {
+  id                     String                    @id @default(cuid())
+  workspaceId            String
+  campaignId             String?
+  leadId                 String?
+  contactId              String?
+  channel                String
+  provider               String
+  externalConversationId String?
+  status                 InboundConversationStatus @default(OPEN)
+  assignedAgent          String?
+  assignedHuman          String?
+  qualificationState     String?
+  bookingState           String?
+  startedAt              DateTime                  @default(now())
+  lastMessageAt          DateTime                  @default(now())
+  closedAt               DateTime?
+  metadata               Json?
+  workspace              Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign               Campaign?                 @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  lead                   Lead?                     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  contact                Contact?                  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  messages               InboundMessage[]
+  company                Company?                  @relation(fields: [companyId], references: [id])
+  companyId              String?
+
+  @@index([workspaceId, status])
+  @@index([leadId])
+  @@index([contactId])
+}
+
+model InboundMessage {
+  id             String              @id @default(cuid())
+  conversationId String
+  leadId         String?
+  direction      String
+  body           String
+  senderType     String
+  classification ReplyCategory?
+  metadata       Json?
+  createdAt      DateTime            @default(now())
+  conversation   InboundConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  lead           Lead?               @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId])
+  @@index([leadId])
+  @@index([classification])
+}
+
+model QualificationPlaybook {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  campaignId        String?
+  industry          String
+  service           String?
+  approvedQuestions Json
+  requiredFacts     Json
+  disqualifiers     Json?
+  escalationRules   Json?
+  bookingThreshold  Int       @default(70)
+  approvalStatus    String    @default("draft")
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now())
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign          Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  company           Company?  @relation(fields: [companyId], references: [id])
+  companyId         String?
+
+  @@index([workspaceId, industry])
+  @@index([campaignId])
+}
+
+model CommunicationPolicy {
+  id                  String    @id @default(cuid())
+  workspaceId         String
+  campaignId          String?
+  permittedChannels   Json
+  channelPurpose      Json?
+  consentRequirements Json?
+  firstTouchRules     Json?
+  followUpRules       Json?
+  quietHours          Json?
+  timezone            String?
+  maximumTouches      Int?
+  cooldownDays        Int?
+  humanApprovalRules  Json?
+  automaticReplyRules Json?
+  optOutLanguage      String?
+  complianceNotes     String?
+  approvedTemplates   Json?
+  enabled             Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign            Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  company             Company?  @relation(fields: [companyId], references: [id])
+  companyId           String?
+
+  @@index([workspaceId, enabled])
+  @@index([campaignId])
+}
+
+model SalesPlaybook {
+  id                  String    @id @default(cuid())
+  workspaceId         String
+  campaignId          String?
+  industry            String
+  persona             String
+  callOpeners         Json
+  qualifyingQuestions Json
+  objections          Json?
+  approvedResponses   Json?
+  bookingAsk          String?
+  followUpLanguage    Json?
+  prohibitedClaims    Json?
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now())
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign            Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  company             Company?  @relation(fields: [companyId], references: [id])
+  companyId           String?
+
+  @@index([workspaceId, industry])
+  @@index([campaignId])
+}
+
+model SourceQualityProfile {
+  id                    String    @id @default(cuid())
+  workspaceId           String
+  campaignId            String?
+  provider              String
+  sourceType            String
+  segment               String?
+  recordsReturned       Int       @default(0)
+  validBusinessRate     Float     @default(0)
+  verifiedEmailRate     Float     @default(0)
+  phoneAvailability     Float     @default(0)
+  decisionMakerAccuracy Float     @default(0)
+  deliveredRate         Float     @default(0)
+  hardBounceRate        Float     @default(0)
+  replyRate             Float     @default(0)
+  reachedContactRate    Float     @default(0)
+  conversationRate      Float     @default(0)
+  meetingRate           Float     @default(0)
+  costPerValidRecord    Float?
+  costPerQualifiedLead  Float?
+  costPerConversation   Float?
+  costPerMeeting        Float?
+  score                 Int       @default(50)
+  state                 String    @default("insufficient_sample")
+  sampleSize            Int       @default(0)
+  refreshedAt           DateTime  @default(now())
+  workspace             Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign              Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  company               Company?  @relation(fields: [companyId], references: [id])
+  companyId             String?
+
+  @@unique([workspaceId, campaignId, provider, sourceType, segment])
+  @@index([workspaceId, provider])
+  @@index([campaignId])
+}
+
+model ExperimentProposal {
+  id                    String           @id @default(cuid())
+  workspaceId           String
+  campaignId            String?
+  hypothesis            String
+  currentConfiguration  Json
+  proposedConfiguration Json
+  targetMetric          String
+  guardrailMetrics      Json?
+  sampleSize            Int
+  duration              Int
+  riskLevel             String
+  recommendationReason  String
+  supportingEvidence    Json?
+  status                ExperimentStatus @default(DRAFT)
+  approvedBy            String?
+  startedAt             DateTime?
+  completedAt           DateTime?
+  result                Json?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  workspace             Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign              Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  company               Company?         @relation(fields: [companyId], references: [id])
+  companyId             String?
+
+  @@index([workspaceId, status])
+  @@index([campaignId])
+}
+
+model AgencyAccount {
+  id                 String                    @id @default(cuid())
+  name               String
+  status             String                    @default("active")
+  brandConfiguration AgencyBrandConfiguration?
+  memberships        AgencyMembership[]
+  clientWorkspaces   AgencyClientWorkspace[]
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+}
+
+model AgencyMembership {
+  id          String        @id @default(cuid())
+  agencyId    String
+  workspaceId String?
+  userEmail   String
+  role        String
+  createdAt   DateTime      @default(now())
+  agency      AgencyAccount @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  workspace   Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([agencyId])
+  @@index([workspaceId])
+}
+
+model AgencyClientWorkspace {
+  id          String        @id @default(cuid())
+  agencyId    String
+  workspaceId String
+  clientName  String
+  status      String        @default("active")
+  createdAt   DateTime      @default(now())
+  agency      AgencyAccount @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyId, workspaceId])
+  @@index([workspaceId])
+}
+
+model AgencyBrandConfiguration {
+  id                String        @id @default(cuid())
+  agencyId          String        @unique
+  displayName       String
+  logoUrl           String?
+  primaryColor      String?
+  whiteLabelEnabled Boolean       @default(false)
+  approvedAt        DateTime?
+  agency            AgencyAccount @relation(fields: [agencyId], references: [id], onDelete: Cascade)
 }
