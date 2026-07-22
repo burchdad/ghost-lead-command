@@ -1,4 +1,6 @@
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
+import { getSenderHealth } from "@/lib/sender-health";
+import { findSuppressionMatch } from "@/lib/suppression";
 
 type SmsProvider = "telnyx" | "twilio";
 type DeliveryStatus = "queued" | "sent" | "failed";
@@ -38,6 +40,10 @@ function preferredSmsProvider(): SmsProvider {
 
 function sendgridFromEmail() {
   return clean(process.env.SENDGRID_FROM_EMAIL) || clean(process.env.SENDGRID_FROM);
+}
+
+function allowsHighBounceSend() {
+  return ["true", "1", "yes", "on"].includes(clean(process.env.VEGA_ALLOW_HIGH_BOUNCE_SEND).toLowerCase());
 }
 
 function telnyxFromNumber() {
@@ -100,6 +106,28 @@ export async function sendEmail(input: SendEmailInput): Promise<DeliveryResult> 
       message: status.sendgridConfigured
         ? "Email queued in dry-run mode. Set OUTREACH_SEND_MODE=live when you are ready to send."
         : "Email queued in dry-run mode. Add SendGrid env vars before live sending.",
+    };
+  }
+
+  const suppression = await findSuppressionMatch({ email: input.to });
+  if (suppression) {
+    return {
+      status: "failed",
+      provider: "sendgrid",
+      channel: "email",
+      dryRun: false,
+      message: `Provider send blocked by suppression: ${suppression.reason}`,
+    };
+  }
+
+  const senderHealth = await getSenderHealth();
+  if (["stop", "recovery", "restricted"].includes(senderHealth.mode) && !allowsHighBounceSend()) {
+    return {
+      status: "failed",
+      provider: "sendgrid",
+      channel: "email",
+      dryRun: false,
+      message: `Provider send blocked by sender governor ${senderHealth.mode.toUpperCase()}: ${senderHealth.providerFailureRate}% failure rate across ${senderHealth.uniqueSendsEvaluated} unique messages.`,
     };
   }
 
