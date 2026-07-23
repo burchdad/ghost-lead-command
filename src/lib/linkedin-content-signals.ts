@@ -5,17 +5,25 @@ import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export type LinkedInEngagementRow = {
+  sourceSystem?: string;
+  campaignName?: string;
+  contentOwner?: string;
   postUrl?: string;
   postTitle?: string;
+  postPublishedAt?: string;
   postImpressions?: number;
   postClicks?: number;
   postReactions?: number;
   postComments?: number;
+  postShares?: number;
+  impressionDelta?: number;
   engagementType?: string;
   engagerName?: string;
   engagerTitle?: string;
   engagerCompany?: string;
   engagerProfileUrl?: string;
+  accountUrl?: string;
+  notes?: string;
   sourceUrl?: string;
   raw?: Record<string, unknown>;
 };
@@ -48,8 +56,43 @@ function engagementScore(row: LinkedInEngagementRow) {
   if (/growth|sales|revenue|marketing|operations|manager|director|vp/.test(title)) score += 14;
   score += Math.min(10, Math.floor(numberValue(row.postClicks) / 10));
   score += Math.min(8, Math.floor(numberValue(row.postComments) / 2));
+  score += Math.min(8, Math.floor(numberValue(row.postShares) / 2));
   score += Math.min(6, Math.floor(numberValue(row.postReactions) / 10));
+  score += Math.min(6, Math.floor(numberValue(row.impressionDelta) / 250));
   return Math.max(0, Math.min(100, score));
+}
+
+function engagementPriority(row: LinkedInEngagementRow, score: number) {
+  const type = clean(row.engagementType).toLowerCase();
+  if (score >= 85 || /comment|reply|share|repost/.test(type)) return "priority";
+  if (score >= 70) return "warm";
+  if (score >= 55) return "watch";
+  return "low";
+}
+
+function sourceSystem(row: LinkedInEngagementRow) {
+  const explicit = clean(row.sourceSystem);
+  if (explicit) return explicit;
+  const rawSource = row.raw && typeof row.raw.sourceSystem === "string" ? row.raw.sourceSystem : "";
+  return clean(rawSource) || "echo";
+}
+
+function postLabel(row: LinkedInEngagementRow) {
+  return clean(row.postTitle) || clean(row.campaignName) || "Echo LinkedIn content";
+}
+
+function signalReasons(row: LinkedInEngagementRow, score: number) {
+  const reasons = [
+    `${clean(row.engagementType) || "engagement"} on ${sourceSystem(row)}-published LinkedIn content`,
+    clean(row.engagerTitle) ? `role: ${row.engagerTitle}` : "role unknown",
+    clean(row.engagerCompany) ? `company: ${row.engagerCompany}` : "company unknown",
+    numberValue(row.postImpressions) ? `post impressions: ${numberValue(row.postImpressions)}` : "",
+    numberValue(row.postClicks) ? `post clicks: ${numberValue(row.postClicks)}` : "",
+    numberValue(row.postComments) ? `post comments: ${numberValue(row.postComments)}` : "",
+    numberValue(row.postShares) ? `post shares: ${numberValue(row.postShares)}` : "",
+    `priority: ${engagementPriority(row, score)}`,
+  ].filter(Boolean);
+  return reasons;
 }
 
 function tierForScore(score: number) {
@@ -63,14 +106,20 @@ function taskBody(row: LinkedInEngagementRow, score: number) {
   const name = clean(row.engagerName) || "there";
   const first = name.split(/\s+/)[0] || "there";
   const company = clean(row.engagerCompany) || "their company";
-  const post = clean(row.postTitle) || "your LinkedIn post";
+  const post = postLabel(row);
   const type = clean(row.engagementType) || "engaged";
+  const owner = clean(row.contentOwner) || sourceSystem(row);
+  const accountUrl = clean(row.accountUrl || row.engagerProfileUrl);
   return sanitizeCustomerMessage(
     [
       `LinkedIn content-signal task for ${name} at ${company}.`,
-      `Signal score: ${score}. Engagement: ${type}. Source post: ${post}.`,
-      clean(row.engagerProfileUrl) ? `Profile: ${row.engagerProfileUrl}` : "",
+      `Signal score: ${score}. Priority: ${engagementPriority(row, score)}. Engagement: ${type}.`,
+      `Source: Echo marketing content handoff. Content owner: ${owner}. Source post: ${post}.`,
+      clean(row.campaignName) ? `Campaign: ${row.campaignName}` : "",
+      numberValue(row.postImpressions) ? `Post performance: ${numberValue(row.postImpressions)} impressions, ${numberValue(row.postClicks)} clicks, ${numberValue(row.postReactions)} reactions, ${numberValue(row.postComments)} comments, ${numberValue(row.postShares)} shares.` : "",
+      accountUrl ? `Profile/account: ${accountUrl}` : "",
       clean(row.sourceUrl || row.postUrl) ? `Source: ${row.sourceUrl || row.postUrl}` : "",
+      clean(row.notes) ? `Echo/Vega note: ${row.notes}` : "",
       "",
       "Connection note / InMail opener:",
       `${first}, noticed you engaged around ${post}. I am mapping teams where warm social signals can turn into real booked conversations instead of getting lost after the post. Worth connecting?`,
@@ -102,7 +151,7 @@ async function ensurePostWatch(row: LinkedInEngagementRow) {
     },
     update: {
       watchReason: sanitizeInternalReason(
-        `Content signal watch refreshed. Impressions ${numberValue(row.postImpressions)}, clicks ${numberValue(row.postClicks)}, comments ${numberValue(row.postComments)}.`,
+        `Echo-to-Vega content signal watch refreshed. Impressions ${numberValue(row.postImpressions)}, clicks ${numberValue(row.postClicks)}, comments ${numberValue(row.postComments)}, shares ${numberValue(row.postShares)}.`,
       ) || "LinkedIn content signal watch refreshed.",
       active: true,
     },
@@ -111,7 +160,7 @@ async function ensurePostWatch(row: LinkedInEngagementRow) {
       platform: "linkedin",
       postUrl,
       watchReason: sanitizeInternalReason(
-        `Track LinkedIn post engagement as a warm lead source. Impressions ${numberValue(row.postImpressions)}, clicks ${numberValue(row.postClicks)}, comments ${numberValue(row.postComments)}.`,
+        `Echo owns publishing. Vega tracks this LinkedIn post after publication as a warm lead source. Impressions ${numberValue(row.postImpressions)}, clicks ${numberValue(row.postClicks)}, comments ${numberValue(row.postComments)}, shares ${numberValue(row.postShares)}.`,
       ) || "Track LinkedIn post engagement as a warm lead source.",
       createdBy: "vega-content-signal-agent",
     },
@@ -154,7 +203,7 @@ export async function ingestLinkedInEngagementRows(rows: LinkedInEngagementRow[]
         engagerTitle: clean(row.engagerTitle) || null,
         engagerCompany: clean(row.engagerCompany) || null,
         engagerProfileUrl: clean(row.engagerProfileUrl) || null,
-        sourceUrl: clean(row.sourceUrl || row.postUrl) || null,
+        sourceUrl: clean(row.sourceUrl || row.postUrl || row.accountUrl) || null,
         rawPayload: rowPayload(row),
       },
       create: {
@@ -166,7 +215,7 @@ export async function ingestLinkedInEngagementRows(rows: LinkedInEngagementRow[]
         engagerTitle: clean(row.engagerTitle) || null,
         engagerCompany: clean(row.engagerCompany) || null,
         engagerProfileUrl: clean(row.engagerProfileUrl) || null,
-        sourceUrl: clean(row.sourceUrl || row.postUrl) || null,
+        sourceUrl: clean(row.sourceUrl || row.postUrl || row.accountUrl) || null,
         rawPayload: rowPayload(row),
         idempotencyKey,
       },
@@ -184,6 +233,21 @@ export async function ingestLinkedInEngagementRows(rows: LinkedInEngagementRow[]
   });
 
   return { imported, updated, received: rows.length };
+}
+
+export async function ingestEchoContentHandoff(rows: LinkedInEngagementRow[]) {
+  return ingestLinkedInEngagementRows(
+    rows.map((row) => ({
+      ...row,
+      sourceSystem: clean(row.sourceSystem) || "echo",
+      contentOwner: clean(row.contentOwner) || "Echo",
+      raw: {
+        ...(row.raw || {}),
+        sourceSystem: clean(row.sourceSystem) || "echo",
+        contentOwner: clean(row.contentOwner) || "Echo",
+      },
+    })),
+  );
 }
 
 export async function runLinkedInContentSignalAgent(input: { limit?: number; queue?: boolean } = {}) {
@@ -208,7 +272,7 @@ export async function runLinkedInContentSignalAgent(input: { limit?: number; que
     if (queued >= limit) break;
     const row: LinkedInEngagementRow = {
       postUrl: event.postWatch?.postUrl || event.sourceUrl || "",
-      postTitle: event.postWatch?.watchReason || "LinkedIn content",
+      postTitle: event.postWatch?.watchReason || "Echo LinkedIn content",
       engagementType: event.engagementType,
       engagerName: event.engagerName || "",
       engagerTitle: event.engagerTitle || "",
@@ -231,11 +295,7 @@ export async function runLinkedInContentSignalAgent(input: { limit?: number; que
         icpMatched: score >= 55,
         recommendedAction: NextBestChannel.LINKEDIN_MANUAL_TASK,
         scoreImpact: score,
-        reasons: [
-          `${event.engagementType || "engagement"} on tracked LinkedIn content`,
-          event.engagerTitle ? `role: ${event.engagerTitle}` : "role unknown",
-          event.engagerCompany ? `company: ${event.engagerCompany}` : "company unknown",
-        ],
+        reasons: signalReasons(row, score),
       },
       create: {
         workspaceId: workspace.id,
@@ -244,24 +304,21 @@ export async function runLinkedInContentSignalAgent(input: { limit?: number; que
         icpMatched: score >= 55,
         recommendedAction: NextBestChannel.LINKEDIN_MANUAL_TASK,
         scoreImpact: score,
-        reasons: [
-          `${event.engagementType || "engagement"} on tracked LinkedIn content`,
-          event.engagerTitle ? `role: ${event.engagerTitle}` : "role unknown",
-          event.engagerCompany ? `company: ${event.engagerCompany}` : "company unknown",
-        ],
+        reasons: signalReasons(row, score),
       },
     });
 
     if (!queue) continue;
     const name = clean(event.engagerName) || "LinkedIn engager";
     const company = clean(event.engagerCompany) || "unknown company";
-    const subject = sanitizeSubject(`LinkedIn content signal: ${name} at ${company}`);
+    const subject = sanitizeSubject(`Echo content signal: ${name} at ${company}`);
+    const legacySubject = sanitizeSubject(`LinkedIn content signal: ${name} at ${company}`);
     const existing = await prisma.outreachQueueItem.findFirst({
       where: {
         workspaceId: workspace.id,
         channel: "linkedin",
-        provider: "linkedin-content-signal-manual",
-        subject,
+        provider: { in: ["echo-linkedin-signal-manual", "linkedin-content-signal-manual"] },
+        subject: { in: [subject, legacySubject] },
         status: { in: ["pending", "queued", "sent"] },
       },
     });
@@ -273,12 +330,12 @@ export async function runLinkedInContentSignalAgent(input: { limit?: number; que
       data: {
         workspaceId: workspace.id,
         channel: "linkedin",
-        provider: "linkedin-content-signal-manual",
+        provider: "echo-linkedin-signal-manual",
         subject,
         body: taskBody(row, score),
         status: "pending",
         scheduledFor: new Date(),
-        reason: sanitizeInternalReason("Vega queued this because a tracked LinkedIn content engagement created a warm social signal."),
+        reason: sanitizeInternalReason("Vega queued this because Echo-published LinkedIn content created a warm post-engagement signal."),
       },
     });
     queued += 1;
@@ -301,9 +358,9 @@ export async function runLinkedInContentSignalAgent(input: { limit?: number; que
     alreadyQueued,
     top,
     message: queued
-      ? `Queued ${queued} LinkedIn content-signal tasks from post engagement.`
+      ? `Queued ${queued} Echo-to-Vega LinkedIn content-signal tasks from post engagement.`
       : matched
-        ? `Matched ${matched} LinkedIn content signals; ${alreadyQueued} already had tasks.`
-        : "No LinkedIn post/impression engagement signals are ready yet.",
+        ? `Matched ${matched} Echo-to-Vega LinkedIn content signals; ${alreadyQueued} already had tasks.`
+        : "No Echo LinkedIn post/impression engagement signals are ready yet.",
   };
 }
