@@ -5,6 +5,7 @@ export type OpportunityDecisionLane =
   | "AUTO_EMAIL"
   | "APPROVAL_EMAIL"
   | "CALL_FIRST"
+  | "MANUAL_CONTACT_FORM"
   | "RESEARCH"
   | "SUPPRESS_REVIEW";
 
@@ -58,6 +59,15 @@ function contactConfidence(item: QueueItemWithLead) {
   return 12;
 }
 
+function hasPhonePath(text: string) {
+  if (/(no|missing|without)\s+(phone|call path|callable path)/i.test(text)) return false;
+  return /call path|\(\d{3}\)|\d{3}[-.\s]\d{3}[-.\s]\d{4}|phone (available|path|number|route)|callable path/i.test(text);
+}
+
+function hasWebsitePath(text: string) {
+  return /website|contact form|https?:\/\//i.test(text);
+}
+
 export function evaluateOpportunityQueueItem(item: QueueItemWithLead): OpportunityIntelligence {
   const lead = item.lead;
   const scoreboard = lead
@@ -96,6 +106,8 @@ export function evaluateOpportunityQueueItem(item: QueueItemWithLead): Opportuni
 
   let decisionLane: OpportunityDecisionLane = "RESEARCH";
   const emailEligible = item.channel === "email" && item.provider === "sendgrid" && confidence >= 80;
+  const phonePath = hasPhonePath(allText);
+  const websitePath = hasWebsitePath(allText);
   if (/suppressed|bounce|failed/i.test(allText) || scoreboard?.nextBestChannel === "suppress-review") {
     decisionLane = "SUPPRESS_REVIEW";
   } else if (/Channel:\s*enrich|channel:\s*enrich|no contact path yet/i.test(allText)) {
@@ -104,8 +116,10 @@ export function evaluateOpportunityQueueItem(item: QueueItemWithLead): Opportuni
     decisionLane = "AUTO_EMAIL";
   } else if (emailEligible && intent >= 55 && !/Channel:\s*enrich/i.test(allText)) {
     decisionLane = "APPROVAL_EMAIL";
-  } else if (/phone|phone-website|contact-form|call path/i.test(allText) && confidence >= 38) {
+  } else if (phonePath && confidence >= 38) {
     decisionLane = "CALL_FIRST";
+  } else if (websitePath && confidence >= 38) {
+    decisionLane = "MANUAL_CONTACT_FORM";
   }
 
   const sendReady = decisionLane === "AUTO_EMAIL" || decisionLane === "APPROVAL_EMAIL";
@@ -115,12 +129,16 @@ export function evaluateOpportunityQueueItem(item: QueueItemWithLead): Opportuni
       ? "VEGA SUPPRESSION REVIEW"
       : decisionLane === "CALL_FIRST"
         ? "VEGA CALL-FIRST TASK"
+        : decisionLane === "MANUAL_CONTACT_FORM"
+          ? "VEGA MANUAL CONTACT TASK"
         : sendReady
           ? "Lead Command approval ready"
           : "VEGA RESEARCH REQUIRED";
   const nextAction =
     decisionLane === "CALL_FIRST"
       ? "Call the business or use the website contact form before email outreach."
+      : decisionLane === "MANUAL_CONTACT_FORM"
+        ? "Use the website contact form or research a verified phone/email path before email outreach."
       : sendReady
         ? "Approve or auto-send only after the copy and recipient are acceptable."
         : decisionLane === "SUPPRESS_REVIEW"
@@ -128,6 +146,10 @@ export function evaluateOpportunityQueueItem(item: QueueItemWithLead): Opportuni
           : "Find the owner, operator, office manager, or verified business email before drafting outreach.";
   const executionStatus = sendReady
     ? `${item.channel}:${item.provider}`
+    : decisionLane === "CALL_FIRST"
+      ? "Execution status: Call-first ready; email blocked until verified"
+      : decisionLane === "MANUAL_CONTACT_FORM"
+        ? "Execution status: Contact-form ready; email blocked until verified"
     : item.channel === "email"
       ? `Proposed channel: Email | Provider: ${item.provider || "n/a"} | Execution status: Blocked pending enrichment`
       : item.channel === "manual"
@@ -136,6 +158,8 @@ export function evaluateOpportunityQueueItem(item: QueueItemWithLead): Opportuni
   const researchObjective =
     decisionLane === "CALL_FIRST"
       ? "Confirm the best phone/contact-form path and identify who handles sales, estimates, operations, or vendor conversations."
+      : decisionLane === "MANUAL_CONTACT_FORM"
+        ? "Use the company website/contact form while researching a named decision-maker, verified email, or direct phone path."
       : decisionLane === "SUPPRESS_REVIEW"
         ? "Verify whether this lead, domain, or contact should stay suppressed before any new outreach."
         : "Identify the owner, operator, office manager, or verified business email.";

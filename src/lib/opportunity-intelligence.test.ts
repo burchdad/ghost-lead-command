@@ -109,6 +109,38 @@ test("signal summaries label weak service-market signals as hypotheses", () => {
   assert.match(summary, /active buying intent is not confirmed/i);
 });
 
+test("phone-ready manual paths become call-first with email explicitly blocked", () => {
+  const decision = evaluateOpportunityQueueItem({
+    ...item({
+      channel: "manual",
+      provider: "phone-website",
+      body: "Manual path.\nCall path: (903) 555-1212\nWebsite/contact form: https://hvac.example",
+      reason: "Signal score 70 (warm). Channel: phone. Risk: buyer role is unclear.",
+    }),
+    lead: lead({ nextAction: "phone and website available", score: 87 }),
+  });
+
+  assert.equal(decision.decisionLane, "CALL_FIRST");
+  assert.equal(decision.cardTitle, "VEGA CALL-FIRST TASK");
+  assert.match(decision.executionStatus, /Call-first ready; email blocked/i);
+});
+
+test("website-only paths become manual contact form rather than call-first", () => {
+  const decision = evaluateOpportunityQueueItem({
+    ...item({
+      channel: "manual",
+      provider: "phone-website",
+      body: "Manual path.\nWebsite/contact form: https://hvac.example",
+      reason: "Signal score 70 (warm). Channel: contact-form. Risk: buyer role is unclear.",
+    }),
+    lead: lead({ nextAction: "website available but no phone or email", score: 87 }),
+  });
+
+  assert.equal(decision.decisionLane, "MANUAL_CONTACT_FORM");
+  assert.equal(decision.cardTitle, "VEGA MANUAL CONTACT TASK");
+  assert.match(decision.executionStatus, /Contact-form ready; email blocked/i);
+});
+
 test("verified sendgrid email can remain approval-ready", () => {
   const decision = evaluateOpportunityQueueItem({
     ...item({

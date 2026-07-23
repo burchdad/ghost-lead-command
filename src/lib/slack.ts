@@ -42,6 +42,18 @@ function outreachActionValue(itemId: string, action: "approve" | "redo" | "disca
   });
 }
 
+function ratingLabel(score: number) {
+  if (score >= 85) return "High";
+  if (score >= 65) return "Moderate";
+  if (score >= 45) return "Developing";
+  return "Low";
+}
+
+function topDecisionReasons(reasons: string[], risks: string[]) {
+  const combined = [...reasons, ...risks].filter(Boolean);
+  return [...new Set(combined)].slice(0, 3);
+}
+
 function batchApproveValue(limit: number) {
   return JSON.stringify({
     action: "vega_batch_approve",
@@ -298,26 +310,18 @@ export async function notifySlackOutreachApproval(
       })
     : null;
   const signalSummary = scoreboard ? signalScoreboardSummary(scoreboard) : clean(item.reason || undefined);
-  const signalPreview = signalSummary.length > 620 ? `${signalSummary.slice(0, 617)}...` : signalSummary;
   const queueUrl = new URL("/?view=queue", appBaseUrl()).toString();
   const websiteMatch = body.match(/https?:\/\/[^\s)]+/i);
   const companyUrl = websiteMatch?.[0] || new URL("/?view=source", appBaseUrl()).toString();
-  const metricsLine = [
-    `Lead fit: ${intelligence.leadFit ?? "n/a"}`,
-    `Intent score: ${intelligence.intent}`,
-    intelligence.researchSignalScore !== null ? `Research signal score: ${intelligence.researchSignalScore}` : "",
-    `Opportunity trust: ${intelligence.opportunityTrust}`,
-    `Contact confidence: ${intelligence.contactConfidence}`,
-    `Decision lane: ${intelligence.decisionLane.replace(/_/g, " ")}`,
-  ].filter(Boolean).join(" | ");
-  const actionHelp = intelligence.sendReady
-    ? "Approve sends in live mode or records a dry-run approval. Redo marks it for rewrite. Discard rejects it."
-    : `${intelligence.nextAction} Research/manual cards cannot send SendGrid email from Slack.`;
-  const decisionNotes = [
-    intelligence.reasons.length ? `*Why:*\n${intelligence.reasons.map((reason) => `- ${reason}`).join("\n")}` : "",
-    intelligence.risks.length ? `*Risks:*\n${intelligence.risks.map((risk) => `- ${risk}`).join("\n")}` : "",
-    `*Recommended next action:* ${intelligence.nextAction}`,
-  ].filter(Boolean).join("\n");
+  const compactScoreLine = `Opportunity rating: ${intelligence.opportunityTrust} - ${ratingLabel(intelligence.opportunityTrust)}`;
+  const compactBreakdown = `Fit ${intelligence.leadFit ?? "n/a"} | Intent ${intelligence.intent} | Contact ${intelligence.contactConfidence}`;
+  const compactReasons = topDecisionReasons(intelligence.reasons, intelligence.risks);
+  const reasonText = compactReasons.length ? compactReasons.map((reason) => `- ${reason}`).join("\n") : "- Needs more evidence before outreach.";
+  const fullIntelText = signalSummary.length > 520 ? `${signalSummary.slice(0, 517)}...` : signalSummary;
+  const manualOpener =
+    intelligence.decisionLane === "CALL_FIRST" || intelligence.decisionLane === "MANUAL_CONTACT_FORM"
+      ? `*Suggested opener:*\n"Hi, I'm calling on behalf of Stephen with Ghost AI Solutions. Who handles lead follow-up or estimate-request operations?"`
+      : "";
   const actionElements = intelligence.sendReady
     ? [
         {
@@ -353,6 +357,62 @@ export async function notifySlackOutreachApproval(
           url: queueUrl,
         },
       ]
+    : intelligence.decisionLane === "CALL_FIRST"
+      ? [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Create Call Task", emoji: false },
+            style: "primary",
+            action_id: "outreach_call_task",
+            value: outreachActionValue(item.id, "call_task"),
+          },
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Research Contact", emoji: false },
+            action_id: "outreach_research",
+            value: outreachActionValue(item.id, "research"),
+          },
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Open Company", emoji: false },
+            url: companyUrl,
+          },
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Suppress", emoji: false },
+            style: "danger",
+            action_id: "outreach_suppress",
+            value: outreachActionValue(item.id, "suppress"),
+          },
+        ]
+    : intelligence.decisionLane === "MANUAL_CONTACT_FORM"
+      ? [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Open Contact Form", emoji: false },
+            style: "primary",
+            url: companyUrl,
+          },
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Research Contact", emoji: false },
+            action_id: "outreach_research",
+            value: outreachActionValue(item.id, "research"),
+          },
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Create Call Task", emoji: false },
+            action_id: "outreach_call_task",
+            value: outreachActionValue(item.id, "call_task"),
+          },
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Suppress", emoji: false },
+            style: "danger",
+            action_id: "outreach_suppress",
+            value: outreachActionValue(item.id, "suppress"),
+          },
+        ]
     : [
         {
           type: "button",
@@ -395,8 +455,8 @@ export async function notifySlackOutreachApproval(
           text: {
             type: "mrkdwn",
             text: intelligence.sendReady
-              ? `*${title}*\n${intelligence.executionStatus} | ${value}\n${metricsLine}\n*Subject:* ${subject}`
-              : `*${title}*\n${intelligence.executionStatus} | ${value}\n${metricsLine}`,
+              ? `*${title}*\n${intelligence.executionStatus} | ${value}\n${compactScoreLine}\n${compactBreakdown}\n*Subject:* ${subject}`
+              : `*${title}*\nEstimated opportunity: ${value}\n${compactScoreLine}\n${compactBreakdown}\n${intelligence.executionStatus}`,
           },
         },
         ...(intelligence.sendReady
@@ -406,6 +466,21 @@ export async function notifySlackOutreachApproval(
                 text: { type: "mrkdwn", text: `\`\`\`${preview}\`\`\`` },
               },
             ]
+          : intelligence.decisionLane === "CALL_FIRST" || intelligence.decisionLane === "MANUAL_CONTACT_FORM"
+            ? [
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: [
+                      `*Primary action:*\n${intelligence.nextAction}`,
+                      `*Why Vega chose this lane:*\n${reasonText}`,
+                      manualOpener,
+                      "*Email:*\nBlocked until a verified contact is found.",
+                    ].filter(Boolean).join("\n\n"),
+                  },
+                },
+              ]
           : [
               {
                 type: "section",
@@ -419,28 +494,14 @@ export async function notifySlackOutreachApproval(
                 },
               },
             ]),
-        ...(signalPreview
-          ? [
-              {
-                type: "section",
-                text: { type: "mrkdwn", text: `*Vega signal read:*\n${signalPreview}` },
-              },
-            ]
-          : []),
-        ...(decisionNotes
-          ? [
-              {
-                type: "section",
-                text: { type: "mrkdwn", text: decisionNotes },
-              },
-            ]
-          : []),
         {
           type: "context",
           elements: [
             {
               type: "mrkdwn",
-              text: actionHelp,
+              text: intelligence.sendReady
+                ? "Approve sends in live mode or records a dry-run approval. Full intelligence is in Lead Command."
+                : `View full intelligence in Lead Command. ${fullIntelText}`,
             },
           ],
         },
