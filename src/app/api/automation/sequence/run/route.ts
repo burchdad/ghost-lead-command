@@ -15,6 +15,17 @@ function boolFromEnv(name: string, fallback = false) {
   return fallback;
 }
 
+function numberFromEnv(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function sequenceLimit(value: unknown) {
+  const maxLimit = Math.min(25, Math.max(1, numberFromEnv("VEGA_SEQUENCE_MAX_RUN_LIMIT", 20)));
+  const requested = Number(value || process.env.SEQUENCE_RUN_LIMIT || 10);
+  return Math.min(maxLimit, Math.max(1, Number.isFinite(requested) ? requested : 10));
+}
+
 function shouldAutoSend(request: Request, body?: Record<string, unknown>) {
   const url = new URL(request.url);
   const param = url.searchParams.get("autoSend");
@@ -30,7 +41,7 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const limit = Number(url.searchParams.get("limit") || process.env.SEQUENCE_RUN_LIMIT || 5);
+  const limit = sequenceLimit(url.searchParams.get("limit"));
   const result = await runDueSequenceSteps({ limit });
   const approval = shouldAutoSend(request) ? await approvePendingOutreachBatch({ limit }) : null;
   return NextResponse.json({ ...result, autoSend: Boolean(approval), approval });
@@ -42,7 +53,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const limit = Number(body.limit || process.env.SEQUENCE_RUN_LIMIT || 5);
+  const limit = sequenceLimit(body.limit);
   const result = await runDueSequenceSteps({ limit });
   const approval = shouldAutoSend(request, body) ? await approvePendingOutreachBatch({ limit }) : null;
   return NextResponse.json({ ...result, autoSend: Boolean(approval), approval });

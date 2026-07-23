@@ -693,7 +693,7 @@ export function classifyVegaSpecialistRequest(text: string): VegaSpecialistKind 
   if (/\b(?:learning loop|self[-\s]?tune|adaptive learning|optimi[sz]e sources?|source learning|campaign learning|what'?s working|gojiberry gap)\b/.test(normalized)) return "learning-loop";
   if (/\b(?:social intent|competitor signals?|competitor engagement|scout social|social scout|linkedin signals?|social signals?)\b/.test(normalized)) return "social-intent";
   if (/\b(?:linkedin events?|event management|events api|lead gen events?)\b/.test(normalized)) return "linkedin-events";
-  if (/\b(?:linkedin tasks?|sales nav tasks?|linkedin lane|sales navigator tasks?|social dm|connection requests?)\b/.test(normalized)) return "linkedin-tasks";
+  if (/\b(?:linkedin tasks?|sales nav tasks?|linkedin lane|sales navigator tasks?|social dm|linkedin dm|linkedin dms|inmail|inmails|connection requests?)\b/.test(normalized)) return "linkedin-tasks";
   if (/\b(?:waitlist|early access|beta candidates?|contestants?|design partners?)\b/.test(normalized)) return "waitlist";
   return null;
 }

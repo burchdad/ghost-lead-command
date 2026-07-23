@@ -1146,6 +1146,10 @@ export async function notifySlackBatchApprovalResult(input: {
   emailReadyBefore: number;
   manualPending: number;
   otherPending: number;
+  sentToday?: number;
+  dailyLimit?: number;
+  remainingToday?: number;
+  effectiveLimit?: number;
   callAssistQueued?: number;
   callAssistTasks?: CallAssistTask[];
   blocked?: boolean;
@@ -1190,6 +1194,8 @@ export async function notifySlackBatchApprovalResult(input: {
           fields: [
             { type: "mrkdwn", text: `*Requested*\n${input.requested}` },
             { type: "mrkdwn", text: `*SendGrid-ready before click*\n${input.emailReadyBefore}` },
+            { type: "mrkdwn", text: `*Daily send budget*\n${input.sentToday ?? "n/a"}/${input.dailyLimit ?? "n/a"}` },
+            { type: "mrkdwn", text: `*Remaining today*\n${input.remainingToday ?? "n/a"}` },
             { type: "mrkdwn", text: `*Attempted*\n${input.attempted}` },
             { type: "mrkdwn", text: `*Actually sent*\n${input.sent}` },
             { type: "mrkdwn", text: `*Phone assists queued*\n${input.callAssistQueued || 0}` },

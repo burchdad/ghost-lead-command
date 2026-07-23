@@ -13,6 +13,41 @@ function emailDomain(email: string | null | undefined) {
   return email?.split("@")[1]?.trim().toLowerCase() || "";
 }
 
+function numberFromEnv(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function boolFromEnv(name: string, fallback = false) {
+  const value = String(process.env[name] || "").trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(value)) return true;
+  if (["0", "false", "no", "off"].includes(value)) return false;
+  return fallback;
+}
+
+function centralBusinessDayWindow(now = new Date()) {
+  const offsetMinutes = numberFromEnv("VEGA_SEND_TIMEZONE_OFFSET_MINUTES", -300);
+  const localNow = new Date(now.getTime() + offsetMinutes * 60_000);
+  const startLocal = new Date(localNow);
+  startLocal.setUTCHours(0, 0, 0, 0);
+  const endLocal = new Date(startLocal);
+  endLocal.setUTCDate(endLocal.getUTCDate() + 1);
+  return {
+    start: new Date(startLocal.getTime() - offsetMinutes * 60_000),
+    end: new Date(endLocal.getTime() - offsetMinutes * 60_000),
+    localHour: localNow.getUTCHours(),
+    localDay: localNow.getUTCDay(),
+  };
+}
+
+function isBusinessSendWindow(now = new Date()) {
+  if (!boolFromEnv("VEGA_AUTO_SEND_BUSINESS_HOURS_ONLY", true)) return true;
+  const startHour = numberFromEnv("VEGA_AUTO_SEND_START_HOUR", 8);
+  const endHour = numberFromEnv("VEGA_AUTO_SEND_END_HOUR", 17);
+  const { localHour, localDay } = centralBusinessDayWindow(now);
+  return localDay >= 1 && localDay <= 5 && localHour >= startHour && localHour < endHour;
+}
+
 export async function approveOutreachQueueItem(
   id: string,
   input: { subject?: string; body?: string } = {},
@@ -145,9 +180,11 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const maxLimit = Math.min(25, Math.max(1, Number(process.env.VEGA_APPROVAL_BATCH_LIMIT || 10)));
-  const limit = Math.min(maxLimit, Math.max(1, Number(input.limit || maxLimit)));
+  const requestedLimit = Math.min(maxLimit, Math.max(1, Number(input.limit || maxLimit)));
+  const dailyLimit = Math.max(1, numberFromEnv("VEGA_DAILY_EMAIL_SEND_LIMIT", numberFromEnv("VEGA_DAILY_SAFE_SEND_LIMIT", 100)));
+  const dayWindow = centralBusinessDayWindow();
   const health = await getSenderHealth({ workspaceId: workspace.id });
-  const [emailReady, manualPending, otherPending] = await Promise.all([
+  const [emailReady, manualPending, otherPending, sentToday] = await Promise.all([
     prisma.outreachQueueItem.count({
       where: {
         workspaceId: workspace.id,
@@ -172,11 +209,67 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
         ],
       },
     }),
+    prisma.outreachQueueItem.count({
+      where: {
+        workspaceId: workspace.id,
+        status: "sent",
+        channel: "email",
+        sentAt: { gte: dayWindow.start, lt: dayWindow.end },
+      },
+    }),
   ]);
+  const remainingToday = Math.max(0, dailyLimit - sentToday);
+  const limit = Math.min(requestedLimit, remainingToday);
+
+  if (!isBusinessSendWindow()) {
+    return {
+      requested: requestedLimit,
+      attempted: 0,
+      approved: 0,
+      failed: 0,
+      blocked: true,
+      blockReason: `Outside Vega auto-send window. Auto-send runs weekdays ${numberFromEnv("VEGA_AUTO_SEND_START_HOUR", 8)}:00-${numberFromEnv("VEGA_AUTO_SEND_END_HOUR", 17)}:00 local send time.`,
+      health,
+      emailReadyBefore: emailReady,
+      manualPending,
+      otherPending,
+      sentToday,
+      dailyLimit,
+      remainingToday,
+      sent: 0,
+      dryRunQueued: 0,
+      callAssistQueued: 0,
+      callAssistTasks: [],
+      results: [],
+    };
+  }
+
+  if (remainingToday <= 0) {
+    return {
+      requested: requestedLimit,
+      attempted: 0,
+      approved: 0,
+      failed: 0,
+      blocked: true,
+      blockReason: `Daily email send limit reached: ${sentToday}/${dailyLimit} sent today.`,
+      health,
+      emailReadyBefore: emailReady,
+      manualPending,
+      otherPending,
+      sentToday,
+      dailyLimit,
+      remainingToday,
+      sent: 0,
+      dryRunQueued: 0,
+      callAssistQueued: 0,
+      callAssistTasks: [],
+      results: [],
+    };
+  }
 
   if (health.mode === "stop" && !["true", "1", "yes", "on"].includes(String(process.env.VEGA_ALLOW_HIGH_BOUNCE_SEND || "").toLowerCase())) {
     return {
-      requested: limit,
+      requested: requestedLimit,
       attempted: 0,
       approved: 0,
       failed: 0,
@@ -186,6 +279,9 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
       emailReadyBefore: emailReady,
       manualPending,
       otherPending,
+      sentToday,
+      dailyLimit,
+      remainingToday,
       sent: 0,
       dryRunQueued: 0,
       callAssistQueued: 0,
@@ -218,13 +314,17 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
   });
 
   return {
-    requested: limit,
+    requested: requestedLimit,
     attempted: results.length,
     approved: results.filter((result) => result.ok).length,
     failed: results.filter((result) => !result.ok).length,
     emailReadyBefore: emailReady,
     manualPending,
     otherPending,
+    sentToday,
+    dailyLimit,
+    remainingToday,
+    effectiveLimit: limit,
     sent: results.filter((result) => result.ok && result.body.delivery.status === "sent").length,
     dryRunQueued: results.filter((result) => result.ok && result.body.delivery.dryRun).length,
     callAssistQueued: callAssistTasks.length,

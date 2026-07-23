@@ -56,10 +56,10 @@ function buildLinkedInTaskBody(lead: {
       "Connection note:",
       `${name}, saw ${lead.companyName} while mapping ${niche} teams that may be leaking qualified conversations before they hit the calendar. Open to connecting?`,
       "",
-      "DM after accepted:",
+      "DM after accepted or InMail:",
       `${name}, quick idea. I help teams spot warm buyer signals, enrich the contact, send the right first touch, and route replies into booked calls. Worth me showing the workflow I would run for ${lead.companyName}?`,
       "",
-      "Operator move: send connection note or profile message manually, then record reply in Lead Command.",
+      "Operator move: send the connection note, Sales Navigator profile message, or InMail manually. Record replies in Lead Command so Vega can classify and book.",
     ].join("\n"),
     { channel: "manual" },
   );
@@ -110,7 +110,7 @@ export async function runLinkedInTaskLane(input: { limit?: number } = {}) {
         workspaceId: workspace.id,
         leadId: lead.id,
         channel: "linkedin",
-        provider: "sales-nav-manual",
+        provider: "sales-nav-inmail-manual",
         subject,
         body: buildLinkedInTaskBody(lead),
         status: "pending",
@@ -121,7 +121,7 @@ export async function runLinkedInTaskLane(input: { limit?: number } = {}) {
     await prisma.lead.update({
       where: { id: lead.id },
       data: {
-        nextAction: "LinkedIn/Sales Navigator task queued for manual connection or profile message.",
+        nextAction: "LinkedIn/Sales Navigator task queued for manual connection, profile message, or InMail.",
       },
     });
     queued += 1;
