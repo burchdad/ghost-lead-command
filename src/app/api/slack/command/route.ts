@@ -380,6 +380,7 @@ export async function POST(request: Request) {
         "`Vega, refresh intent feed` - rank warm buyer signals and public web context before choosing the next accounts.",
         "`Vega, run learning loop` - tune source plays from live reply/send outcomes.",
         "`Vega, scout social intent` - run competitor/social-style signal plays and queue qualified leads.",
+        "`Vega, LinkedIn post engagement leads` - rank post reactors/commenters/impression signals and queue manual InMail/DM tasks.",
         "`Vega, check LinkedIn events` - verify LinkedIn Events Management and lead-gen-enabled event availability.",
         "`Vega, queue LinkedIn InMails 10` - create manual Sales Navigator connection, DM, or InMail tasks for social-fit leads.",
         "`Vega, review the waitlist` - review Vega early-access contestants and surface top beta/design-partner candidates.",

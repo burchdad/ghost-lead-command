@@ -2,6 +2,7 @@ import { createAutomationEvent, createBookingTaskForLead, pushReadyBookingTasks,
 import { runAdaptiveLearningLoop } from "@/lib/adaptive-learning";
 import { computeConversionLearning } from "@/lib/conversion-learning";
 import { runIntentFeedScout } from "@/lib/intent-feed";
+import { runLinkedInContentSignalAgent } from "@/lib/linkedin-content-signals";
 import { listLinkedInEvents } from "@/lib/linkedin-products";
 import { runLinkedInTaskLane } from "@/lib/linkedin-task-lane";
 import { improveOfferCopy } from "@/lib/offer-copy-brain";
@@ -22,6 +23,7 @@ export type VegaSpecialistKind =
   | "intent-feed"
   | "learning-loop"
   | "social-intent"
+  | "linkedin-content"
   | "linkedin-events"
   | "linkedin-tasks"
   | "waitlist"
@@ -479,6 +481,25 @@ export async function runLinkedInTaskAgent(input: { limit?: number } = {}): Prom
   };
 }
 
+export async function runLinkedInContentAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
+  const result = await runLinkedInContentSignalAgent({ limit: input.limit || 10, queue: true });
+  return {
+    kind: "linkedin-content",
+    title: "LinkedIn Content Signal Agent",
+    status: result.queued || result.matched ? "done" : result.reviewed ? "needs_review" : "blocked",
+    summary: result.message,
+    metrics: {
+      reviewed: result.reviewed,
+      matched: result.matched,
+      queued: result.queued,
+      alreadyQueued: result.alreadyQueued,
+    },
+    nextMove: result.queued
+      ? "Work the LinkedIn content-signal tasks manually, then record any replies so Vega can classify and book."
+      : "Paste LinkedIn post reactors/commenters or connect richer LinkedIn analytics so Vega can rank content-sourced prospects.",
+  };
+}
+
 export async function runLinkedInEventsAgent(input: { limit?: number } = {}): Promise<SpecialistResult> {
   const result = await listLinkedInEvents({ count: input.limit || 10, leadGenOnly: false });
   const leadGen = result.ok ? await listLinkedInEvents({ count: input.limit || 10, leadGenOnly: true }).catch(() => null) : null;
@@ -613,6 +634,7 @@ export async function runVegaSpecialist(kind: VegaSpecialistKind, input: { limit
   if (kind === "intent-feed") return runIntentFeedAgent({ ...input, enrich: true });
   if (kind === "learning-loop") return runLearningLoopAgent(input);
   if (kind === "social-intent") return runSocialIntentAgent(input);
+  if (kind === "linkedin-content") return runLinkedInContentAgent(input);
   if (kind === "linkedin-events") return runLinkedInEventsAgent(input);
   if (kind === "linkedin-tasks") return runLinkedInTaskAgent(input);
   if (kind === "waitlist") return runWaitlistReviewAgent(input);
@@ -620,10 +642,11 @@ export async function runVegaSpecialist(kind: VegaSpecialistKind, input: { limit
 }
 
 export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
-  const [learning, intent, linkedin, copy, cadence, replies, booking, contact, deliverability] = await Promise.all([
+  const [learning, intent, linkedin, linkedinContent, copy, cadence, replies, booking, contact, deliverability] = await Promise.all([
     computeConversionLearning(),
     runIntentFeedAgent({ limit: 10, enrich: false }),
     runLinkedInTaskAgent({ limit: 5 }),
+    runLinkedInContentAgent({ limit: 5 }),
     runCopyChiefAgent({ limit: input.limit || 10 }),
     runCadenceOrchestrator({ limit: input.limit || 8 }),
     runReplyConversionSweep({ limit: input.limit || 10, lookbackHours: 168 }),
@@ -643,6 +666,7 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
     `Booking ready ${bookingReady}.`,
     `Intent leads ranked ${intent.metrics.ranked}.`,
     `LinkedIn tasks queued ${linkedin.metrics.queued}.`,
+    `LinkedIn content tasks queued ${linkedinContent.metrics.queued}.`,
     `Learning closeness ${learning.summary.gojiBerryCloseness}.`,
     `Manual paths refreshed ${contact.metrics.refreshed}.`,
     `Risky emails rejected ${deliverability.metrics.pendingRejected}.`,
@@ -653,7 +677,7 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
     detail: summary,
     status,
     type: "agent",
-    payload: { learning, intent, linkedin, copy, cadence, replies, booking, contact, deliverability },
+    payload: { learning, intent, linkedin, linkedinContent, copy, cadence, replies, booking, contact, deliverability },
   });
 
   return {
@@ -669,6 +693,7 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
       gojiBerryCloseness: learning.summary.gojiBerryCloseness,
       intentRanked: intent.metrics.ranked as number,
       linkedinQueued: linkedin.metrics.queued as number,
+      linkedinContentQueued: linkedinContent.metrics.queued as number,
       recommendedPlays: learning.summary.recommendedPlayIds.join(", "),
       manualRefreshed: contact.metrics.refreshed as number,
       riskyRejected: deliverability.metrics.pendingRejected as number,
@@ -676,7 +701,7 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
     nextMove: bookingReady
       ? "Work booking-ready leads first, then approve reviewed drafts."
       : "Approve reviewed drafts, run a focused source sprint, and keep reply sweeps active.",
-    specialists: { learning, intent, linkedin, copy, cadence, replies, booking, contact, deliverability },
+    specialists: { learning, intent, linkedin, linkedinContent, copy, cadence, replies, booking, contact, deliverability },
   };
 }
 
@@ -692,6 +717,7 @@ export function classifyVegaSpecialistRequest(text: string): VegaSpecialistKind 
   if (/\b(?:intent feed|signal feed|warm signals?|perplexity|web intel|sonar|research feed)\b/.test(normalized)) return "intent-feed";
   if (/\b(?:learning loop|self[-\s]?tune|adaptive learning|optimi[sz]e sources?|source learning|campaign learning|what'?s working|gojiberry gap)\b/.test(normalized)) return "learning-loop";
   if (/\b(?:social intent|competitor signals?|competitor engagement|scout social|social scout|linkedin signals?|social signals?)\b/.test(normalized)) return "social-intent";
+  if (/\b(?:linkedin content|post impressions?|post engagement|content signals?|reactors?|commenters?|pressmaster|impressions? leads?)\b/.test(normalized)) return "linkedin-content";
   if (/\b(?:linkedin events?|event management|events api|lead gen events?)\b/.test(normalized)) return "linkedin-events";
   if (/\b(?:linkedin tasks?|sales nav tasks?|linkedin lane|sales navigator tasks?|social dm|linkedin dm|linkedin dms|inmail|inmails|connection requests?)\b/.test(normalized)) return "linkedin-tasks";
   if (/\b(?:waitlist|early access|beta candidates?|contestants?|design partners?)\b/.test(normalized)) return "waitlist";

@@ -31,6 +31,10 @@
       "schedule": "30 15 * * 1-5"
     },
     {
+      "path": "/api/linkedin/content-signals?limit=10",
+      "schedule": "45 15 * * 1-5"
+    },
+    {
       "path": "/api/agent/specialists/booking",
       "schedule": "30 19 * * 1-5"
     },

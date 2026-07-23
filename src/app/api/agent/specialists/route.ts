@@ -10,6 +10,7 @@ const allowedKinds = new Set<VegaSpecialistKind>([
   "intent-feed",
   "learning-loop",
   "social-intent",
+  "linkedin-content",
   "linkedin-events",
   "linkedin-tasks",
   "waitlist",
