@@ -6,6 +6,7 @@ import {
   getActionablePhoneTasks,
   repairMissingPhoneAssistSchedules,
 } from "@/lib/phone-assist";
+import { evaluateOpportunityQueueItem } from "@/lib/opportunity-intelligence";
 import { getPrisma } from "@/lib/prisma";
 import { notifySlackVegaLeadRequestResult } from "@/lib/slack";
 import { VEGA_CAPABILITY_REGISTRY } from "@/lib/vega-capabilities";
@@ -61,11 +62,21 @@ type EmailPipelineItem = {
   status: string;
   channel: string;
   provider: string;
+  subject?: string | null;
+  body?: string | null;
   reason: string | null;
   scheduledFor: Date | null;
   createdAt: Date;
   sentAt: Date | null;
   lead?: {
+    companyName?: string | null;
+    name?: string | null;
+    niche?: string | null;
+    source?: string | null;
+    score?: number | null;
+    nextAction?: string | null;
+    stage?: string | null;
+    value?: number | null;
     contactId: string | null;
     contact?: { email: string | null } | null;
     status?: string | null;
@@ -121,20 +132,40 @@ export function classifyDecisionLanes(
   const active = items.filter((item) => Boolean(item.id));
   const lanes = {
     AUTO_EMAIL: 0,
+    APPROVAL_EMAIL: 0,
     CALL_FIRST: 0,
+    MANUAL_CONTACT_FORM: 0,
     RESEARCH_MORE: 0,
     SUPPRESS: 0,
     CLOSED: 0,
   };
   const assigned = new Map<string, keyof typeof lanes>();
 
+  function fallbackLane(item: EmailPipelineItem): keyof typeof lanes {
+    if (item.channel === "manual") return "CALL_FIRST";
+    if (item.channel === "email" && item.lead?.contact?.email && emailQualityTier(item.lead.contact.email) !== "invalid") return "AUTO_EMAIL";
+    if (item.channel === "email") return "RESEARCH_MORE";
+    return "RESEARCH_MORE";
+  }
+
   for (const item of active) {
     let lane: keyof typeof lanes = "RESEARCH_MORE";
     if (["failed", "rejected", "suppressed"].includes(item.status)) lane = "SUPPRESS";
     else if (["sent", "queued"].includes(item.status)) lane = "CLOSED";
-    else if (item.channel === "manual") lane = "CALL_FIRST";
-    else if (item.channel === "email" && item.lead?.contact?.email && emailQualityTier(item.lead.contact.email) !== "invalid") lane = "AUTO_EMAIL";
-    else if (item.channel === "email") lane = "RESEARCH_MORE";
+    else {
+      const hasIntelligenceFields = Boolean(item.lead?.companyName) || typeof item.lead?.score === "number";
+      if (!hasIntelligenceFields) {
+        lane = fallbackLane(item);
+      } else {
+        const intelligence = evaluateOpportunityQueueItem(item as Parameters<typeof evaluateOpportunityQueueItem>[0]);
+        if (intelligence.decisionLane === "AUTO_EMAIL") lane = "AUTO_EMAIL";
+        else if (intelligence.decisionLane === "APPROVAL_EMAIL") lane = "APPROVAL_EMAIL";
+        else if (intelligence.decisionLane === "CALL_FIRST") lane = "CALL_FIRST";
+        else if (intelligence.decisionLane === "MANUAL_CONTACT_FORM") lane = "MANUAL_CONTACT_FORM";
+        else if (intelligence.decisionLane === "SUPPRESS_REVIEW") lane = "SUPPRESS";
+        else lane = "RESEARCH_MORE";
+      }
+    }
     assigned.set(item.id, lane);
     lanes[lane] += 1;
   }
@@ -407,7 +438,9 @@ export async function runVegaProductionProof(input: { instruction?: string; post
     lanes: {
       autoEmailNow: decisionLanes.lanes.AUTO_EMAIL,
       autoEmail: decisionLanes.lanes.AUTO_EMAIL,
+      executiveReview: decisionLanes.lanes.APPROVAL_EMAIL,
       callFirst: decisionLanes.lanes.CALL_FIRST,
+      manualContact: decisionLanes.lanes.MANUAL_CONTACT_FORM,
       researchMore: decisionLanes.lanes.RESEARCH_MORE,
       suppress: decisionLanes.lanes.SUPPRESS,
       closed: decisionLanes.lanes.CLOSED,
@@ -495,7 +528,9 @@ export async function runVegaProductionProof(input: { instruction?: string; post
     "Primary decision lanes",
     lineItem("Active candidates", report.lanes.totalActiveCandidates),
     lineItem("Auto-email candidate", report.lanes.autoEmail),
+    lineItem("Executive review", report.lanes.executiveReview),
     lineItem("Call first", report.lanes.callFirst),
+    lineItem("Manual contact", report.lanes.manualContact),
     lineItem("Research more", report.lanes.researchMore),
     lineItem("Suppress", report.lanes.suppress),
     lineItem("Closed", report.lanes.closed),

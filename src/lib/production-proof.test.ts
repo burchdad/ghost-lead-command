@@ -98,7 +98,9 @@ test("decision lanes are mutually exclusive and reconcile", () => {
 
   assert.deepEqual(result.lanes, {
     AUTO_EMAIL: 1,
+    APPROVAL_EMAIL: 0,
     CALL_FIRST: 1,
+    MANUAL_CONTACT_FORM: 0,
     RESEARCH_MORE: 1,
     SUPPRESS: 1,
     CLOSED: 1,

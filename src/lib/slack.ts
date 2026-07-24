@@ -652,12 +652,67 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
 }
 
 export async function notifySlackDailyDigest(input: {
+  generatedAt?: string;
   leadsSourced: number;
   outreachQueued: number;
   sentOrApproved: number;
+  sentToday?: number;
+  sent24?: number;
   replies: number;
   hotReplies: number;
-  pendingApprovals: number;
+  deliveryIssuesToday?: number;
+  suppressionsToday?: number;
+  proof?: {
+    today: {
+      campaignsRunning: number;
+      callsDue: number;
+      callbacksDue: number;
+      repliesToday: number;
+    };
+    emailPipeline: {
+      emailQualified: number;
+      sendableNow: number;
+      heldBySenderGovernor: number;
+      followUpsDue: number;
+      followUpsSendable: number;
+      blockedBySuppression: number;
+      blockedByContactRisk: number;
+      blockedByCampaignPolicy: number;
+      blockedByUsageLimit: number;
+      blockedByProviderHealth: number;
+    };
+    phonePipeline: {
+      dueNow: number;
+      overdue: number;
+      callbackDue: number;
+      completed: number;
+      closed: number;
+      missingDueTime: number;
+    };
+    lanes: {
+      autoEmail?: number;
+      autoEmailNow?: number;
+      executiveReview?: number;
+      callFirst: number;
+      manualContact?: number;
+      researchMore: number;
+      suppress: number;
+      closed: number;
+      totalActiveCandidates: number;
+      unclassified: number;
+      reconciled: boolean;
+    };
+    sender: {
+      mode: string;
+      bounceRate: number;
+      targetBounceRate: number;
+      recommendedSendLimit: number;
+      decision: string;
+    };
+    recommendations: string[];
+    humanActions: string[];
+    reconciliationWarnings: string[];
+  };
   recentEvents: { title: string; detail: string; status: string; lead: string | null }[];
 }) {
   const webhookUrl = clean(process.env.SLACK_WEBHOOK_URL);
@@ -672,6 +727,18 @@ export async function notifySlackDailyDigest(input: {
         .map((event) => `- ${event.title}: ${event.lead ? `${event.lead} - ` : ""}${event.detail}`)
         .join("\n")
     : "- No major events recorded in the last 24 hours.";
+  const proof = input.proof;
+  const senderMode = proof?.sender.mode ? proof.sender.mode.toUpperCase() : "UNKNOWN";
+  const autoEmail = proof?.lanes.autoEmail ?? proof?.lanes.autoEmailNow ?? 0;
+  const recommendations = proof?.recommendations?.length
+    ? proof.recommendations.slice(0, 3).map((item) => `- ${item}`).join("\n")
+    : "- No recommendations generated yet.";
+  const humanActions = proof?.humanActions?.length
+    ? proof.humanActions.slice(0, 4).map((item, index) => `${index + 1}. ${item}`).join("\n")
+    : "1. No urgent Stephen/VA action detected.";
+  const warnings = proof?.reconciliationWarnings?.length
+    ? `\n*Data warnings*\n${proof.reconciliationWarnings.map((warning) => `- ${warning}`).join("\n")}`
+    : "";
 
   const response = await fetch(webhookUrl, {
     method: "POST",
@@ -681,22 +748,64 @@ export async function notifySlackDailyDigest(input: {
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "Lead Command daily digest", emoji: false },
+          text: { type: "plain_text", text: "Vega Daily Operations", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Sender governor:* ${senderMode}${proof ? ` - ${proof.sender.decision}` : ""}`,
+          },
         },
         {
           type: "section",
           fields: [
-            { type: "mrkdwn", text: `*New leads*\n${input.leadsSourced}` },
-            { type: "mrkdwn", text: `*Queued drafts*\n${input.outreachQueued}` },
-            { type: "mrkdwn", text: `*Approved/sent*\n${input.sentOrApproved}` },
-            { type: "mrkdwn", text: `*Replies*\n${input.replies}` },
-            { type: "mrkdwn", text: `*Hot replies*\n${input.hotReplies}` },
-            { type: "mrkdwn", text: `*Pending approvals*\n${input.pendingApprovals}` },
+            { type: "mrkdwn", text: `*New opportunities 24h*\n${input.leadsSourced}` },
+            { type: "mrkdwn", text: `*Sent today / 24h*\n${input.sentToday ?? 0} / ${input.sent24 ?? input.sentOrApproved}` },
+            { type: "mrkdwn", text: `*Replies 24h / hot*\n${input.replies} / ${input.hotReplies}` },
+            { type: "mrkdwn", text: `*Delivery issues today*\n${input.deliveryIssuesToday ?? 0}` },
+            { type: "mrkdwn", text: `*New suppressions*\n${input.suppressionsToday ?? 0}` },
+            { type: "mrkdwn", text: `*Campaigns running*\n${proof?.today.campaignsRunning ?? "n/a"}` },
           ],
         },
         {
           type: "section",
-          text: { type: "mrkdwn", text: `*Recent activity*\n${recentEvents}` },
+          fields: [
+            { type: "mrkdwn", text: `*Email-qualified*\n${proof?.emailPipeline.emailQualified ?? input.outreachQueued}` },
+            { type: "mrkdwn", text: `*Auto-send ready*\n${proof?.emailPipeline.sendableNow ?? 0}` },
+            { type: "mrkdwn", text: `*Held by governor*\n${proof?.emailPipeline.heldBySenderGovernor ?? 0}` },
+            { type: "mrkdwn", text: `*Follow-ups due/sendable*\n${proof ? `${proof.emailPipeline.followUpsDue} / ${proof.emailPipeline.followUpsSendable}` : "n/a"}` },
+            { type: "mrkdwn", text: `*Contact/campaign blocks*\n${proof ? `${proof.emailPipeline.blockedByContactRisk} / ${proof.emailPipeline.blockedByCampaignPolicy}` : "n/a"}` },
+            { type: "mrkdwn", text: `*Suppression/health blocks*\n${proof ? `${proof.emailPipeline.blockedBySuppression} / ${proof.emailPipeline.blockedByProviderHealth}` : "n/a"}` },
+          ],
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Auto-email lane*\n${autoEmail}` },
+            { type: "mrkdwn", text: `*Executive review*\n${proof?.lanes.executiveReview ?? 0}` },
+            { type: "mrkdwn", text: `*Call-first tasks*\n${proof?.lanes.callFirst ?? 0}` },
+            { type: "mrkdwn", text: `*Manual contact*\n${proof?.lanes.manualContact ?? 0}` },
+            { type: "mrkdwn", text: `*Research tasks*\n${proof?.lanes.researchMore ?? 0}` },
+            { type: "mrkdwn", text: `*Suppressed/closed*\n${proof ? `${proof.lanes.suppress} / ${proof.lanes.closed}` : "n/a"}` },
+          ],
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Calls due / overdue*\n${proof ? `${proof.today.callsDue} / ${proof.phonePipeline.overdue}` : "n/a"}` },
+            { type: "mrkdwn", text: `*Callbacks due*\n${proof?.today.callbacksDue ?? 0}` },
+            { type: "mrkdwn", text: `*Call tasks completed*\n${proof?.phonePipeline.completed ?? 0}` },
+            { type: "mrkdwn", text: `*Missing call schedule*\n${proof?.phonePipeline.missingDueTime ?? 0}` },
+          ],
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Vega recommendations*\n${recommendations}\n\n*Human actions*\n${humanActions}${warnings}`.slice(0, 2900) },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Recent processed activity - last 24h*\n${recentEvents}` },
         },
         {
           type: "actions",
@@ -1587,7 +1696,9 @@ export async function notifySlackMorningStandup(input: {
     lanes: {
       autoEmailNow: number;
       autoEmail?: number;
+      executiveReview?: number;
       callFirst: number;
+      manualContact?: number;
       researchMore: number;
       suppress: number;
       closed?: number;
@@ -1628,7 +1739,7 @@ export async function notifySlackMorningStandup(input: {
         input.proof.phonePipeline
           ? `*Phone pipeline:* ${input.proof.phonePipeline.createdYesterday} created yesterday, ${input.proof.today.callsDue} actionable now, ${input.proof.phonePipeline.dueNow} due, ${input.proof.phonePipeline.overdue} overdue, ${input.proof.phonePipeline.scheduledLater} scheduled later, ${input.proof.phonePipeline.missingDueTime} missing schedule.`
           : `*Phone pipeline:* ${input.proof.today.callsDue} actionable calls, ${input.proof.today.callbacksDue} callbacks.`,
-        `*Primary lanes:* auto-email candidates ${input.proof.lanes.autoEmail ?? input.proof.lanes.autoEmailNow}, call-first ${input.proof.lanes.callFirst}, research ${input.proof.lanes.researchMore}, suppress ${input.proof.lanes.suppress}, closed ${input.proof.lanes.closed ?? 0}${input.proof.lanes.reconciled === false ? ", reconciliation warning" : ""}.`,
+        `*Primary lanes:* auto-email ${input.proof.lanes.autoEmail ?? input.proof.lanes.autoEmailNow}, executive ${input.proof.lanes.executiveReview ?? 0}, call-first ${input.proof.lanes.callFirst}, manual ${input.proof.lanes.manualContact ?? 0}, research ${input.proof.lanes.researchMore}, suppress ${input.proof.lanes.suppress}, closed ${input.proof.lanes.closed ?? 0}${input.proof.lanes.reconciled === false ? ", reconciliation warning" : ""}.`,
         `*Sender governor:* ${input.proof.sender.mode.toUpperCase()} at ${input.proof.sender.bounceRate}% risky. ${input.proof.sender.decision}`,
         input.proof.reconciliationWarnings?.length ? `*Warnings:* ${input.proof.reconciliationWarnings.slice(0, 2).join("; ")}` : "",
       ].filter(Boolean).join("\n")

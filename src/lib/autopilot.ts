@@ -1,6 +1,7 @@
 import { createAutomationEvent } from "@/lib/automation";
 import { recommendNiche, runLeadCommandAgent } from "@/lib/agent";
 import { getPrisma } from "@/lib/prisma";
+import { runVegaProductionProof } from "@/lib/production-proof";
 import { runReplyConversionSweep } from "@/lib/replies";
 import {
   notifySlackAgentPlan,
@@ -381,8 +382,10 @@ export async function sendDailyDigest() {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
 
-  const [leads, queue, replies, events] = await Promise.all([
+  const [leads, queue, replies, events, todayEvents, proof] = await Promise.all([
     prisma.lead.findMany({ where: { workspaceId: workspace.id, createdAt: { gte: since } } }),
     prisma.outreachQueueItem.findMany({ where: { workspaceId: workspace.id, createdAt: { gte: since } } }),
     prisma.reply.findMany({ where: { workspaceId: workspace.id, createdAt: { gte: since } } }),
@@ -392,17 +395,32 @@ export async function sendDailyDigest() {
       take: 8,
       include: { lead: true },
     }),
+    prisma.automationEvent.findMany({
+      where: { workspaceId: workspace.id, createdAt: { gte: todayStart } },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      include: { lead: true },
+    }),
+    runVegaProductionProof({ instruction: "daily digest metrics", postToSlack: false }),
   ]);
 
-  const pending = await prisma.outreachQueueItem.count({ where: { workspaceId: workspace.id, status: "pending" } });
   const hotReplies = replies.filter((reply) => ["hot", "booked", "objection"].includes(reply.classification));
+  const sentToday = queue.filter((item) => item.sentAt && item.sentAt >= todayStart).length;
+  const sent24 = queue.filter((item) => item.sentAt && item.sentAt >= since).length;
+  const deliveryIssuesToday = todayEvents.filter((event) => /suppressed|failed|bounce|dropped|spam|delivery issue/i.test(`${event.title} ${event.detail} ${event.status}`)).length;
+  const suppressionsToday = todayEvents.filter((event) => /suppress/i.test(`${event.title} ${event.detail}`)).length;
   const digest = {
+    generatedAt: new Date().toISOString(),
     leadsSourced: leads.length,
     outreachQueued: queue.filter((item) => item.status === "pending").length,
     sentOrApproved: queue.filter((item) => ["queued", "sent"].includes(item.status)).length,
+    sentToday,
+    sent24,
     replies: replies.length,
     hotReplies: hotReplies.length,
-    pendingApprovals: pending,
+    deliveryIssuesToday,
+    suppressionsToday,
+    proof: proof.report,
     recentEvents: events.map((event) => ({
       title: event.title,
       detail: event.detail,
@@ -414,7 +432,7 @@ export async function sendDailyDigest() {
   const slack = await notifySlackDailyDigest(digest);
   await createAutomationEvent({
     title: "Daily ops digest",
-    detail: `Posted digest: ${digest.leadsSourced} new leads, ${digest.pendingApprovals} pending approvals.`,
+    detail: `Posted Vega digest: ${digest.leadsSourced} new leads in 24h, ${digest.proof.emailPipeline.sendableNow} sendable, ${digest.proof.today.callsDue} calls due.`,
     status: slack.sent ? "done" : "blocked",
     type: "agent",
     payload: { digest, slack },
