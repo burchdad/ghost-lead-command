@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import {
   approveOutreachQueueItem,
   approvePendingOutreachBatch,
@@ -35,11 +35,21 @@ function slackEphemeral(text: string) {
   });
 }
 
-function slackReplaceOriginal(text: string) {
-  return NextResponse.json({
-    replace_original: true,
-    text,
+async function postSlackInteractionFollowup(responseUrl: string | undefined, text: string, input: { replaceOriginal?: boolean; inChannel?: boolean } = {}) {
+  if (!responseUrl) return { sent: false, message: "Missing Slack response_url." };
+  const response = await fetch(responseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      response_type: input.inChannel ? "in_channel" : "ephemeral",
+      replace_original: Boolean(input.replaceOriginal),
+      text,
+    }),
   });
+  return {
+    sent: response.ok,
+    message: response.ok ? "Slack interaction follow-up posted." : `Slack response_url returned ${response.status}.`,
+  };
 }
 
 async function recordOutreachSlackAction(input: {
@@ -172,10 +182,27 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
         channelId: payload.channel?.id,
       },
     });
-    const researchResult = await runContactPathAgent({ itemId: updated.id, limit: 1 });
-    const summary = `Vega moved ${updated.lead?.companyName || "that lead"} into contact research and ran the Contact Path Agent. ${researchResult.summary} No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
-    await recordOutreachSlackAction({ action: "research", itemId, ok: true, summary, payload });
-    return slackReplaceOriginal(`VEGA RESEARCH INITIATED\n\n${summary}\n\nNext lane: ${researchResult.nextMove}`);
+    const startSummary = `Vega moved ${updated.lead?.companyName || "that lead"} into contact research. Contact Path Agent is running now. No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
+    await recordOutreachSlackAction({ action: "research_started", itemId, ok: true, summary: startSummary, payload });
+
+    after(async () => {
+      try {
+        const researchResult = await runContactPathAgent({ itemId: updated.id, limit: 1 });
+        const summary = `Vega completed contact research for ${updated.lead?.companyName || "that lead"}. ${researchResult.summary} No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
+        await recordOutreachSlackAction({ action: "research_finished", itemId, ok: researchResult.status === "done", summary, payload });
+        await postSlackInteractionFollowup(
+          payload.response_url,
+          `VEGA CONTACT RESEARCH RESULT\n\n${summary}\n\nNext lane: ${researchResult.nextMove}`,
+          { inChannel: true },
+        );
+      } catch (error) {
+        const summary = `Vega contact research failed for ${updated.lead?.companyName || "that lead"}: ${error instanceof Error ? error.message : "Unknown error."}`;
+        await recordOutreachSlackAction({ action: "research_failed", itemId, ok: false, summary, payload });
+        await postSlackInteractionFollowup(payload.response_url, `VEGA CONTACT RESEARCH FAILED\n\n${summary}`, { inChannel: true });
+      }
+    });
+
+    return slackEphemeral(startSummary);
   }
 
   if (actionName === "outreach_redo") {
