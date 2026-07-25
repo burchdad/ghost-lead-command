@@ -416,7 +416,7 @@ export async function runDueSequenceSteps(input: { limit?: number } = {}) {
   const workspace = await getDefaultWorkspace();
   const now = new Date();
   const requestedLimit = Number.isFinite(input.limit) && Number(input.limit) > 0 ? Number(input.limit) : 5;
-  const queuePolicy = await getOperatorQueueCapacity(workspace.id);
+  const queuePolicy = await getOperatorQueueCapacity(workspace.id, { allowFollowUpsDuringStop: true });
   const limit = Math.min(requestedLimit, queuePolicy.capacity);
 
   if (limit <= 0) {

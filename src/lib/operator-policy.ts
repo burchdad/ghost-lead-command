@@ -162,7 +162,7 @@ export async function prepareOperatorRun(input: PrepareRunInput): Promise<Operat
   };
 }
 
-export async function getOperatorQueueCapacity(workspaceId: string) {
+export async function getOperatorQueueCapacity(workspaceId: string, input: { allowFollowUpsDuringStop?: boolean } = {}) {
   const prisma = getPrisma();
   const caps = getOperatorCaps();
   const since = startOfToday();
@@ -187,7 +187,7 @@ export async function getOperatorQueueCapacity(workspaceId: string) {
 
   if (remainingQueue <= 0) blockedReasons.push("Daily outreach queue cap reached.");
   if (remainingSender <= 0) blockedReasons.push("Today's safe sender capacity reached.");
-  if (senderHealth.mode === "stop" && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false)) {
+  if (senderHealth.mode === "stop" && !input.allowFollowUpsDuringStop && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false)) {
     blockedReasons.push(`Sender governor stopped sending at ${senderHealth.bounceRate}% risky events.`);
   }
 
@@ -205,6 +205,7 @@ export async function getOperatorQueueCapacity(workspaceId: string) {
       sentToday,
       remaining: remainingSender,
     },
+    followUpOnlyMode: Boolean(input.allowFollowUpsDuringStop && senderHealth.mode === "stop" && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false)),
     blockedReasons,
   };
 }

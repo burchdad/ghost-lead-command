@@ -68,6 +68,12 @@ export function emailQualityTier(email?: string | null) {
   return "named-business" as const;
 }
 
+function isLikelyFollowUp(item: { subject?: string | null; body?: string | null; reason?: string | null; scheduledFor?: Date | null }) {
+  return /(?:follow[-\s]?up|step\s*[2-9]|day\s*[2-9]|close(?:ing)? the loop|sequence)/i.test(
+    `${item.subject || ""} ${item.body || ""} ${item.reason || ""}`,
+  );
+}
+
 export async function getSenderHealth(input: { workspaceId?: string; days?: number } = {}) {
   const prisma = getPrisma();
   const workspace = input.workspaceId ? { id: input.workspaceId } : await getDefaultWorkspace();
@@ -136,7 +142,8 @@ export async function evaluateQueueItemForConversionSend(item: QueueItemForQuali
       reasons.push("Generic role inbox needs manual review or named-buyer enrichment before auto email.");
     }
   }
-  if (health.mode === "stop" && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false)) {
+  const allowFollowUpDuringStop = boolFromEnv("VEGA_ALLOW_FOLLOWUP_DURING_SENDER_STOP", true);
+  if (health.mode === "stop" && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false) && !(allowFollowUpDuringStop && isLikelyFollowUp(item))) {
     reasons.push(`Sender health stop: ${health.bounceRate}% risky events vs ${health.hardStopBounceRate}% hard stop.`);
   }
 

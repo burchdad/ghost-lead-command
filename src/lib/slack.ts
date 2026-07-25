@@ -772,8 +772,8 @@ export async function notifySlackDailyDigest(input: {
           type: "section",
           fields: [
             { type: "mrkdwn", text: `*Email-qualified*\n${proof?.emailPipeline.emailQualified ?? input.outreachQueued}` },
-            { type: "mrkdwn", text: `*Auto-send ready*\n${proof?.emailPipeline.sendableNow ?? 0}` },
-            { type: "mrkdwn", text: `*Held by governor*\n${proof?.emailPipeline.heldBySenderGovernor ?? 0}` },
+            { type: "mrkdwn", text: `*First-touch auto-send*\n${proof?.emailPipeline.sendableNow ?? 0}` },
+            { type: "mrkdwn", text: `*First-touch held*\n${proof?.emailPipeline.heldBySenderGovernor ?? 0}` },
             { type: "mrkdwn", text: `*Follow-ups due/sendable*\n${proof ? `${proof.emailPipeline.followUpsDue} / ${proof.emailPipeline.followUpsSendable}` : "n/a"}` },
             { type: "mrkdwn", text: `*Contact/campaign blocks*\n${proof ? `${proof.emailPipeline.blockedByContactRisk} / ${proof.emailPipeline.blockedByCampaignPolicy}` : "n/a"}` },
             { type: "mrkdwn", text: `*Suppression/health blocks*\n${proof ? `${proof.emailPipeline.blockedBySuppression} / ${proof.emailPipeline.blockedByProviderHealth}` : "n/a"}` },

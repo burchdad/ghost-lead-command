@@ -25,6 +25,12 @@ function boolFromEnv(name: string, fallback = false) {
   return fallback;
 }
 
+function isLikelyFollowUp(item: { subject?: string | null; body?: string | null; reason?: string | null; scheduledFor?: Date | null }) {
+  return /(?:follow[-\s]?up|step\s*[2-9]|day\s*[2-9]|close(?:ing)? the loop|sequence)/i.test(
+    `${item.subject || ""} ${item.body || ""} ${item.reason || ""}`,
+  );
+}
+
 function centralBusinessDayWindow(now = new Date()) {
   const offsetMinutes = numberFromEnv("VEGA_SEND_TIMEZONE_OFFSET_MINUTES", -300);
   const localNow = new Date(now.getTime() + offsetMinutes * 60_000);
@@ -267,14 +273,33 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
     };
   }
 
-  if (health.mode === "stop" && !["true", "1", "yes", "on"].includes(String(process.env.VEGA_ALLOW_HIGH_BOUNCE_SEND || "").toLowerCase())) {
+  const candidateItems = await prisma.outreachQueueItem.findMany({
+    where: {
+      workspaceId: workspace.id,
+      status: "pending",
+      channel: "email",
+      OR: [{ scheduledFor: null }, { scheduledFor: { lte: new Date() } }],
+      lead: { is: { contact: { is: { email: { not: null } } } } },
+    },
+    orderBy: { createdAt: "asc" },
+    take: Math.max(limit * 5, 50),
+    select: { id: true, subject: true, body: true, reason: true, scheduledFor: true },
+  });
+  const senderStopped = health.mode === "stop" && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false);
+  const allowFollowUpDuringStop = boolFromEnv("VEGA_ALLOW_FOLLOWUP_DURING_SENDER_STOP", true);
+  const firstTouchHeldBySenderStop = senderStopped ? candidateItems.filter((item) => !isLikelyFollowUp(item)).length : 0;
+  const items = (senderStopped && allowFollowUpDuringStop ? candidateItems.filter(isLikelyFollowUp) : candidateItems).slice(0, limit);
+
+  if (senderStopped && !items.length) {
     return {
       requested: requestedLimit,
       attempted: 0,
       approved: 0,
       failed: 0,
       blocked: true,
-      blockReason: `Sender health stop: ${health.bounceRate}% risky SendGrid events. Target is below ${health.targetBounceRate}%; hard stop is ${health.hardStopBounceRate}%.`,
+      blockReason: allowFollowUpDuringStop
+        ? "Sender health stop is holding new first-touch email. No due follow-ups were eligible in this batch."
+        : `Sender health stop: ${health.bounceRate}% risky SendGrid events. Target is below ${health.targetBounceRate}%; hard stop is ${health.hardStopBounceRate}%.`,
       health,
       emailReadyBefore: emailReady,
       manualPending,
@@ -286,21 +311,11 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
       dryRunQueued: 0,
       callAssistQueued: 0,
       callAssistTasks: [],
+      firstTouchHeldBySenderStop,
+      followUpOnlyMode: senderStopped && allowFollowUpDuringStop,
       results: [],
     };
   }
-
-  const items = await prisma.outreachQueueItem.findMany({
-    where: {
-      workspaceId: workspace.id,
-      status: "pending",
-      channel: "email",
-      lead: { is: { contact: { is: { email: { not: null } } } } },
-    },
-    orderBy: { createdAt: "asc" },
-    take: limit,
-    select: { id: true },
-  });
 
   const results = [];
   for (const item of items) {
@@ -325,6 +340,8 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
     dailyLimit,
     remainingToday,
     effectiveLimit: limit,
+    firstTouchHeldBySenderStop,
+    followUpOnlyMode: senderStopped && allowFollowUpDuringStop,
     sent: results.filter((result) => result.ok && result.body.delivery.status === "sent").length,
     dryRunQueued: results.filter((result) => result.ok && result.body.delivery.dryRun).length,
     callAssistQueued: callAssistTasks.length,

@@ -92,7 +92,7 @@ export function selectNextBestChannel(input: ChannelDecisionInput): ChannelDecis
     input.campaignAllowsAutoEmail &&
     !input.requiresHumanApproval &&
     !input.cooldownActive &&
-    intent.totalIntentScore >= 45 &&
+    intent.totalIntentScore >= 40 &&
     !intent.blockers.length;
 
   let primary: NextBestChannel = "RESEARCH_MORE";

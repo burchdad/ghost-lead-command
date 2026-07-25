@@ -362,7 +362,9 @@ export async function runVegaProductionProof(input: { instruction?: string; post
   const deliveredYesterday = yesterdayInteractions.filter((item) => item.channel === "email:sendgrid" && item.classification === "delivered").length;
   const sendDecision =
     senderHealth.mode === "stop"
-      ? "New first-touch email is paused. Work calls/replies and suppress bad contacts."
+      ? emailPipeline.followUpsSendable > 0
+        ? `New first-touch email is paused, but ${emailPipeline.followUpsSendable} due follow-up email${emailPipeline.followUpsSendable === 1 ? " is" : "s are"} safe to release inside the follow-up-only lane.`
+        : "New first-touch email is paused. Work calls/replies and suppress bad contacts."
       : senderHealth.mode === "caution"
         ? `Limit to ${recommendedSendLimit} first-touch sends across active campaigns and prioritize named-business emails.`
       : `Vega may send up to ${recommendedSendLimit} eligible first-touch emails today, then watch replies and phone assists.`;
@@ -467,6 +469,9 @@ export async function runVegaProductionProof(input: { instruction?: string; post
     sources: learning.sources.slice(0, 5),
     recommendations: [
       sendDecision,
+      emailPipeline.followUpsSendable > 0
+        ? `Release due follow-ups before adding cold volume: ${emailPipeline.followUpsSendable} sendable follow-ups, ${emailPipeline.followUpsHeld} held.`
+        : "",
       learning.recommendations[0],
       learning.recommendations[1],
       campaignRows.find((row) => row.owner === "partner")
