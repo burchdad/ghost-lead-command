@@ -68,23 +68,44 @@ export const publicVegaPlans: PublicVegaPlan[] = [
 
 export const publicOperatingProof = [
   {
-    label: "Found",
-    value: "65",
-    detail: "buyer and referral accounts in a local detailing campaign",
+    label: "Safe outreach",
+    value: "Email + call",
+    detail: "sender-governed email with phone-assist tasks when human follow-up adds value",
   },
   {
-    label: "Qualified",
-    value: "20",
-    detail: "prospects identified in a targeted HVAC run",
-  },
-  {
-    label: "Generated",
-    value: "17",
-    detail: "phone follow-up tasks from recent successful outreach",
-  },
-  {
-    label: "Connected",
+    label: "Decision lanes",
     value: "5",
-    detail: "email, click, call, reply, and booking workflow lanes",
+    detail: "auto-email, executive review, call-first, research, and suppress",
   },
+  {
+    label: "Learning loop",
+    value: "7-day",
+    detail: "source quality, sender health, call outcomes, replies, meetings, and campaign recommendations",
+  },
+  {
+    label: "Human leverage",
+    value: "Calls",
+    detail: "Vega reserves people for trust-heavy moments instead of asking them to work every lead manually",
+  },
+];
+
+export const publicMarketPositioning = [
+  {
+    title: "Not just a lead list",
+    text: "Vega does not stop at prospect discovery. She decides whether each opportunity should be emailed, called, researched, reviewed, or suppressed.",
+  },
+  {
+    title: "Not a cold-email blaster",
+    text: "Sender health, contact confidence, suppression, and follow-up timing govern how much automation Vega is allowed to run.",
+  },
+  {
+    title: "Not a replacement for humans",
+    text: "Vega handles the repetitive sales operation and routes people toward conversations, callbacks, and booking handoffs.",
+  },
+];
+
+export const publicProofMilestones = [
+  "qualified conversations created safely",
+  "human phone tasks increasing meeting rates",
+  "campaign learning improving results across cycles",
 ];

@@ -213,6 +213,59 @@ export function isProductionProofRequest(text: string) {
   return /\b(?:proof loop|production proof|seven[-\s]?day|7[-\s]?day|campaign report|daily campaign report|learning report|source quality)\b/i.test(clean(text));
 }
 
+export function buildVegaMarketProof(input: {
+  conversations7d: number;
+  meetingsBooked7d: number;
+  phoneTasksCompleted7d: number;
+  interested7d: number;
+  campaignLearningRows: number;
+  senderMode: string;
+}) {
+  const safeConversationStatus =
+    input.conversations7d > 0 && input.senderMode !== "stop"
+      ? "proving"
+      : input.conversations7d > 0
+        ? "protecting sender health"
+        : "needs proof";
+  const phoneLiftStatus =
+    input.phoneTasksCompleted7d > 0 && input.interested7d > 0
+      ? "proving"
+      : input.phoneTasksCompleted7d > 0
+        ? "collecting outcomes"
+        : "needs execution";
+  const learningStatus = input.campaignLearningRows >= 3 ? "active" : input.campaignLearningRows > 0 ? "early" : "needs data";
+  const meetingStatus = input.meetingsBooked7d > 0 ? "proving" : "needs booked meetings";
+
+  return {
+    category: "AI Sales Operating System",
+    marketStatus: "Advanced internal production system / emerging managed beta",
+    moat:
+      "Opportunity Intelligence plus sender-governed autonomy, human phone handoff, managed Ghost operations, and longitudinal decision history.",
+    milestones: [
+      {
+        label: "Qualified conversations safely",
+        status: safeConversationStatus,
+        metric: `${input.conversations7d} conversations in 7 days; sender ${input.senderMode}`,
+      },
+      {
+        label: "Human call tasks increase conversion",
+        status: phoneLiftStatus,
+        metric: `${input.phoneTasksCompleted7d} calls completed; ${input.interested7d} interested outcomes`,
+      },
+      {
+        label: "Campaign learning improves cycles",
+        status: learningStatus,
+        metric: `${input.campaignLearningRows} campaign/source rows with recommendations`,
+      },
+      {
+        label: "Booked meetings are real calendar outcomes",
+        status: meetingStatus,
+        metric: `${input.meetingsBooked7d} booked meetings in 7 days`,
+      },
+    ],
+  };
+}
+
 export async function runVegaProductionProof(input: { instruction?: string; postToSlack?: boolean } = {}) {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
@@ -279,6 +332,16 @@ export async function runVegaProductionProof(input: { instruction?: string; post
   const yesterdayReplies = replies.filter((reply) => inRange(reply.createdAt, yesterdayStart, todayStart));
 
   const phoneTasks = phoneTaskReport.all;
+  const phoneCompleted7d = phoneTasks.filter((item) =>
+    ["called", "call_no_answer", "voicemail_left", "gatekeeper", "wrong_person", "callback_requested", "interested", "info_requested", "meeting_requested", "meeting_booked", "not_interested", "suppressed"].includes(item.status),
+  );
+  const callInteractions7d = interactions.filter((item) => item.channel === "phone");
+  const conversations7d = callInteractions7d.filter((item) => {
+    const meta = jsonObject(item.metadata);
+    return meta.conversation === true;
+  }).length;
+  const interested7d = phoneCompleted7d.filter((item) => ["interested", "info_requested", "meeting_requested", "meeting_booked"].includes(item.status)).length;
+  const meetingsBooked7d = phoneCompleted7d.filter((item) => item.status === "meeting_booked").length;
   const phoneCompletedYesterday = phoneTasks.filter((item) =>
     ["called", "call_no_answer", "voicemail_left", "gatekeeper", "wrong_person", "callback_requested", "interested", "info_requested", "meeting_requested", "meeting_booked", "not_interested", "suppressed"].includes(item.status) &&
     inRange(item.updatedAt, yesterdayStart, todayStart),
@@ -356,6 +419,14 @@ export async function runVegaProductionProof(input: { instruction?: string; post
     })
     .sort((a, b) => b.meetings - a.meetings || b.replies - a.replies || b.leads - a.leads)
     .slice(0, 8);
+  const marketProof = buildVegaMarketProof({
+    conversations7d,
+    meetingsBooked7d,
+    phoneTasksCompleted7d: phoneCompleted7d.length,
+    interested7d,
+    campaignLearningRows: campaignRows.length + learning.sources.length,
+    senderMode: senderHealth.mode,
+  });
 
   const riskyYesterday = yesterdayInteractions.filter((item) => item.channel === "email:sendgrid" && ["bounce", "dropped", "spamreport"].includes(clean(item.classification))).length;
   const sentYesterday = yesterdayQueue.filter((item) => ["sent", "queued"].includes(item.status)).length;
@@ -459,6 +530,7 @@ export async function runVegaProductionProof(input: { instruction?: string; post
       recommendedSendLimit,
       decision: sendDecision,
     },
+    marketProof,
     phaseA: {
       featureFlags,
       enabledFoundationFlags,
@@ -547,6 +619,11 @@ export async function runVegaProductionProof(input: { instruction?: string; post
     report.reconciliationWarnings.length
       ? `\nData reconciliation warning\n${report.reconciliationWarnings.map((warning) => `- ${warning}`).join("\n")}`
       : "",
+    "",
+    "Market proof",
+    lineItem("Category", report.marketProof.category),
+    lineItem("Current status", report.marketProof.marketStatus),
+    ...report.marketProof.milestones.map((item) => `- ${item.label}: ${item.status} (${item.metric})`),
     "",
     "Vega capability groups",
     ...report.phaseA.capabilityGroups.map((group) => `- ${group.label}: ${group.enabled ? "enabled/gated" : "available but disabled"}`),

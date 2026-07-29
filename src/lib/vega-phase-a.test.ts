@@ -118,7 +118,7 @@ test("next-best-channel selects exactly one primary action", () => {
     signals: [
       {
         signalType: "EMAIL_CLICK",
-        observedAt: now,
+        observedAt: new Date(),
         confidence: 1,
         intentStrength: 1,
         scoreImpact: 45,

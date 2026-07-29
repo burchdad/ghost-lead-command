@@ -29,8 +29,8 @@ test("brand config separates company, product, and Vega director roles", () => {
 });
 
 test("public metadata is generated from centralized brand language", () => {
-  assert.equal(publicMetadata.title, "Ghost Lead Command | AI Customer Acquisition Directed by Vega");
-  assert.match(publicMetadata.description, /AI customer-acquisition platform by Ghost AI Solutions/);
+  assert.equal(publicMetadata.title, "Ghost Lead Command | AI Sales Operating System Directed by Vega");
+  assert.match(publicMetadata.description, /AI Sales Operating System by Ghost AI Solutions/);
   assert.match(rootLayoutSource, /publicMetadata/);
   assert.match(onboardingPageSource, /brand\.aiDirectorName/);
 });

@@ -2,7 +2,7 @@ export const brand = {
   companyName: "Ghost AI Solutions",
   companyShortName: "Ghost",
   productName: "Ghost Lead Command",
-  productDescriptor: "AI customer-acquisition platform",
+  productDescriptor: "AI Sales Operating System",
   aiDirectorName: "Vega",
   aiDirectorTitle: "AI Sales Director",
   poweredByText: "Powered by Ghost AI Solutions",
@@ -16,10 +16,10 @@ export const brand = {
 } as const;
 
 export const publicMetadata = {
-  title: "Ghost Lead Command | AI Customer Acquisition Directed by Vega",
+  title: "Ghost Lead Command | AI Sales Operating System Directed by Vega",
   description:
-    "Ghost Lead Command is an AI customer-acquisition platform by Ghost AI Solutions. Vega finds and qualifies prospects, prepares outreach, supports follow-up, and helps move real interest toward booked calls.",
+    "Ghost Lead Command is an AI Sales Operating System by Ghost AI Solutions. Vega finds and qualifies prospects, decides the safest next move, automates digital follow-up, and directs humans toward qualified conversations.",
   openGraphTitle: "Ghost Lead Command | Vega AI Sales Director",
   openGraphDescription:
-    "Ghost Lead Command by Ghost AI Solutions gives Vega the operating lane to find qualified prospects, prepare outreach, support follow-up, and move real interest toward booked calls.",
+    "Ghost Lead Command by Ghost AI Solutions gives Vega the operating lane to find qualified prospects, automate safe outreach, coordinate human follow-up, and move real interest toward booked calls.",
 } as const;

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildVegaMarketProof,
   buildProofReconciliationWarnings,
   classifyDecisionLanes,
   classifyEmailPipeline,
@@ -156,4 +157,31 @@ test("reconciliation warns if STOP governor would allow first-touch sends", () =
   });
 
   assert.match(warnings.join("\n"), /sendableNow is not zero/);
+});
+
+test("market proof keeps Vega focused on conversations, call lift, learning, and booked meetings", () => {
+  const proof = buildVegaMarketProof({
+    conversations7d: 3,
+    meetingsBooked7d: 1,
+    phoneTasksCompleted7d: 12,
+    interested7d: 2,
+    campaignLearningRows: 4,
+    senderMode: "clear",
+  });
+
+  assert.equal(proof.category, "AI Sales Operating System");
+  assert.match(proof.marketStatus, /emerging managed beta/);
+  assert.deepEqual(
+    proof.milestones.map((item) => item.label),
+    [
+      "Qualified conversations safely",
+      "Human call tasks increase conversion",
+      "Campaign learning improves cycles",
+      "Booked meetings are real calendar outcomes",
+    ],
+  );
+  assert.equal(proof.milestones[0].status, "proving");
+  assert.equal(proof.milestones[1].status, "proving");
+  assert.equal(proof.milestones[2].status, "active");
+  assert.equal(proof.milestones[3].status, "proving");
 });

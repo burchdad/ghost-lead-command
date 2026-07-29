@@ -28,7 +28,13 @@ import {
 } from "@/components/vega";
 import { brand, publicMetadata } from "@/config/brand";
 import { vegaAssets } from "@/config/vega-assets";
-import { publicOperatingProof, publicPromptExamples, publicVegaPlans } from "@/lib/public-homepage";
+import {
+  publicMarketPositioning,
+  publicOperatingProof,
+  publicPromptExamples,
+  publicProofMilestones,
+  publicVegaPlans,
+} from "@/lib/public-homepage";
 
 export const metadata: Metadata = {
   metadataBase: new URL(brand.productUrl),
@@ -148,14 +154,15 @@ export default function Home() {
 
         <div className="relative mx-auto grid min-h-[700px] max-w-7xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_480px] lg:px-8">
           <div className="mx-auto max-w-3xl text-center lg:mx-0 lg:text-left">
-            <VegaSectionEyebrow>AI-guided customer acquisition</VegaSectionEyebrow>
+            <VegaSectionEyebrow>AI Sales Operating System</VegaSectionEyebrow>
             <h1 className="mt-5 text-4xl font-black tracking-tight text-[var(--vega-ink)] sm:text-6xl">
               Tell Vega who you want to sell to.
               <span className="block">She&apos;ll build the pipeline.</span>
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-[var(--ghost-muted)] lg:mx-0">
               Describe what you offer, where you operate, and the customers you want. Vega finds and qualifies the right
-              prospects, starts personalized outreach, supports follow-up, and helps move real interest toward booked calls.
+              prospects, decides the safest next move, automates digital follow-up, and directs people toward qualified
+              conversations and booked calls.
             </p>
 
             <HomepageCommandForm examples={publicPromptExamples} section="hero" />
@@ -163,6 +170,29 @@ export default function Home() {
 
           <div className="mx-auto w-full max-w-[480px]">
             <VegaDirectorPanel />
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-[var(--ghost-border)] bg-white">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-20 sm:px-6 lg:grid-cols-[0.85fr_1.15fr] lg:px-8">
+          <div>
+            <VegaSectionEyebrow>Category</VegaSectionEyebrow>
+            <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">An operating system for SMB sales work.</h2>
+            <p className="mt-5 leading-8 text-[var(--ghost-muted)]">
+              Vega sits between data tools, outbound agents, intent platforms, and inbound appointment setters. Her job is
+              to connect the operating chain: discovery, qualification, safe outreach, phone follow-up, replies, booking,
+              and learning.
+            </p>
+          </div>
+
+          <div className="grid gap-3">
+            {publicMarketPositioning.map((item) => (
+              <div key={item.title} className="rounded-md border border-[var(--ghost-border)] bg-[var(--ghost-paper)] p-5">
+                <h3 className="text-lg font-black text-[var(--vega-ink)]">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[var(--ghost-muted)]">{item.text}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -315,10 +345,22 @@ export default function Home() {
             {publicOperatingProof.map((proof) => (
               <div key={proof.label} className="rounded-md border border-[var(--ghost-border)] bg-[var(--ghost-paper)] p-5">
                 <p className="text-sm font-bold uppercase tracking-[0.14em] text-[#5f6b64]">{proof.label}</p>
-                <p className="mt-3 font-mono text-4xl font-black text-[var(--vega-ink)]">{proof.value}</p>
+                <p className="mt-3 font-mono text-3xl font-black text-[var(--vega-ink)]">{proof.value}</p>
                 <p className="mt-3 text-sm leading-6 text-[var(--ghost-muted)]">{proof.detail}</p>
               </div>
             ))}
+          </div>
+
+          <div className="mt-8 rounded-md border border-[var(--ghost-border)] bg-[var(--ghost-paper)] p-5">
+            <h3 className="text-xl font-black text-[var(--vega-ink)]">The proof Vega is built to produce</h3>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {publicProofMilestones.map((item) => (
+                <div key={item} className="flex gap-3 text-sm font-semibold leading-6 text-[var(--ghost-muted)]">
+                  <CheckCircle2 className="mt-0.5 shrink-0 text-[var(--vega-teal)]" size={18} aria-hidden="true" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
