@@ -6,6 +6,7 @@ import {
   VegaLaunchAgentType,
   VegaProductCode,
 } from "@prisma/client";
+import { isLikelyEmail, registerClientCampaignUpdateRecipient } from "@/lib/client-campaign-updates";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -22,6 +23,7 @@ export type CommercialFactKey =
   | "desiredOutcome"
   | "outreachResponsibility"
   | "phoneFollowUpResponsibility"
+  | "salesUpdateRecipientEmail"
   | "bestOffer"
   | "differentiators"
   | "contactIdentity"
@@ -236,6 +238,7 @@ const requiredFacts: CommercialFactKey[] = [
   "desiredOutcome",
   "outreachResponsibility",
   "phoneFollowUpResponsibility",
+  "salesUpdateRecipientEmail",
   "bestOffer",
   "differentiators",
   "contactIdentity",
@@ -259,6 +262,7 @@ const factQuestions: Record<CommercialFactKey, string> = {
   desiredOutcome: "What outcome matters most: more replies, booked calls, proposals, or closed jobs?",
   outreachResponsibility: "Should Vega draft only, send after approval, or auto-send inside guardrails?",
   phoneFollowUpResponsibility: "Who will call warm leads after email: you, your team, a VA, or Ghost?",
+  salesUpdateRecipientEmail: "What email should Vega use for the sales manager's daily lead updates, call tasks, and warm-lead alerts?",
   bestOffer: "What is the lowest-friction offer we can put in front of prospects?",
   differentiators: "What makes this business meaningfully different from competitors?",
   contactIdentity: "Who should prospects see as the sender or point of contact?",
@@ -323,6 +327,13 @@ export function inferFactsFromMessage(message: string, existingFacts: Commercial
 
   const website = text.match(/https?:\/\/[^\s]+|(?:www\.)[^\s]+/i)?.[0];
   if (website) add("businessWebsite", website);
+
+  const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+  if (email && /\b(?:sales manager|sales|manager|update|updates|lead brief|lead briefs|send|email)\b/i.test(text)) {
+    add("salesUpdateRecipientEmail", email, 0.96);
+  } else if (email && /\b(?:reply|replies|inbox)\b/i.test(text)) {
+    add("replyPath", email, 0.94);
+  }
 
   const desiredVolume = lower.match(/(?:need|want|source|get|generate)\s+(\d{1,4})\s+(?:new\s+)?(?:leads|prospects|appointments)/);
   if (desiredVolume) add("desiredLeadVolume", desiredVolume[1]);
@@ -576,6 +587,8 @@ export async function continueCommercialOnboarding(input: { sessionId: string; m
     },
   });
 
+  await maybeRegisterClientUpdateRecipient(facts);
+
   await prisma.aIOnboardingMessage.create({
     data: {
       sessionId: session.id,
@@ -636,11 +649,11 @@ export async function createCommercialProposal(sessionId: string) {
       targetMarket: (session.targetMarketDraft || {}) as Prisma.InputJsonValue,
       territory: { value: factMap(normalizeFacts(session.collectedFacts)).territory?.value || "to confirm" },
       offer: (session.offerDraft || {}) as Prisma.InputJsonValue,
-      vegaResponsibilities: ["source", "score", "draft", "monitor", "coordinate phone-assist"] as Prisma.InputJsonValue,
-      customerResponsibilities: ["approve launch", "complete follow-up calls unless managed", "attend booked meetings"] as Prisma.InputJsonValue,
+      vegaResponsibilities: ["source", "score", "draft", "monitor", "coordinate phone-assist", "email sales-manager lead updates"] as Prisma.InputJsonValue,
+      customerResponsibilities: ["approve launch", "complete follow-up calls unless managed", "attend booked meetings", "provide the sales-manager update email"] as Prisma.InputJsonValue,
       allowances: (quote.totals as Prisma.JsonObject)?.includedAllowances || {},
       setupScope: ["business profile", "target market", "dry-run campaign", "approval workflow"] as Prisma.InputJsonValue,
-      recurringScope: ["lead sourcing", "outreach coordination", "reply monitoring", "reporting"] as Prisma.InputJsonValue,
+      recurringScope: ["lead sourcing", "outreach coordination", "reply monitoring", "sales-manager email reporting"] as Prisma.InputJsonValue,
       billingSummary: quote.totals || {},
       limitations: ["No live outreach during onboarding", "No invented claims", "No guaranteed revenue outcomes"] as Prisma.InputJsonValue,
       termsReference: "Ghost AI Solutions standard commercial terms; final legal terms reviewed at checkout.",
@@ -755,6 +768,21 @@ async function createHumanReviewTask(sessionId: string, reason: string) {
   });
 }
 
+async function maybeRegisterClientUpdateRecipient(facts: CommercialFact[]) {
+  const byKey = factMap(facts);
+  const recipientEmail = byKey.salesUpdateRecipientEmail?.value;
+  if (!recipientEmail || !isLikelyEmail(recipientEmail)) return null;
+
+  return registerClientCampaignUpdateRecipient({
+    clientName: byKey.businessIdentity?.value || "Client campaign",
+    campaignName: `${byKey.businessIdentity?.value || "Client"} - ${byKey.serviceOrProduct?.value || "lead generation"}`,
+    recipientEmail,
+    cadence: "daily-and-after-run",
+    alertOn: ["warm-lead", "reply", "click", "call-due", "quote-request", "booking-request"],
+    source: "onboarding",
+  });
+}
+
 function factMap(facts: CommercialFact[]) {
   return facts.reduce<Partial<Record<CommercialFactKey, CommercialFact>>>((acc, fact) => {
     acc[fact.key] = fact;
@@ -766,7 +794,7 @@ function statusForMissingFact(key: CommercialFactKey) {
   if (["businessIdentity", "businessWebsite", "serviceOrProduct", "serviceCapacity"].includes(key)) return AIOnboardingStatus.DISCOVERING_BUSINESS;
   if (["targetCustomer", "territory", "desiredLeadVolume"].includes(key)) return AIOnboardingStatus.RESEARCHING_MARKET;
   if (["bestOffer", "differentiators"].includes(key)) return AIOnboardingStatus.BUILDING_OFFER;
-  if (["outreachResponsibility", "phoneFollowUpResponsibility", "replyPath", "schedulingPath", "automationPreference"].includes(key)) {
+  if (["outreachResponsibility", "phoneFollowUpResponsibility", "salesUpdateRecipientEmail", "replyPath", "schedulingPath", "automationPreference"].includes(key)) {
     return AIOnboardingStatus.DESIGNING_CAMPAIGN;
   }
   if (key === "billingConfirmation") return AIOnboardingStatus.AWAITING_CHECKOUT;
@@ -798,6 +826,7 @@ function buildBusinessProfileDraft(facts: CommercialFact[]) {
     service: byKey.serviceOrProduct?.value || "to confirm",
     growthObjective: byKey.growthObjective?.value || "to confirm",
     averageCustomerValue: byKey.averageCustomerValue?.value || "to confirm",
+    salesUpdateRecipientEmail: byKey.salesUpdateRecipientEmail?.value || "to confirm",
     confirmedKeys: facts.filter((fact) => fact.confirmed).map((fact) => fact.key),
   };
 }
@@ -839,6 +868,13 @@ function buildCampaignDraft(facts: CommercialFact[], productCode: VegaProductCod
     qualificationThreshold: 75,
     outreachChannels: productCode === VegaProductCode.VEGA_SCOUT ? ["research"] : ["email", "phone-assist"],
     approvalBehavior: "Slack or dashboard approval required until launch QA approves more autonomy.",
+    clientReporting: {
+      salesUpdateRecipientEmail: byKey.salesUpdateRecipientEmail?.value || "to confirm",
+      cadence: "daily-and-after-run",
+      channels: ["email"],
+      sendsToClientSalesManager: Boolean(byKey.salesUpdateRecipientEmail?.value),
+      slackRemainsInternal: true,
+    },
     dryRun: true,
     liveSendReadiness: "not-ready-during-onboarding",
   };

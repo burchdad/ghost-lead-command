@@ -1,4 +1,5 @@
 import { createAutomationEvent } from "@/lib/automation";
+import { findClientCampaignUpdateConfigs, sendClientCampaignDigest } from "@/lib/client-campaign-updates";
 import { recommendNiche, runLeadCommandAgent } from "@/lib/agent";
 import { getPrisma } from "@/lib/prisma";
 import { runVegaProductionProof } from "@/lib/production-proof";
@@ -26,6 +27,22 @@ export type AgentPlan = {
   partnerService?: string;
   rationale: string[];
   source: "daily" | "slack-command" | "reroll";
+};
+
+type ClientDailyDigestInput = {
+  generatedAt: string;
+  leadsSourced: number;
+  sentToday: number;
+  replies: number;
+  hotReplies: number;
+  suppressionsToday: number;
+  proof: {
+    sender: { decision: string };
+    today: { callsDue: number };
+    yesterday: { meetingsBooked: number };
+    emailPipeline: { emailQualified: number };
+    humanActions: string[];
+  };
 };
 
 const nicheAliases = [
@@ -429,14 +446,52 @@ export async function sendDailyDigest() {
     })),
   };
 
-  const slack = await notifySlackDailyDigest(digest);
+  const [slack, clientEmailUpdates] = await Promise.all([
+    notifySlackDailyDigest(digest),
+    sendConfiguredClientDailyDigests(digest),
+  ]);
   await createAutomationEvent({
     title: "Daily ops digest",
-    detail: `Posted Vega digest: ${digest.leadsSourced} new leads in 24h, ${digest.proof.emailPipeline.sendableNow} sendable, ${digest.proof.today.callsDue} calls due.`,
-    status: slack.sent ? "done" : "blocked",
+    detail: `Posted Vega digest: ${digest.leadsSourced} new leads in 24h, ${digest.proof.emailPipeline.sendableNow} sendable, ${digest.proof.today.callsDue} calls due. Client emails ${clientEmailUpdates.length}.`,
+    status: slack.sent || clientEmailUpdates.some((item) => item.status !== "failed") ? "done" : "blocked",
     type: "agent",
-    payload: { digest, slack },
+    payload: { digest, slack, clientEmailUpdates },
   });
 
-  return { digest, slack };
+  return { digest, slack, clientEmailUpdates };
+}
+
+async function sendConfiguredClientDailyDigests(digest: ClientDailyDigestInput) {
+  const configs = await findClientCampaignUpdateConfigs();
+  const dailyConfigs = configs.filter((config) => config.cadence === "daily" || config.cadence === "daily-and-after-run");
+  return Promise.all(
+    dailyConfigs.map((config) =>
+      sendClientCampaignDigest({
+        clientName: config.clientName,
+        campaignName: config.campaignName,
+        recipientEmail: config.recipientEmail,
+        recipientName: config.recipientName,
+        generatedAt: digest.generatedAt,
+        summary: digest.proof.sender.decision,
+        metrics: {
+          leadsFound: digest.leadsSourced,
+          qualified: digest.leadsSourced,
+          emailsSent: digest.sentToday,
+          emailQualified: digest.proof.emailPipeline.emailQualified,
+          callTasksDue: digest.proof.today.callsDue,
+          replies: digest.replies,
+          warmLeads: digest.hotReplies,
+          quoteOpportunities: 0,
+          bookedMeetings: digest.proof.yesterday.meetingsBooked,
+          suppressed: digest.suppressionsToday,
+        },
+        humanActions: digest.proof.humanActions,
+        notableLeads: digest.proof.humanActions.slice(0, 5).map((action) => ({
+          companyName: action.replace(/^Call\s+/i, "").replace(/\.$/, ""),
+          nextAction: action,
+          reason: "Vega marked this as a current human action.",
+        })),
+      }),
+    ),
+  );
 }

@@ -53,6 +53,14 @@ describe("Vega Launch Team fact engine", () => {
     assert.equal(target?.inferred, true);
     assert.equal(target?.confirmed, false);
   });
+
+  it("captures the sales manager lead-update email as its own onboarding fact", () => {
+    const facts = inferFactsFromMessage("Send daily lead updates to the sales manager at manager@naks.example.");
+    const updateEmail = facts.find((item) => item.key === "salesUpdateRecipientEmail");
+
+    assert.equal(updateEmail?.value, "manager@naks.example");
+    assert.equal(updateEmail?.confirmed, true);
+  });
 });
 
 describe("Vega Launch Team product and pricing", () => {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isLikelyEmail, registerClientCampaignUpdateRecipient } from "@/lib/client-campaign-updates";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -47,6 +48,19 @@ export async function POST(request: Request) {
       status: String(body.status || "draft"),
     },
   });
+
+  const salesUpdateRecipientEmail = body.salesUpdateRecipientEmail ? String(body.salesUpdateRecipientEmail) : "";
+  if (isLikelyEmail(salesUpdateRecipientEmail)) {
+    await registerClientCampaignUpdateRecipient({
+      clientName: String(body.clientName || body.name || "Client campaign"),
+      campaignName: campaign.name,
+      recipientEmail: salesUpdateRecipientEmail,
+      recipientName: body.salesUpdateRecipientName ? String(body.salesUpdateRecipientName) : undefined,
+      cadence: "daily-and-after-run",
+      alertOn: ["warm-lead", "reply", "click", "call-due", "quote-request", "booking-request"],
+      source: "operator",
+    });
+  }
 
   return NextResponse.json({ campaign }, { status: 201 });
 }

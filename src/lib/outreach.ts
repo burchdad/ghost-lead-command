@@ -139,6 +139,58 @@ export async function sendEmail(input: SendEmailInput): Promise<DeliveryResult> 
   };
 }
 
+export async function sendTransactionalEmail(input: SendEmailInput): Promise<DeliveryResult> {
+  const status = getOutreachStatus();
+  const fromEmail = sendgridFromEmail();
+  const subject = sanitizeSubject(input.subject);
+  const text = sanitizeCustomerMessage(input.text, { channel: "email" });
+
+  if (!status.sendgridConfigured) {
+    return {
+      status: "queued",
+      provider: "sendgrid",
+      channel: "email",
+      dryRun: true,
+      message: "Transactional email queued in dry-run mode. Add SendGrid env vars before live sending.",
+    };
+  }
+
+  const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${clean(process.env.SENDGRID_API_KEY)}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: input.to }] }],
+      from: {
+        email: fromEmail,
+        name: clean(process.env.SENDGRID_FROM_NAME) || "Ghost AI Solutions",
+      },
+      subject,
+      content: [{ type: "text/plain", value: text }],
+    }),
+  });
+
+  if (!response.ok) {
+    return {
+      status: "failed",
+      provider: "sendgrid",
+      channel: "email",
+      dryRun: false,
+      message: `SendGrid returned ${response.status}.`,
+    };
+  }
+
+  return {
+    status: "sent",
+    provider: "sendgrid",
+    channel: "email",
+    dryRun: false,
+    providerId: response.headers.get("x-message-id") || undefined,
+  };
+}
+
 export async function sendSms(input: SendSmsInput): Promise<DeliveryResult> {
   const provider = input.provider || preferredSmsProvider();
   if (provider === "twilio") return sendTwilioSms(input);
