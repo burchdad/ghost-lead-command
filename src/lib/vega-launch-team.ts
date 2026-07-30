@@ -328,6 +328,14 @@ export function inferFactsFromMessage(message: string, existingFacts: Commercial
   const website = text.match(/https?:\/\/[^\s]+|(?:www\.)[^\s]+/i)?.[0];
   if (website) add("businessWebsite", website);
 
+  const wantsBusiness = text.match(/^([A-Z][A-Za-z0-9&'. -]{2,80}?)\s+wants\b/);
+  const forBusiness = text.match(/\bfor\s+([A-Z][A-Za-z0-9&'. -]{2,80}?)(?:\s+(?:that|who|which|in|around|near|wants)\b|[,.]|$)/);
+  if (wantsBusiness?.[1]) {
+    add("businessIdentity", wantsBusiness[1].trim());
+  } else if (forBusiness?.[1] && !/\b(?:campaign|client|company|business|service)\b/i.test(forBusiness[1])) {
+    add("businessIdentity", forBusiness[1].trim());
+  }
+
   const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
   if (email && /\b(?:sales manager|sales|manager|update|updates|lead brief|lead briefs|send|email)\b/i.test(text)) {
     add("salesUpdateRecipientEmail", email, 0.96);
@@ -345,12 +353,23 @@ export function inferFactsFromMessage(message: string, existingFacts: Commercial
   if (/\b(detailing|mobile detail|auto detail|automobile detailing|car detailing)\b/.test(lower)) {
     add("serviceOrProduct", "mobile automobile detailing");
     add("targetCustomer", "dealerships, fleets, auto referral partners, and local vehicle-heavy businesses", 0.72, false);
+  } else if (/\b(window cleaning|exterior cleaning|pressure washing|power washing|soft washing|commercial cleaning)\b/.test(lower)) {
+    add("serviceOrProduct", "commercial window cleaning and exterior cleaning");
+    add(
+      "targetCustomer",
+      "property managers, storefronts, medical offices, banks, restaurants, dealerships, gyms, office buildings, churches, and apartment complexes",
+      0.76,
+      false,
+    );
   } else if (/\b(hvac|air conditioning|heating)\b/.test(lower)) {
     add("serviceOrProduct", "HVAC services");
     add("targetCustomer", "homeowners, property managers, contractors, and local service referral partners", 0.7, false);
   }
 
   if (/\b(dealership|fleet|fleets)\b/.test(lower)) add("targetCustomer", "dealerships and fleet operators");
+  if (/\b(sales manager|manager will handle|handle phone follow[- ]?up|phone follow[- ]?up)\b/.test(lower)) {
+    add("phoneFollowUpResponsibility", "client sales manager");
+  }
   if (/\b(auto[- ]?send|automate|automatic)\b/.test(lower)) add("automationPreference", "auto-send inside Vega safety guardrails");
   if (/\b(office manager|va|assistant|team)\b/.test(lower)) add("phoneFollowUpResponsibility", "customer team or VA");
   if (/\b(?:ghost handles calls|managed calls|done for me)\b/.test(lower)) add("phoneFollowUpResponsibility", "Ghost managed calling");

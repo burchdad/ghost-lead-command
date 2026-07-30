@@ -123,8 +123,13 @@ export default function VegaCommercialOnboarding() {
 
   function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const content = message.trim();
-    if (!content || busy) return;
+    const formData = new FormData(event.currentTarget);
+    const content = String(formData.get("message") || message).trim();
+    if (busy) return;
+    if (!content) {
+      setError("Type a quick campaign brief so Vega knows what to build.");
+      return;
+    }
     setMessage("");
     void runAction({ action: session ? "message" : "start", message: content });
   }
@@ -219,6 +224,7 @@ export default function VegaCommercialOnboarding() {
               <form onSubmit={sendMessage} className="border-t border-[#244044] p-4">
                 <div className="flex gap-3">
                   <textarea
+                    name="message"
                     value={message}
                     onChange={(event) => setMessage(event.target.value)}
                     placeholder="Example: I run a mobile detailing company in Tyler and want dealership and fleet work within 40 miles."
@@ -226,7 +232,7 @@ export default function VegaCommercialOnboarding() {
                   />
                   <button
                     type="submit"
-                    disabled={busy || !message.trim()}
+                    disabled={busy}
                     className="inline-flex min-w-24 items-center justify-center gap-2 rounded-md bg-[var(--vega-purple)] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {busy ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}

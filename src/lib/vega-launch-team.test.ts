@@ -61,6 +61,23 @@ describe("Vega Launch Team fact engine", () => {
     assert.equal(updateEmail?.value, "manager@naks.example");
     assert.equal(updateEmail?.confirmed, true);
   });
+
+  it("captures a commercial exterior-cleaning client brief from one message", () => {
+    const facts = inferFactsFromMessage(
+      "Naks Exterior Services wants commercial window cleaning and exterior cleaning contracts around Tyler, Texas. Send daily lead updates and call tasks to sales@naks.com. The sales manager will handle phone follow-up.",
+    );
+    const business = facts.find((item) => item.key === "businessIdentity");
+    const service = facts.find((item) => item.key === "serviceOrProduct");
+    const target = facts.find((item) => item.key === "targetCustomer");
+    const updateEmail = facts.find((item) => item.key === "salesUpdateRecipientEmail");
+    const phoneOwner = facts.find((item) => item.key === "phoneFollowUpResponsibility");
+
+    assert.equal(business?.value, "Naks Exterior Services");
+    assert.equal(service?.value, "commercial window cleaning and exterior cleaning");
+    assert.match(target?.value || "", /property managers/);
+    assert.equal(updateEmail?.value, "sales@naks.com");
+    assert.equal(phoneOwner?.value, "client sales manager");
+  });
 });
 
 describe("Vega Launch Team product and pricing", () => {
