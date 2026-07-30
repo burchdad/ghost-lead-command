@@ -8,6 +8,7 @@ import {
 } from "@prisma/client";
 import { isLikelyEmail, registerClientCampaignUpdateRecipient } from "@/lib/client-campaign-updates";
 import { getPrisma } from "@/lib/prisma";
+import { ensureVegaOnboardingSchema } from "@/lib/vega-onboarding-schema";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export type CommercialFactKey =
@@ -518,6 +519,7 @@ export function buildLaunchQa(input: {
 
 export async function startCommercialOnboarding(input: { visitorId?: string; message?: string }) {
   const prisma = getPrisma();
+  await ensureVegaOnboardingSchema(prisma);
   const session = await prisma.aIOnboardingSession.create({
     data: {
       visitorId: input.visitorId,
@@ -546,6 +548,7 @@ export async function startCommercialOnboarding(input: { visitorId?: string; mes
 
 export async function continueCommercialOnboarding(input: { sessionId: string; message: string }) {
   const prisma = getPrisma();
+  await ensureVegaOnboardingSchema(prisma);
   const session = await prisma.aIOnboardingSession.findUnique({ where: { id: input.sessionId }, include: { messages: true } });
   if (!session) throw new Error("Onboarding session not found.");
 
@@ -623,6 +626,7 @@ export async function continueCommercialOnboarding(input: { sessionId: string; m
 
 export async function createCommercialQuote(sessionId: string) {
   const prisma = getPrisma();
+  await ensureVegaOnboardingSchema(prisma);
   const session = await prisma.aIOnboardingSession.findUnique({ where: { id: sessionId } });
   if (!session) throw new Error("Onboarding session not found.");
   const facts = normalizeFacts(session.collectedFacts);
@@ -648,6 +652,7 @@ export async function createCommercialQuote(sessionId: string) {
 
 export async function createCommercialProposal(sessionId: string) {
   const prisma = getPrisma();
+  await ensureVegaOnboardingSchema(prisma);
   const session = await prisma.aIOnboardingSession.findUnique({ where: { id: sessionId }, include: { commercialProposals: true } });
   if (!session) throw new Error("Onboarding session not found.");
   const quote = session.pricingQuoteId
@@ -686,6 +691,7 @@ export async function createCommercialProposal(sessionId: string) {
 
 export async function createHostedCheckout(sessionId: string, explicitBillingConfirmation: string) {
   const prisma = getPrisma();
+  await ensureVegaOnboardingSchema(prisma);
   const session = await prisma.aIOnboardingSession.findUnique({ where: { id: sessionId } });
   if (!session?.proposalId) throw new Error("Proposal must be presented before checkout.");
   if (!hasExplicitBillingConfirmation(explicitBillingConfirmation)) {
@@ -706,6 +712,7 @@ export async function createHostedCheckout(sessionId: string, explicitBillingCon
 
 export async function provisionCommercialWorkspace(sessionId: string, paymentEventId: string) {
   const prisma = getPrisma();
+  await ensureVegaOnboardingSchema(prisma);
   const session = await prisma.aIOnboardingSession.findUnique({ where: { id: sessionId } });
   if (!session) throw new Error("Onboarding session not found.");
   if (!paymentEventId.startsWith("verified_") && !paymentEventId.startsWith("manual_")) {
@@ -735,6 +742,7 @@ export async function provisionCommercialWorkspace(sessionId: string, paymentEve
 
 export async function getCommercialOnboardingSession(sessionId: string) {
   const prisma = getPrisma();
+  await ensureVegaOnboardingSchema(prisma);
   return prisma.aIOnboardingSession.findUnique({
     where: { id: sessionId },
     include: {
@@ -756,6 +764,7 @@ async function recordAgentRun(input: {
   confidence: number;
 }) {
   const prisma = getPrisma();
+  await ensureVegaOnboardingSchema(prisma);
   return prisma.launchAgentRun.create({
     data: {
       onboardingSessionId: input.onboardingSessionId,
@@ -775,6 +784,7 @@ async function recordAgentRun(input: {
 
 async function createHumanReviewTask(sessionId: string, reason: string) {
   const prisma = getPrisma();
+  await ensureVegaOnboardingSchema(prisma);
   const session = await prisma.aIOnboardingSession.findUnique({ where: { id: sessionId } });
   return prisma.humanReviewTask.create({
     data: {
@@ -792,14 +802,19 @@ async function maybeRegisterClientUpdateRecipient(facts: CommercialFact[]) {
   const recipientEmail = byKey.salesUpdateRecipientEmail?.value;
   if (!recipientEmail || !isLikelyEmail(recipientEmail)) return null;
 
-  return registerClientCampaignUpdateRecipient({
-    clientName: byKey.businessIdentity?.value || "Client campaign",
-    campaignName: `${byKey.businessIdentity?.value || "Client"} - ${byKey.serviceOrProduct?.value || "lead generation"}`,
-    recipientEmail,
-    cadence: "daily-and-after-run",
-    alertOn: ["warm-lead", "reply", "click", "call-due", "quote-request", "booking-request"],
-    source: "onboarding",
-  });
+  try {
+    return await registerClientCampaignUpdateRecipient({
+      clientName: byKey.businessIdentity?.value || "Client campaign",
+      campaignName: `${byKey.businessIdentity?.value || "Client"} - ${byKey.serviceOrProduct?.value || "lead generation"}`,
+      recipientEmail,
+      cadence: "daily-and-after-run",
+      alertOn: ["warm-lead", "reply", "click", "call-due", "quote-request", "booking-request"],
+      source: "onboarding",
+    });
+  } catch (error) {
+    console.warn("Vega onboarding skipped client update registration.", error instanceof Error ? error.message : error);
+    return null;
+  }
 }
 
 function factMap(facts: CommercialFact[]) {
