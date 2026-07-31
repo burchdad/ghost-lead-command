@@ -305,8 +305,46 @@ export function selectNextMissingFact(facts: CommercialFact[]) {
   return { key: missing, question: factQuestions[missing], reason: "highest-impact-missing-fact" };
 }
 
+function confirmationIntent(message: string) {
+  const lower = message.trim().toLowerCase();
+  if (/^(yes|yep|yeah|correct|that's correct|thats correct|right|exactly|confirmed|that is right|that works|looks good)\b/.test(lower)) {
+    return "confirmed";
+  }
+  if (/^(no|nope|not quite|incorrect|wrong|change that|that's wrong|thats wrong)\b/.test(lower)) {
+    return "rejected";
+  }
+  return null;
+}
+
+function applyPendingFactConfirmation(message: string, existingFacts: CommercialFact[]) {
+  const intent = confirmationIntent(message);
+  if (!intent) return existingFacts;
+
+  const pending = existingFacts.find((fact) => fact.inferred && !fact.confirmed && fact.confidence < 0.95);
+  if (!pending) return existingFacts;
+
+  if (intent === "rejected") {
+    return upsertFact(existingFacts, {
+      ...pending,
+      confidence: 0.2,
+      inferred: true,
+      confirmed: false,
+      evidence: [...pending.evidence, message.trim()].slice(-3),
+    });
+  }
+
+  return upsertFact(existingFacts, {
+    ...pending,
+    source: "customer",
+    confidence: 0.98,
+    inferred: false,
+    confirmed: true,
+    evidence: [...pending.evidence, message.trim()].slice(-3),
+  });
+}
+
 export function inferFactsFromMessage(message: string, existingFacts: CommercialFact[] = []) {
-  const facts = [...existingFacts];
+  const facts = applyPendingFactConfirmation(message, [...existingFacts]);
   const text = message.trim();
   const lower = text.toLowerCase();
   const add = (key: CommercialFactKey, value: string, confidence = 0.78, confirmed = true) => {
@@ -348,7 +386,7 @@ export function inferFactsFromMessage(message: string, existingFacts: Commercial
   if (desiredVolume) add("desiredLeadVolume", desiredVolume[1]);
 
   const radius = lower.match(/within\s+(\d{1,3})\s*(?:mile|mi)/);
-  const location = text.match(/\bin\s+([A-Z][A-Za-z .'-]+,\s*[A-Z]{2}|[A-Z][A-Za-z .'-]+,\s*Texas)/);
+  const location = text.match(/\b(?:in|around|near|within|serving|covering)\s+([A-Z][A-Za-z .'-]+,\s*[A-Z]{2}|[A-Z][A-Za-z .'-]+,\s*Texas)/);
   if (location || radius) add("territory", `${location?.[1] || "customer-defined area"}${radius ? ` within ${radius[1]} miles` : ""}`);
 
   if (/\b(detailing|mobile detail|auto detail|automobile detailing|car detailing)\b/.test(lower)) {

@@ -75,8 +75,25 @@ describe("Vega Launch Team fact engine", () => {
     assert.equal(business?.value, "Naks Exterior Services");
     assert.equal(service?.value, "commercial window cleaning and exterior cleaning");
     assert.match(target?.value || "", /property managers/);
+    assert.match(facts.find((item) => item.key === "territory")?.value || "", /Tyler, Texas/);
     assert.equal(updateEmail?.value, "sales@naks.com");
     assert.equal(phoneOwner?.value, "client sales manager");
+  });
+
+  it("treats a short confirmation as approval of Vega's pending inferred fact", () => {
+    const initial = inferFactsFromMessage(
+      "Naks Exterior Services wants commercial window cleaning and exterior cleaning contracts around Tyler, Texas. Send daily lead updates and call tasks to sales@naks.com. The sales manager will handle phone follow-up.",
+    );
+    const before = initial.find((item) => item.key === "targetCustomer");
+    assert.equal(before?.confirmed, false);
+
+    const confirmed = inferFactsFromMessage("thats correct", initial);
+    const target = confirmed.find((item) => item.key === "targetCustomer");
+    const next = selectNextMissingFact(confirmed);
+
+    assert.equal(target?.confirmed, true);
+    assert.equal(target?.inferred, false);
+    assert.notEqual(next?.key, "targetCustomer");
   });
 });
 
