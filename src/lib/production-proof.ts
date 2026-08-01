@@ -6,6 +6,7 @@ import {
   getActionablePhoneTasks,
   repairMissingPhoneAssistSchedules,
 } from "@/lib/phone-assist";
+import { ensureLeadCommandCoreSchema } from "@/lib/lead-command-schema";
 import { evaluateOpportunityQueueItem } from "@/lib/opportunity-intelligence";
 import { getPrisma } from "@/lib/prisma";
 import { ensureSourcingCampaignSchema } from "@/lib/sourcing-campaign-schema";
@@ -271,6 +272,7 @@ export async function runVegaProductionProof(input: { instruction?: string; post
   await ensureSourcingCampaignSchema();
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
+  await ensureLeadCommandCoreSchema(workspace.id);
   await repairMissingPhoneAssistSchedules({ workspaceId: workspace.id });
   const yesterdayStart = startOfDay(-1);
   const todayStart = startOfDay(0);

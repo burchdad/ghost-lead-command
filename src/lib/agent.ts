@@ -9,6 +9,7 @@ import { improveOfferCopy } from "@/lib/offer-copy-brain";
 import { softenUnsupportedPainClaims } from "@/lib/opportunity-intelligence";
 import { evaluateSourceLead, evaluateVegaLeadDecision, prepareOperatorRun, type OperatorRunPolicy, type VegaLeadDecision } from "@/lib/operator-policy";
 import { getPrisma } from "@/lib/prisma";
+import { ensureLeadCommandCoreSchema } from "@/lib/lead-command-schema";
 import { searchFreshLeads, type SourceDiagnostics, type SourceLead, type SourceProvider } from "@/lib/sourcing";
 import { findSuppressionMatch } from "@/lib/suppression";
 import { notifySlackNicheRecommendation, notifySlackOutreachApproval } from "@/lib/slack";
@@ -897,6 +898,7 @@ async function runLocalManualFallback(input: {
 
 export async function runLeadCommandAgent(input: AgentRunInput = {}) {
   const workspace = await getDefaultWorkspace();
+  await ensureLeadCommandCoreSchema(workspace.id);
   const provider = input.provider || "pdl";
   const autoSend = input.autoSend ?? boolFromEnv("AGENT_AUTO_SEND", false);
   const partnerService = clean(input.partnerService);

@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { ensureLeadCommandCoreSchema } from "@/lib/lead-command-schema";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -77,6 +78,7 @@ function isLikelyFollowUp(item: { subject?: string | null; body?: string | null;
 export async function getSenderHealth(input: { workspaceId?: string; days?: number } = {}) {
   const prisma = getPrisma();
   const workspace = input.workspaceId ? { id: input.workspaceId } : await getDefaultWorkspace();
+  await ensureLeadCommandCoreSchema(workspace.id);
   const since = startOfWindow(input.days || numberFromEnv("VEGA_SENDER_HEALTH_WINDOW_DAYS", 7));
   const [delivered, bounced, dropped, spamReports, unsubscribes, failedQueue, sentQueue] = await Promise.all([
     prisma.interaction.count({
