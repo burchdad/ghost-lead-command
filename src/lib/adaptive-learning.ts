@@ -2,12 +2,14 @@ import { createAutomationEvent } from "@/lib/automation";
 import { computeConversionLearning } from "@/lib/conversion-learning";
 import { getPrisma } from "@/lib/prisma";
 import { getSignalPlay } from "@/lib/signal-plays";
+import { ensureSourcingCampaignSchema } from "@/lib/sourcing-campaign-schema";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export async function runAdaptiveLearningLoop(input: { activate?: boolean; limit?: number } = {}) {
   const learning = await computeConversionLearning();
   const activate = input.activate !== false;
   const recommendedPlayIds = learning.summary.recommendedPlayIds.slice(0, Math.min(4, Math.max(1, Number(input.limit || 3))));
+  await ensureSourcingCampaignSchema();
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const existing = await prisma.sourcingCampaign.findMany({

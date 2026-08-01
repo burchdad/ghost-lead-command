@@ -8,6 +8,7 @@ import {
 } from "@/lib/phone-assist";
 import { evaluateOpportunityQueueItem } from "@/lib/opportunity-intelligence";
 import { getPrisma } from "@/lib/prisma";
+import { ensureSourcingCampaignSchema } from "@/lib/sourcing-campaign-schema";
 import { notifySlackVegaLeadRequestResult } from "@/lib/slack";
 import { VEGA_CAPABILITY_REGISTRY } from "@/lib/vega-capabilities";
 import { vegaFeatureFlagSnapshot } from "@/lib/vega-feature-flags";
@@ -267,6 +268,7 @@ export function buildVegaMarketProof(input: {
 }
 
 export async function runVegaProductionProof(input: { instruction?: string; postToSlack?: boolean } = {}) {
+  await ensureSourcingCampaignSchema();
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   await repairMissingPhoneAssistSchedules({ workspaceId: workspace.id });

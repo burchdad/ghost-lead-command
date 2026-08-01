@@ -10,6 +10,7 @@ import { classifyPhoneAssistTasks } from "@/lib/phone-assist";
 import { getPerplexityStatus } from "@/lib/perplexity";
 import { getPrisma } from "@/lib/prisma";
 import { getSourcingStatus } from "@/lib/sourcing";
+import { ensureSourcingCampaignSchema } from "@/lib/sourcing-campaign-schema";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 type AgentStatus = "running" | "ready" | "needs-work" | "blocked";
@@ -59,6 +60,7 @@ function agentCard(input: {
 
 export async function GET() {
   try {
+    await ensureSourcingCampaignSchema();
     const prisma = getPrisma();
     const workspace = await getDefaultWorkspace();
     const [events, leads, queue, replies, suppressions, bookingTasks, campaigns, sequenceSteps, ghostcrm, senderHealth] = await Promise.all([

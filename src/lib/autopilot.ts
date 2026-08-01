@@ -11,6 +11,7 @@ import {
   notifySlackReplyWorkResult,
 } from "@/lib/slack";
 import type { SourceProvider } from "@/lib/sourcing";
+import { ensureSourcingCampaignSchema } from "@/lib/sourcing-campaign-schema";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export type AgentPlan = {
@@ -162,6 +163,7 @@ export function campaignNameFor(input: { niche: string; location: string; partne
 }
 
 async function ensureSourcingCampaignFromPlan(plan: AgentPlan) {
+  await ensureSourcingCampaignSchema();
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const existing = await prisma.sourcingCampaign.findFirst({

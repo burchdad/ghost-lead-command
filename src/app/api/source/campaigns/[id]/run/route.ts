@@ -3,6 +3,7 @@ import { findClientCampaignUpdateConfigs, sendClientCampaignDigest } from "@/lib
 import { searchFreshLeads, type SourceLead } from "@/lib/sourcing";
 import { runLeadCommandAgent } from "@/lib/agent";
 import { getPrisma } from "@/lib/prisma";
+import { ensureSourcingCampaignSchema } from "@/lib/sourcing-campaign-schema";
 
 function splitList(value: string | null) {
   return String(value || "")
@@ -16,6 +17,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  await ensureSourcingCampaignSchema();
   const prisma = getPrisma();
   const campaign = await prisma.sourcingCampaign.findUnique({ where: { id } });
 

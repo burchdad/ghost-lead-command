@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { isLikelyEmail, registerClientCampaignUpdateRecipient } from "@/lib/client-campaign-updates";
 import { getPrisma } from "@/lib/prisma";
+import { ensureSourcingCampaignSchema } from "@/lib/sourcing-campaign-schema";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export async function GET() {
   try {
+    await ensureSourcingCampaignSchema();
     const prisma = getPrisma();
     const workspace = await getDefaultWorkspace();
     const campaigns = await prisma.sourcingCampaign.findMany({
@@ -22,6 +24,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  await ensureSourcingCampaignSchema();
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   const body = await request.json();
