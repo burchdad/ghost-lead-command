@@ -12,11 +12,13 @@ import { isConversionAuditRequest, runVegaConversionAudit } from "@/lib/conversi
 import { runLeadCommandAudit } from "@/lib/lead-command-audit";
 import { briefNovaCeoAgent } from "@/lib/mission-control-bridge";
 import { runMorningStandup } from "@/lib/morning-standup";
+import { handleNovaOrganizationInstruction, isNovaAddressed as isNovaOrganizationAddressed } from "@/lib/nova-organization-assistant";
 import { isProductionProofRequest, runVegaProductionProof } from "@/lib/production-proof";
 import {
   isSlackEventAuthorized,
   notifySlackBatchApprovalResult,
   notifySlackClosingSprintResult,
+  notifySlackNovaOrganizationResult,
   notifySlackVegaLeadRequestResult,
   type SlackEventPayload,
 } from "@/lib/slack";
@@ -168,12 +170,43 @@ export async function POST(request: Request) {
   }
 
   const text = String(event.text || "").trim();
-  if (!isVegaAddressed(text)) {
-    console.info("slack_events_ignored_not_vega", {
+  const novaAddressed = isNovaOrganizationAddressed(text) && !isVegaAddressed(text);
+  if (!isVegaAddressed(text) && !novaAddressed) {
+    console.info("slack_events_ignored_not_vega_or_nova", {
       channel: event.channel,
       eventId: payload.event_id,
     });
-    return NextResponse.json({ ok: true, ignored: true, reason: "not addressed to Vega" });
+    return NextResponse.json({ ok: true, ignored: true, reason: "not addressed to Vega or Nova" });
+  }
+
+  if (novaAddressed) {
+    const instruction = text.replace(/^\s*(?:nova|<@[A-Z0-9]+>)\s*[,:\-]?\s*/i, "").trim();
+    await notifySlackNovaOrganizationResult({
+      instruction,
+      status: "received",
+      summary: "Nova is structuring this org update now.",
+    });
+
+    after(async () => {
+      try {
+        const result = await handleNovaOrganizationInstruction(text);
+        await notifySlackNovaOrganizationResult({
+          instruction,
+          status: "finished",
+          summary: result.summary,
+          detail: result.intent === "eod_report" ? result.detail : `*Detail:* ${result.detail}`,
+          actionLabel: result.actionLabel,
+        });
+      } catch (error) {
+        await notifySlackNovaOrganizationResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Nova organization assistant failure.",
+        });
+      }
+    });
+
+    return NextResponse.json({ ok: true, accepted: true, assistant: "nova" });
   }
 
   const instruction = stripVegaAddress(text);

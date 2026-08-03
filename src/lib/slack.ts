@@ -2096,3 +2096,76 @@ export async function notifySlackReplyAlert(input: {
     message: response.ok ? "Slack reply alert sent." : `Slack webhook returned ${response.status}.`,
   };
 }
+
+export async function notifySlackNovaOrganizationResult(input: {
+  instruction: string;
+  status: "received" | "finished" | "failed";
+  summary: string;
+  detail?: string;
+  actionLabel?: string;
+}) {
+  const channelName = clean(process.env.SLACK_NOVA_CHANNEL_NAME) || clean(process.env.SLACK_C_SUITE_CHANNEL_NAME) || "c-suite-talks";
+  const detail = clean(input.detail);
+  const compactDetail = detail.length > 1200 ? `${detail.slice(0, 1197)}...` : detail;
+  const result = await postSlackPayload({
+    webhookUrl:
+      clean(process.env.SLACK_NOVA_WEBHOOK_URL) ||
+      clean(process.env.SLACK_C_SUITE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_EXECUTIVE_WEBHOOK_URL) ||
+      clean(process.env.SLACK_WEBHOOK_URL),
+    botToken: clean(process.env.SLACK_BOT_TOKEN),
+    channelId: clean(process.env.SLACK_NOVA_CHANNEL_ID) || clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
+    payload: {
+      text: `Nova ${input.status}: ${input.summary}`,
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: input.status === "received" ? "Nova request received" : "Nova organization update", emoji: false },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Channel:* #${channelName}\n*Instruction:* ${input.instruction || "n/a"}\n*Status:* ${input.summary}`,
+          },
+        },
+        ...(compactDetail
+          ? [
+              {
+                type: "section",
+                text: { type: "mrkdwn", text: compactDetail },
+              },
+            ]
+          : []),
+        ...(input.actionLabel
+          ? [
+              {
+                type: "context",
+                elements: [{ type: "mrkdwn", text: `*Next:* ${input.actionLabel}` }],
+              },
+            ]
+          : []),
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Pipeline", emoji: false },
+              url: appViewUrl("pipeline"),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Open Queue", emoji: false },
+              url: appViewUrl("queue"),
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  return {
+    ...result,
+    message: result.sent ? "Nova Slack update sent." : result.message,
+  };
+}
