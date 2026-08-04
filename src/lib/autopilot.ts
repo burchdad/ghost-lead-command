@@ -215,6 +215,7 @@ function parseNumber(text: string, label: "score" | "limit" | "size", fallback: 
 }
 
 function parseProvider(text: string, niche: string): SourceProvider {
+  if (text.includes("apollo")) return "apollo";
   if (text.includes("google maps") || text.includes("map")) return "google-maps";
   if (text.includes("pdl") || text.includes("people data labs")) return "pdl";
   if (text.includes("ghost lead agent") || text.includes("web helper")) return "ghost-lead-agent";
@@ -276,7 +277,7 @@ export function createAgentPlan(input: {
       ? [
           `Operator requested ${niche}, so the agent will stay inside that market.`,
           partnerService ? `Partner mode: Vega will source buyer/referral accounts for a ${partnerService}, not sell Ghost AI to this niche.` : "",
-          `Vega will use ${provider === "google-maps" ? "Google Maps/web contact discovery" : provider === "ghost-lead-agent" ? "Ghost Lead Intelligence" : "People Data Labs"} for this run.`,
+          `Vega will use ${provider === "google-maps" ? "Google Maps/web contact discovery" : provider === "ghost-lead-agent" ? "Ghost Lead Intelligence" : provider === "apollo" ? "Apollo people/company search" : "People Data Labs"} for this run.`,
           locations?.length ? `Route market expanded into ${locations.length} nearby searches.` : "",
           "The run will source fresh contacts, dedupe, score, clean up email copy, and auto-send eligible email outreach.",
           "Slack remains the control surface for exceptions, phone-assist work, rewrites, discard, and suppression decisions.",

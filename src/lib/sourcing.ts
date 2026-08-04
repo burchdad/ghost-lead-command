@@ -1,4 +1,4 @@
-export type SourceProvider = "pdl" | "ghost-lead-agent" | "google-maps";
+export type SourceProvider = "pdl" | "apollo" | "ghost-lead-agent" | "google-maps";
 
 export type SourceSearchInput = {
   provider: SourceProvider;
@@ -79,6 +79,40 @@ type SerpApiMapsResult = {
   gps_coordinates?: { latitude?: number; longitude?: number };
 };
 
+type ApolloPerson = {
+  id?: string;
+  person_id?: string;
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  title?: string;
+  headline?: string;
+  email?: string;
+  email_status?: string;
+  linkedin_url?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  organization?: {
+    id?: string;
+    name?: string;
+    website_url?: string;
+    primary_domain?: string;
+    industry?: string;
+    estimated_num_employees?: number;
+    city?: string;
+    state?: string;
+    country?: string;
+    linkedin_url?: string;
+  };
+  organization_name?: string;
+  organization_id?: string;
+  organization_website_url?: string;
+  organization_primary_domain?: string;
+  organization_industry?: string;
+  phone_numbers?: { raw_number?: string; sanitized_number?: string; type?: string }[];
+};
+
 function clean(value: unknown) {
   if (value === null || value === undefined) return "";
   return String(value).trim();
@@ -107,6 +141,7 @@ function mockSourceEnabled() {
 export function getSourcingStatus() {
   return {
     pdlConfigured: Boolean(clean(process.env.PDL_API_KEY)),
+    apolloConfigured: Boolean(clean(process.env.APOLLO_API_KEY)),
     ghostLeadAgentConfigured: Boolean(clean(process.env.GHOST_LEAD_AGENT_SEARCH_URL)),
     googleMapsConfigured: Boolean(clean(process.env.SERPAPI_API_KEY)),
     mockSourceEnabled: mockSourceEnabled(),
@@ -117,7 +152,91 @@ export function getSourcingStatus() {
 export async function searchFreshLeads(input: SourceSearchInput) {
   if (input.provider === "ghost-lead-agent") return searchGhostLeadAgent(input);
   if (input.provider === "google-maps") return searchGoogleMaps(input);
+  if (input.provider === "apollo") return searchApollo(input);
   return searchPeopleDataLabs(input);
+}
+
+async function searchApollo(input: SourceSearchInput) {
+  const apiKey = clean(process.env.APOLLO_API_KEY);
+  if (!apiKey) {
+    if (!mockSourceEnabled()) {
+      return {
+        provider: "apollo" as const,
+        dryRun: false,
+        total: 0,
+        scrollToken: null,
+        leads: [],
+        message: "Apollo is not configured. Add APOLLO_API_KEY to use Apollo people search.",
+      };
+    }
+
+    return {
+      provider: "apollo" as const,
+      dryRun: true,
+      total: mockLeads(input).length,
+      scrollToken: null,
+      leads: mockLeads(input).map((lead) => ({ ...lead, source: "Apollo mock" })),
+      message: "APOLLO_API_KEY is not configured. Showing mock Apollo leads.",
+    };
+  }
+
+  const searchPayload = buildApolloSearchPayload(input);
+  const response = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+    },
+    body: JSON.stringify(searchPayload),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    return {
+      provider: "apollo" as const,
+      dryRun: false,
+      total: 0,
+      scrollToken: null,
+      leads: [],
+      message: `Apollo people search returned ${response.status}${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
+    };
+  }
+
+  const payload = (await response.json()) as {
+    people?: ApolloPerson[];
+    contacts?: ApolloPerson[];
+    pagination?: { total_entries?: number; page?: number; total_pages?: number };
+  };
+  const rawPeople = [...(payload.people || []), ...(payload.contacts || [])];
+  const enrichLimit = Math.min(rawPeople.length, apolloEnrichLimit(), clampSize(input.size));
+  const enriched = await Promise.all(
+    rawPeople.slice(0, enrichLimit).map((person) => enrichApolloPerson(person, apiKey)),
+  );
+  const merged = rawPeople.map((person, index) => enriched[index] || person);
+  const leads = merged.map((person, index) => normalizeApolloPerson(person, index));
+  const classified = classifySourceLeads(leads);
+  const qualified = classified.qualified
+    .sort((a, b) => b.score - a.score)
+    .slice(0, clampSize(input.size));
+  const reviewLeads = classified.review
+    .sort((a, b) => b.score - a.score)
+    .slice(0, clampSize(input.size));
+
+  return {
+    provider: "apollo" as const,
+    dryRun: false,
+    total: payload.pagination?.total_entries || rawPeople.length,
+    scrollToken: payload.pagination?.page && payload.pagination?.total_pages && payload.pagination.page < payload.pagination.total_pages
+      ? String(payload.pagination.page + 1)
+      : null,
+    leads: qualified,
+    reviewLeads,
+    diagnostics: sourceDiagnostics(leads, qualified, reviewLeads, [clean(input.location) || "Apollo"]),
+    message:
+      qualified.length === 0
+        ? `Apollo returned ${rawPeople.length} people, but ${reviewLeads.length} need review/enrichment before email outreach.`
+        : undefined,
+  };
 }
 
 async function searchGoogleMaps(input: SourceSearchInput) {
@@ -370,6 +489,75 @@ async function searchGhostLeadAgent(input: SourceSearchInput) {
   };
 }
 
+function buildApolloSearchPayload(input: SourceSearchInput) {
+  const titles = (input.titles?.length ? input.titles : ["Owner", "Founder", "CEO", "President", "General Manager"])
+    .map(clean)
+    .filter(Boolean);
+  const keywords = [
+    input.query,
+    ...(input.industries || []),
+  ]
+    .map(clean)
+    .filter(Boolean)
+    .join(" ");
+  const location = clean(input.location);
+  const page = Math.max(1, Number(input.scrollToken || 1));
+
+  return {
+    q_keywords: keywords || "B2B services",
+    person_titles: titles,
+    person_locations: location ? [location] : undefined,
+    organization_locations: location ? [location] : undefined,
+    contact_email_status: ["verified"],
+    per_page: clampSize(input.size),
+    page,
+  };
+}
+
+function apolloEnrichLimit() {
+  const value = Number(process.env.APOLLO_ENRICH_LIMIT || 10);
+  if (!Number.isFinite(value) || value < 0) return 10;
+  return Math.min(25, Math.floor(value));
+}
+
+async function enrichApolloPerson(person: ApolloPerson, apiKey: string) {
+  const personId = clean(person.id || person.person_id);
+  if (!personId) return person;
+
+  const response = await fetch("https://api.apollo.io/api/v1/people/match", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      id: personId,
+      reveal_personal_emails: false,
+      reveal_phone_number: false,
+    }),
+  }).catch(() => null);
+
+  if (!response?.ok) return person;
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    person?: ApolloPerson;
+    contact?: ApolloPerson;
+  };
+  return mergeApolloPerson(person, payload.person || payload.contact || {});
+}
+
+function mergeApolloPerson(base: ApolloPerson, enriched: ApolloPerson): ApolloPerson {
+  return {
+    ...base,
+    ...enriched,
+    organization: {
+      ...(base.organization || {}),
+      ...(enriched.organization || {}),
+    },
+    phone_numbers: enriched.phone_numbers || base.phone_numbers,
+  };
+}
+
 function buildPdlSql(input: SourceSearchInput) {
   const queryTerms = tokenizeSearch(input.query).slice(0, 4);
   const industries = (input.industries || [])
@@ -398,6 +586,60 @@ function buildPdlSql(input: SourceSearchInput) {
   }
 
   return `SELECT * FROM person WHERE ${where.filter(Boolean).join(" AND ")}`;
+}
+
+function normalizeApolloPerson(person: ApolloPerson, index: number): SourceLead {
+  const organization = person.organization || {};
+  const name =
+    clean(person.name) ||
+    [person.first_name, person.last_name].map((part) => clean(part)).filter(Boolean).join(" ") ||
+    "Unknown Contact";
+  const companyName = clean(organization.name || person.organization_name) || "Unknown Company";
+  const title = clean(person.title || person.headline) || "Decision maker";
+  const email = clean(person.email);
+  const phone = clean(person.phone_numbers?.[0]?.sanitized_number || person.phone_numbers?.[0]?.raw_number);
+  const niche = clean(organization.industry || person.organization_industry) || "General";
+  const website = normalizeWebsite(
+    organization.website_url ||
+      person.organization_website_url ||
+      organization.primary_domain ||
+      person.organization_primary_domain ||
+      "",
+  );
+  const location = [person.city || organization.city, person.state || organization.state, person.country || organization.country]
+    .map(clean)
+    .filter(Boolean)
+    .join(", ");
+  const intentSignals = inferIntentSignals({
+    title,
+    niche,
+    companyName,
+    hasEmail: Boolean(email),
+    hasPhone: Boolean(phone),
+    website,
+    linkedinUrl: person.linkedin_url || organization.linkedin_url,
+    companySize: organization.estimated_num_employees ? String(organization.estimated_num_employees) : "",
+  });
+  const emailSignal = person.email_status ? `Apollo email status: ${person.email_status}` : "";
+
+  return {
+    id: clean(person.id || person.person_id) || `apollo:${index}:${name}:${companyName}`,
+    name,
+    companyName,
+    title,
+    email,
+    phone,
+    niche,
+    location,
+    source: "Apollo",
+    website,
+    sourceUrl: person.linkedin_url || organization.linkedin_url,
+    score: scoreLead({ title, email, phone, niche, companyName, intentSignals }),
+    confidence: email || phone ? "contactable" : "needs enrichment",
+    buyerFit: classifyBuyerFit({ title, companyName }),
+    intentSignals: [emailSignal, ...intentSignals].filter(Boolean),
+    signalSummary: summarizeSignals([emailSignal, ...intentSignals].filter(Boolean)),
+  };
 }
 
 function normalizePdlPerson(person: RawPdlPerson): SourceLead {

@@ -127,7 +127,11 @@ export async function GET() {
     const recentConversionAuditEvent = events.find((event) => /conversion audit/i.test(`${event.title} ${event.detail}`));
     const recentProductionProofEvent = events.find((event) => /production proof/i.test(`${event.title} ${event.detail}`));
 
-    const sourceConfigured = sourceStatus.pdlConfigured || sourceStatus.googleMapsConfigured || sourceStatus.ghostLeadAgentConfigured;
+    const sourceConfigured =
+      sourceStatus.pdlConfigured ||
+      sourceStatus.apolloConfigured ||
+      sourceStatus.googleMapsConfigured ||
+      sourceStatus.ghostLeadAgentConfigured;
     const linkedinConfigured = Boolean(
       process.env.LINKEDIN_ACCESS_TOKEN || (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET),
     );
@@ -253,7 +257,7 @@ export async function GET() {
           "active campaigns": campaigns.filter((campaign) => campaign.status === "active").length,
           "source cap": caps.dailySourceLimit,
         },
-        blockers: sourceConfigured ? [] : ["Missing PDL_API_KEY, SERPAPI_API_KEY, or GHOST_LEAD_AGENT_SEARCH_URL"],
+        blockers: sourceConfigured ? [] : ["Missing PDL_API_KEY, APOLLO_API_KEY, SERPAPI_API_KEY, or GHOST_LEAD_AGENT_SEARCH_URL"],
       }),
       agentCard({
         id: "intent-feed",
@@ -348,7 +352,7 @@ export async function GET() {
         id: "social-intent",
         name: "Social Intent Scout",
         role: "Find competitor, LinkedIn, event, and public-audience trigger signals before outreach gets written.",
-        status: sourceStatus.pdlConfigured || linkedinConfigured || perplexity.configured ? "ready" : "needs-work",
+        status: sourceStatus.pdlConfigured || sourceStatus.apolloConfigured || linkedinConfigured || perplexity.configured ? "ready" : "needs-work",
         health: socialSignalLeads ? "Social signal records in GhostCRM" : "Ready to scout social intent",
         detail:
           "Runs GojiBerry-style signal plays using available public/company/contact sources, then imports and queues qualified accounts for review.",
@@ -360,23 +364,24 @@ export async function GET() {
           "linkedin tasks": linkedinTasks,
           "perplexity": perplexity.configured ? "on" : "off",
           "pdl": sourceStatus.pdlConfigured ? "on" : "off",
+          "apollo": sourceStatus.apolloConfigured ? "on" : "off",
         },
         blockers:
-          sourceStatus.pdlConfigured || linkedinConfigured || perplexity.configured
+          sourceStatus.pdlConfigured || sourceStatus.apolloConfigured || linkedinConfigured || perplexity.configured
             ? []
-            : ["Add PDL, LinkedIn, or Perplexity access for stronger social/competitor signal scouting."],
+            : ["Add PDL, Apollo, LinkedIn, or Perplexity access for stronger social/competitor signal scouting."],
       }),
       agentCard({
         id: "linkedin",
         name: "LinkedIn Sales Nav Agent",
         role: "Convert Sales Navigator saved searches and LinkedIn product access into enriched, scored, approval-ready GhostCRM leads.",
-        status: linkedinConfigured || sourceStatus.pdlConfigured || linkedInProducts.ready.eventsManagement ? "ready" : "needs-work",
+        status: linkedinConfigured || sourceStatus.pdlConfigured || sourceStatus.apolloConfigured || linkedInProducts.ready.eventsManagement ? "ready" : "needs-work",
         health: linkedInProducts.ready.eventsManagement
           ? "Events Management provisioned"
           : linkedinConfigured
             ? "LinkedIn connected"
-            : sourceStatus.pdlConfigured
-              ? "Manual Sales Nav lane ready"
+            : sourceStatus.pdlConfigured || sourceStatus.apolloConfigured
+              ? "Manual Sales Nav lane ready with enrichment"
               : "Needs enrichment source",
         detail:
           "Paste Sales Navigator rows or CSV into the Source lane. Events Management can now supply event context; Lead Sync stays gated until LinkedIn approves it.",
@@ -386,11 +391,12 @@ export async function GET() {
         metrics: {
           "sales nav leads": linkedinLeads.length,
           "pdl enrich": sourceStatus.pdlConfigured ? "on" : "off",
+          "apollo enrich": sourceStatus.apolloConfigured ? "on" : "off",
           "events api": linkedInProducts.ready.eventsManagement ? "ready" : "pending",
           "lead sync": linkedInProducts.products.leadSync,
         },
         blockers: [
-          ...(sourceStatus.pdlConfigured ? [] : ["Sales Nav paste works now, but PDL_API_KEY is needed to enrich missing emails/phones."]),
+          ...(sourceStatus.pdlConfigured || sourceStatus.apolloConfigured ? [] : ["Sales Nav paste works now, but PDL_API_KEY or APOLLO_API_KEY is needed to enrich missing emails/phones."]),
           ...(linkedInProducts.ready.leadSync ? [] : ["LinkedIn Lead Sync is not approved yet; keep using Sales Nav paste/screenshots and Events Management."]),
         ],
       }),
@@ -398,7 +404,7 @@ export async function GET() {
         id: "linkedin-tasks",
         name: "LinkedIn Task Agent",
         role: "Turn Sales Navigator/social-fit accounts into manual connection, DM, and follow-up tasks.",
-        status: linkedinConfigured || sourceStatus.pdlConfigured || linkedinLeads.length ? "ready" : "needs-work",
+        status: linkedinConfigured || sourceStatus.pdlConfigured || sourceStatus.apolloConfigured || linkedinLeads.length ? "ready" : "needs-work",
         health: linkedinTasks ? "LinkedIn tasks waiting" : "Ready for Sales Nav paste or intent-ranked leads",
         detail:
           "Creates compliant manual LinkedIn task cards from Sales Navigator paste data and warm social signals, then keeps replies flowing back into Vega.",
@@ -410,7 +416,7 @@ export async function GET() {
           "sales nav leads": linkedinLeads.length,
           "manual lane": "on",
         },
-        blockers: sourceStatus.pdlConfigured || linkedinLeads.length ? [] : ["Paste Sales Navigator rows or keep PDL enabled for enrichment."],
+        blockers: sourceStatus.pdlConfigured || sourceStatus.apolloConfigured || linkedinLeads.length ? [] : ["Paste Sales Navigator rows or keep PDL/Apollo enabled for enrichment."],
       }),
       agentCard({
         id: "web-helper",
@@ -646,7 +652,12 @@ export async function GET() {
           "safe send budget": caps.dailySafeSendLimit,
           "hot replies": hotReplies,
           "booked calls": bookedTasks,
-          "sources online": [sourceStatus.googleMapsConfigured, sourceStatus.pdlConfigured, sourceStatus.ghostLeadAgentConfigured].filter(Boolean).length,
+          "sources online": [
+            sourceStatus.googleMapsConfigured,
+            sourceStatus.pdlConfigured,
+            sourceStatus.apolloConfigured,
+            sourceStatus.ghostLeadAgentConfigured,
+          ].filter(Boolean).length,
         },
       },
       missionControl: {

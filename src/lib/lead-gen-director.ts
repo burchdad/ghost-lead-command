@@ -41,6 +41,7 @@ function hasProvider(provider: SourceProvider) {
   const status = getSourcingStatus();
   if (provider === "google-maps") return status.googleMapsConfigured;
   if (provider === "ghost-lead-agent") return status.ghostLeadAgentConfigured;
+  if (provider === "apollo") return status.apolloConfigured;
   return status.pdlConfigured;
 }
 
@@ -70,6 +71,18 @@ function sprintPlays(input: DirectorRunInput) {
       minScore: 82,
       size: 25,
       queueLimit: 5,
+    },
+    {
+      id: "apollo-founder-services",
+      name: "Apollo Founder Services Hunter",
+      role: "Use Apollo for named economic buyers and company context.",
+      provider: "apollo" as const,
+      query: process.env.LEAD_DIRECTOR_APOLLO_QUERY || "founders owners presidents operators of B2B service companies that need qualified sales calls",
+      location: clean(input.location) || process.env.LEAD_DIRECTOR_APOLLO_LOCATION || "United States",
+      industries: splitCsv(process.env.LEAD_DIRECTOR_APOLLO_INDUSTRIES || "B2B Services, Consulting, Staffing, Marketing"),
+      minScore: 84,
+      size: 25,
+      queueLimit: 4,
     },
     {
       id: "pdl-founder-services",

@@ -121,6 +121,7 @@ type SourceLead = {
 
 type SourcingStatus = {
   pdlConfigured: boolean;
+  apolloConfigured: boolean;
   ghostLeadAgentConfigured: boolean;
   googleMapsConfigured: boolean;
   mockSourceEnabled: boolean;
@@ -130,7 +131,7 @@ type SourcingStatus = {
 type SourceCampaign = {
   id: string;
   name: string;
-  provider: "pdl" | "ghost-lead-agent" | "google-maps";
+  provider: "pdl" | "apollo" | "ghost-lead-agent" | "google-maps";
   query: string;
   location?: string | null;
   industries?: string | null;
@@ -960,12 +961,13 @@ export default function Home() {
   });
   const [sourcingStatus, setSourcingStatus] = useState<SourcingStatus>({
     pdlConfigured: false,
+    apolloConfigured: false,
     ghostLeadAgentConfigured: false,
     googleMapsConfigured: false,
     mockSourceEnabled: false,
     maxPreviewSize: 100,
   });
-  const [sourceProvider, setSourceProvider] = useState<"pdl" | "ghost-lead-agent" | "google-maps">("pdl");
+  const [sourceProvider, setSourceProvider] = useState<"pdl" | "apollo" | "ghost-lead-agent" | "google-maps">("pdl");
   const [sourceQuery, setSourceQuery] = useState("founders revenue leaders growth operators at companies that need more qualified sales calls");
   const [sourceLocation, setSourceLocation] = useState("United States");
   const [sourceIndustry, setSourceIndustry] = useState("Software, SaaS, Marketing, Consulting, B2B Services");
@@ -4285,16 +4287,17 @@ export default function Home() {
                   <div className="grid gap-4">
                     <div className="grid gap-2">
                       <p className="text-sm text-[#aebbb7]">Provider</p>
-                      <div className="grid gap-2 sm:grid-cols-3">
+                      <div className="grid gap-2 sm:grid-cols-4">
                         {[
                           { id: "pdl", label: "People Data Labs", active: sourcingStatus.pdlConfigured },
+                          { id: "apollo", label: "Apollo", active: sourcingStatus.apolloConfigured },
                           { id: "google-maps", label: "Google Maps", active: sourcingStatus.googleMapsConfigured },
                           { id: "ghost-lead-agent", label: "Ghost Lead Agent", active: sourcingStatus.ghostLeadAgentConfigured },
                         ].map((provider) => (
                           <button
                             key={provider.id}
                             type="button"
-                            onClick={() => setSourceProvider(provider.id as "pdl" | "ghost-lead-agent" | "google-maps")}
+                            onClick={() => setSourceProvider(provider.id as "pdl" | "apollo" | "ghost-lead-agent" | "google-maps")}
                             className={`rounded-md border px-3 py-3 text-left text-sm transition ${
                               sourceProvider === provider.id
                                 ? "border-[#d8ff5f] bg-[#d8ff5f]/10 text-white"
@@ -4319,6 +4322,8 @@ export default function Home() {
                         ? "Domains or websites"
                         : sourceProvider === "google-maps"
                           ? "Google Maps search"
+                          : sourceProvider === "apollo"
+                            ? "Apollo people/company search"
                           : "Search brief"}
                       <textarea
                         value={sourceQuery}
@@ -4328,6 +4333,8 @@ export default function Home() {
                             ? "example.com\nhttps://acme.io"
                             : sourceProvider === "google-maps"
                               ? "marketing agencies near Dallas OR SaaS companies in Austin"
+                              : sourceProvider === "apollo"
+                                ? "founders owners presidents at B2B service companies"
                               : "founders revenue leaders growth operators at companies that need more qualified sales calls"
                         }
                         className="min-h-24 rounded-md border border-white/10 bg-[#101417] px-3 py-2 text-white outline-none focus:border-[#83d0c2]"

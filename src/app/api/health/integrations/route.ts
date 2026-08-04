@@ -36,6 +36,11 @@ export async function GET() {
 
   return NextResponse.json({
     pdl: { configured: sourcing.pdlConfigured },
+    apollo: {
+      configured: sourcing.apolloConfigured,
+      enrichLimit: process.env.APOLLO_ENRICH_LIMIT || "10",
+      useCase: "People/company database search and capped contact enrichment",
+    },
     leadIntake: {
       configured: Boolean(process.env.LEAD_INTAKE_SECRET),
       route: "/api/source/intake",

@@ -13,7 +13,7 @@ function boolParam(value: string | null) {
 }
 
 function parseProvider(value: unknown) {
-  return value === "ghost-lead-agent" || value === "google-maps" ? value : "pdl";
+  return value === "ghost-lead-agent" || value === "google-maps" || value === "apollo" ? value : "pdl";
 }
 
 export async function GET(request: Request) {
