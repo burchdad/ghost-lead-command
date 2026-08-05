@@ -7,6 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "qa:vega": "tsx scripts/qa-vega-smoke.mts",
+    "qa:vega:live": "tsx scripts/qa-vega-smoke.mts --live-source",
     "test": "tsx --test src/lib/waitlist-qualification.test.ts src/lib/vega-launch-team.test.ts src/lib/client-campaign-updates.test.ts src/lib/public-homepage.test.ts src/lib/brand.test.ts src/lib/production-proof.test.ts src/lib/vega-phase-a.test.ts src/lib/opportunity-intelligence.test.ts src/lib/nova-organization-assistant.test.ts src/lib/sourcing.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
