@@ -1,4 +1,5 @@
 import { createAutomationEvent } from "@/lib/automation";
+import { ensureLeadCommandCoreSchema } from "@/lib/lead-command-schema";
 import { getPrisma } from "@/lib/prisma";
 import { runReplyConversionSweep } from "@/lib/replies";
 import { notifySlackRevenueWatch } from "@/lib/slack";
@@ -18,6 +19,7 @@ export function isRevenueWatchRequest(text: string) {
 export async function runVegaRevenueWatch(input: { instruction?: string; execute?: boolean } = {}) {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
+  await ensureLeadCommandCoreSchema(workspace.id);
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [scorecard, recentReplies, recentInteractions, pendingApprovals, bookingReady, bookingBlocked] = await Promise.all([
     getSourceScorecard(),

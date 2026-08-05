@@ -1,5 +1,6 @@
 import { createAutomationEvent } from "@/lib/automation";
 import { emailQualityTier, getSenderHealth, isDecisionMakerTitle } from "@/lib/conversion-quality";
+import { ensureLeadCommandCoreSchema } from "@/lib/lead-command-schema";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -27,6 +28,7 @@ export function isConversionAuditRequest(text: string) {
 export async function runVegaConversionAudit(input: { days?: number; createEvent?: boolean } = {}) {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
+  await ensureLeadCommandCoreSchema(workspace.id);
   const days = Math.min(30, Math.max(1, Number(input.days || process.env.VEGA_CONVERSION_AUDIT_DAYS || 7)));
   const since = ageWindow(days);
 

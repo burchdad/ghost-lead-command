@@ -127,6 +127,7 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
     }
     const summary = `Vega created a call/contact-form task for ${updated.lead?.companyName || "that lead"}. No SendGrid email was sent.`;
     await recordOutreachSlackAction({ action: "call_task", itemId, ok: true, summary, payload });
+    await postSlackInteractionFollowup(payload.response_url, `VEGA CALL TASK CREATED\n\n${summary}`, { inChannel: true });
     return slackEphemeral(summary);
   }
 
@@ -184,6 +185,7 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
     });
     const startSummary = `Vega moved ${updated.lead?.companyName || "that lead"} into contact research. Contact Path Agent is running now. No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
     await recordOutreachSlackAction({ action: "research_started", itemId, ok: true, summary: startSummary, payload });
+    await postSlackInteractionFollowup(payload.response_url, `VEGA CONTACT RESEARCH STARTED\n\n${startSummary}`, { inChannel: true });
 
     after(async () => {
       try {

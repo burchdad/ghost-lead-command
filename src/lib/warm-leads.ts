@@ -1,4 +1,5 @@
 import { createAutomationEvent } from "@/lib/automation";
+import { ensureLeadCommandCoreSchema } from "@/lib/lead-command-schema";
 import { getPrisma } from "@/lib/prisma";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -52,6 +53,7 @@ function compact(text: string, max = 180) {
 export async function getWarmLeadPriorityReport(input: { limit?: number; createEvent?: boolean } = {}) {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
+  await ensureLeadCommandCoreSchema(workspace.id);
   const limit = Math.min(20, Math.max(1, Number(input.limit || 5)));
   const leads = await prisma.lead.findMany({
     where: { workspaceId: workspace.id, status: "active" },
@@ -182,6 +184,7 @@ export async function getWarmLeadPriorityReport(input: { limit?: number; createE
 export async function getBookingDiagnosisReport(input: { createEvent?: boolean } = {}) {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
+  await ensureLeadCommandCoreSchema(workspace.id);
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [
     sent24,

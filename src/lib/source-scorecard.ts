@@ -1,4 +1,5 @@
 import { getPrisma } from "@/lib/prisma";
+import { ensureLeadCommandCoreSchema } from "@/lib/lead-command-schema";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export type SourceScorecardRow = {
@@ -98,6 +99,7 @@ function finalize(row: SourceScorecardRow): SourceScorecardRow {
 export async function getSourceScorecard() {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
+  await ensureLeadCommandCoreSchema(workspace.id);
   const [leads, queue, replies, interactions] = await Promise.all([
     prisma.lead.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 2000 }),
     prisma.outreachQueueItem.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 3000 }),

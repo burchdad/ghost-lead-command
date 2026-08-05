@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { classifyPhoneAssistTasks } from "@/lib/phone-assist";
+import { ensureLeadCommandCoreSchema } from "@/lib/lead-command-schema";
 import { getPrisma } from "@/lib/prisma";
 import { getSourceScorecard } from "@/lib/source-scorecard";
 import { getDefaultWorkspace } from "@/lib/workspace";
@@ -13,6 +14,7 @@ export async function GET() {
   try {
     const prisma = getPrisma();
     const workspace = await getDefaultWorkspace();
+    await ensureLeadCommandCoreSchema(workspace.id);
     const leads = await prisma.lead.findMany({ where: { workspaceId: workspace.id } });
     const queue = await prisma.outreachQueueItem.findMany({ where: { workspaceId: workspace.id } });
     const replies = await prisma.reply.findMany({ where: { workspaceId: workspace.id } });
