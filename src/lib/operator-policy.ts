@@ -124,23 +124,36 @@ export async function prepareOperatorRun(input: PrepareRunInput): Promise<Operat
   const remainingSource = Math.max(0, caps.dailySourceLimit - sourcedToday);
   const remainingQueue = Math.max(0, caps.dailyQueueLimit - queuedToday);
   const remainingSender = Math.max(0, caps.dailySafeSendLimit - sentToday);
-  const queueLimit = Math.min(input.requestedQueueLimit, remainingQueue, remainingSender);
+  const queueLimit = Math.min(input.requestedQueueLimit, remainingQueue);
   const size = Math.min(input.requestedSize, remainingSource);
   const absoluteMinScore = numberFromEnv("AGENT_ABSOLUTE_MIN_CONTACT_SCORE", 50);
   const minScore = Math.max(input.requestedMinScore, absoluteMinScore);
   const blockedReasons: string[] = [];
+  const runBlockReasons: string[] = [];
 
-  if (remainingSource <= 0) blockedReasons.push("Daily source cap reached.");
-  if (remainingQueue <= 0) blockedReasons.push("Daily outreach queue cap reached.");
+  if (remainingSource <= 0) {
+    blockedReasons.push("Daily source cap reached.");
+    runBlockReasons.push("Daily source cap reached.");
+  }
+  if (remainingQueue <= 0) {
+    blockedReasons.push("Daily outreach queue cap reached.");
+    runBlockReasons.push("Daily outreach queue cap reached.");
+  }
   if (remainingSender <= 0) blockedReasons.push("Today's safe sender capacity reached.");
   if (senderHealth.mode === "stop" && !boolFromEnv("VEGA_ALLOW_HIGH_BOUNCE_SEND", false)) {
     blockedReasons.push(`Sender governor stopped sending at ${senderHealth.bounceRate}% risky events.`);
   }
-  if (queueLimit <= 0) blockedReasons.push("No safe sender capacity remains for this run.");
-  if (size <= 0) blockedReasons.push("No sourcing capacity remains for this run.");
+  if (queueLimit <= 0) {
+    blockedReasons.push("No outreach queue capacity remains for this run.");
+    runBlockReasons.push("No outreach queue capacity remains for this run.");
+  }
+  if (size <= 0) {
+    blockedReasons.push("No sourcing capacity remains for this run.");
+    runBlockReasons.push("No sourcing capacity remains for this run.");
+  }
 
   return {
-    mode: blockedReasons.length ? "blocked" : "ready",
+    mode: runBlockReasons.length ? "blocked" : "ready",
     requested: {
       size: input.requestedSize,
       queueLimit: input.requestedQueueLimit,
@@ -270,7 +283,7 @@ export function evaluateVegaLeadDecision(lead: SourceLead, policy: OperatorRunPo
   if (policy.sender.remaining <= 0) reasons.push("sender capacity exhausted");
   if (policy.sender.mode === "stop") reasons.push("sender health stop");
 
-  if (policy.sender.mode === "stop" || /institutional|vendor risk/i.test(lead.buyerFit || "")) {
+  if (/institutional|vendor risk/i.test(lead.buyerFit || "")) {
     return { lane: "suppress", trustScore, scores: { leadQuality, emailConfidence, copyConfidence, deliverability }, reasons };
   }
   if (!validEmail) {
@@ -279,6 +292,14 @@ export function evaluateVegaLeadDecision(lead: SourceLead, policy: OperatorRunPo
       trustScore,
       scores: { leadQuality, emailConfidence, copyConfidence, deliverability },
       reasons: reasons.length ? reasons : ["no verified email"],
+    };
+  }
+  if (policy.sender.mode === "stop" || policy.sender.remaining <= 0) {
+    return {
+      lane: hasPhone || hasWebsite ? "call-first" : "executive-review",
+      trustScore,
+      scores: { leadQuality, emailConfidence, copyConfidence, deliverability },
+      reasons: reasons.length ? reasons : ["email held by sender governor"],
     };
   }
   if (hasStrategicReviewRisk(lead) || trustScore >= policy.caps.executiveReviewTrustThreshold && trustScore < policy.caps.autoSendTrustThreshold) {

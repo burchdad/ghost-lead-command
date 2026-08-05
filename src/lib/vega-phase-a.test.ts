@@ -6,6 +6,7 @@ import { scoreSourceQuality } from "@/lib/source-quality-v2";
 import { canAutoApplyLearning, requiresExperimentApproval, transitionExperimentStatus } from "@/lib/experiment-engine";
 import { hasVegaCapability } from "@/lib/vega-entitlements";
 import { isVegaFeatureEnabled } from "@/lib/vega-feature-flags";
+import { evaluateVegaLeadDecision, type OperatorRunPolicy } from "@/lib/operator-policy";
 
 const now = new Date("2026-07-22T15:00:00.000Z");
 
@@ -162,6 +163,89 @@ test("STOP deliverability governor blocks first-touch email but leaves calls act
 
   assert.equal(decision.selectedPrimaryChannel, "CALL_FIRST");
   assert.ok(decision.reasons.some((reason) => reason.includes("STOP")));
+});
+
+function operatorPolicy(overrides: Partial<OperatorRunPolicy> = {}): OperatorRunPolicy {
+  return {
+    mode: "ready",
+    requested: { size: 10, queueLimit: 10, minScore: 70 },
+    effective: { size: 10, queueLimit: 10, minScore: 70 },
+    caps: {
+      dailySourceLimit: 150,
+      dailyQueueLimit: 40,
+      dailySafeSendLimit: 20,
+      executiveReviewLimit: 5,
+      autoSendTrustThreshold: 90,
+      executiveReviewTrustThreshold: 80,
+      requireEmail: true,
+      requireBuyerSignal: true,
+      autoSend: true,
+    },
+    usage: { sourcedToday: 0, queuedToday: 0, sentToday: 0, executiveReviewPending: 0 },
+    sender: {
+      mode: "stop",
+      bounceRate: 9.5,
+      targetBounceRate: 3,
+      hardStopBounceRate: 8,
+      safeLimit: 20,
+      sentToday: 20,
+      remaining: 0,
+    },
+    blockedReasons: ["Sender governor stopped sending at 9.5% risky events."],
+    ...overrides,
+  };
+}
+
+test("Vega keeps sourcing actionable call-first leads while sender governor is stopped", () => {
+  const decision = evaluateVegaLeadDecision(
+    {
+      id: "lead-1",
+      name: "Sam Owner",
+      title: "Owner",
+      companyName: "Tyler Exterior Services",
+      niche: "Exterior Cleaning",
+      email: "sam@tylerexterior.example",
+      phone: "(903) 555-0199",
+      website: "https://tylerexterior.example",
+      score: 92,
+      confidence: "high",
+      location: "Tyler, Texas",
+      source: "apollo",
+      buyerFit: "owner/operator",
+      signalSummary: "Commercial service business with public web presence.",
+      intentSignals: ["Commercial service fit"],
+    },
+    operatorPolicy(),
+  );
+
+  assert.equal(decision.lane, "call-first");
+  assert.ok(decision.reasons.includes("sender health stop"));
+});
+
+test("Vega holds email-only leads for review instead of suppressing them during sender stop", () => {
+  const decision = evaluateVegaLeadDecision(
+    {
+      id: "lead-2",
+      name: "Jordan Founder",
+      title: "Founder",
+      companyName: "Growth Ops Co",
+      niche: "B2B Services",
+      email: "jordan@growthops.example",
+      phone: "",
+      website: "",
+      score: 90,
+      confidence: "high",
+      location: "United States",
+      source: "pdl",
+      buyerFit: "founder led",
+      signalSummary: "Founder-led service business.",
+      intentSignals: ["Founder-led service fit"],
+    },
+    operatorPolicy(),
+  );
+
+  assert.equal(decision.lane, "executive-review");
+  assert.ok(decision.reasons.includes("sender health stop"));
 });
 
 test("channel policy restrictions prohibit unconsented SMS", () => {
