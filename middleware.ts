@@ -42,6 +42,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  const bearerToken = request.headers
+    .get("authorization")
+    ?.replace(/^Bearer\s+/i, "")
+    .trim();
+  if (bearerToken && bearerToken === accessKey) {
+    return NextResponse.next();
+  }
+
   const cookieValue = request.cookies.get(LEAD_COMMAND_ACCESS_COOKIE)?.value;
   if (cookieValue && cookieValue === (await hashLeadCommandAccessKey(accessKey))) {
     return NextResponse.next();
