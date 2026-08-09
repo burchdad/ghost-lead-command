@@ -454,7 +454,8 @@ async function importSourceLead(
   const phone = clean(sourceLead.phone);
   const companyName = clean(sourceLead.companyName);
   const contactName = clean(sourceLead.name);
-  const domain = normalizeDomain((sourceLead as SourceLead & { website?: string }).website || "");
+  const website = clean((sourceLead as SourceLead & { website?: string }).website);
+  const domain = normalizeDomain(website);
 
   const suppression = await findSuppressionMatch({
     email,
@@ -508,6 +509,8 @@ async function importSourceLead(
       workspaceId,
       name: companyName,
       niche: sourceLead.niche || "General",
+      website: website || null,
+      domain: domain || null,
       crmSource: sourceLead.source,
     },
   });
@@ -557,7 +560,7 @@ async function importSourceLead(
         sourceProvider: sourceLead.source,
         sourceLocation: sourceLead.location || input.location || null,
         sourceUrl: sourceLead.sourceUrl || null,
-        website: (sourceLead as SourceLead & { website?: string }).website || null,
+        website: website || null,
         buyerFit: sourceLead.buyerFit || null,
         signalSummary: sourceLead.signalSummary || null,
         intentSignals: sourceLead.intentSignals || [],

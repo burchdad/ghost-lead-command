@@ -657,6 +657,7 @@ function normalizePdlPerson(person: RawPdlPerson): SourceLead {
   const niche = clean(person.job_company_industry) || "General";
   const companyName = clean(person.job_company_name) || "Unknown Company";
   const title = clean(person.job_title) || "Decision maker";
+  const website = normalizeWebsite(person.job_company_website || "");
 
   const buyerFit = classifyBuyerFit({ title, companyName });
   const intentSignals = inferIntentSignals({
@@ -665,7 +666,7 @@ function normalizePdlPerson(person: RawPdlPerson): SourceLead {
     companyName,
     hasEmail: Boolean(email),
     hasPhone: Boolean(phone),
-    website: person.job_company_website,
+    website,
     linkedinUrl: person.job_company_linkedin_url || person.linkedin_url,
     companySize: person.job_company_size,
   });
@@ -680,6 +681,8 @@ function normalizePdlPerson(person: RawPdlPerson): SourceLead {
     niche,
     location: clean(person.location_name),
     source: "People Data Labs",
+    website,
+    sourceUrl: person.linkedin_url || person.job_company_linkedin_url,
     score: scoreLead({ title, email, phone, niche, companyName, intentSignals }),
     confidence: email || phone ? "contactable" : "needs enrichment",
     buyerFit,
@@ -699,6 +702,8 @@ function normalizeGenericLead(
   const email = String(lead.email || lead.work_email || "");
   const phone = String(lead.phone || lead.mobile_phone || lead.mobile || "");
   const niche = String(lead.niche || lead.industry || lead.company_industry || "General");
+  const website = normalizeWebsite(lead.website || lead.domain || lead.company_website || "");
+  const sourceUrl = String(lead.sourceUrl || lead.source_url || lead.linkedin_url || lead.url || "");
   const buyerFit = String(lead.buyerFit || lead.buyer_fit || classifyBuyerFit({ title, companyName }));
   const intentSignals = normalizeSignals(lead.intentSignals || lead.intent_signals || lead.signals).length
     ? normalizeSignals(lead.intentSignals || lead.intent_signals || lead.signals)
@@ -708,7 +713,7 @@ function normalizeGenericLead(
         companyName,
         hasEmail: Boolean(email),
         hasPhone: Boolean(phone),
-        website: String(lead.website || lead.domain || ""),
+        website,
         linkedinUrl: String(lead.linkedin || lead.linkedin_url || ""),
         companySize: String(lead.companySize || lead.company_size || ""),
       });
@@ -723,6 +728,8 @@ function normalizeGenericLead(
     niche,
     location: String(lead.location || lead.location_name || ""),
     source,
+    website,
+    sourceUrl,
     score: Number(lead.score || scoreLead({ title, email, phone, niche, companyName, intentSignals })),
     confidence: String(lead.confidence || (email || phone ? "contactable" : "needs enrichment")),
     buyerFit,

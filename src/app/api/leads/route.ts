@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrisma } from "@/lib/prisma";
+import { buildPortalLeadEvidence } from "@/lib/portal-lead-evidence";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export async function GET() {
@@ -10,6 +11,8 @@ export async function GET() {
       where: { workspaceId: workspace.id },
       orderBy: [{ score: "desc" }, { updatedAt: "desc" }],
       include: {
+        contact: true,
+        company: true,
         opportunities: true,
         interactions: {
           orderBy: { createdAt: "desc" },
@@ -18,7 +21,12 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({ leads });
+    return NextResponse.json({
+      leads: leads.map((lead) => ({
+        ...lead,
+        portalEvidence: buildPortalLeadEvidence(lead),
+      })),
+    });
   } catch (error) {
     return NextResponse.json(
       { error: "Leads unavailable", detail: error instanceof Error ? error.message : "Unknown error" },
