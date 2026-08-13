@@ -73,6 +73,8 @@ const initialMessage: Message = {
   agentType: "VEGA_CONCIERGE",
 };
 
+const sessionStorageKey = "vega-commercial-onboarding-session";
+
 export default function VegaCommercialOnboarding() {
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [message, setMessage] = useState(() => {
@@ -104,7 +106,9 @@ export default function VegaCommercialOnboarding() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || data.error || "Vega onboarding action failed.");
-      setSession(data.session || data.provisioned || data);
+      const nextSession = data.session || data.provisioned || data;
+      setSession(nextSession);
+      if (nextSession?.id) window.localStorage.setItem(sessionStorageKey, nextSession.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Vega onboarding action failed.");
     } finally {
@@ -115,6 +119,25 @@ export default function VegaCommercialOnboarding() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [session?.messages.length]);
+
+  useEffect(() => {
+    const sessionId = window.localStorage.getItem(sessionStorageKey);
+    if (!sessionId) return;
+
+    const controller = new AbortController();
+    fetch(`/api/onboarding/ai?sessionId=${encodeURIComponent(sessionId)}`, { signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || data.error || "Unable to resume Vega onboarding.");
+        setSession(data.session);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        window.localStorage.removeItem(sessionStorageKey);
+      });
+
+    return () => controller.abort();
+  }, []);
 
   const progress = useMemo(() => {
     const index = Math.max(0, progressOrder.indexOf(session?.status || "STARTED"));
@@ -137,6 +160,9 @@ export default function VegaCommercialOnboarding() {
   const facts = Array.isArray(session?.collectedFacts) ? session.collectedFacts : [];
   const quote = session?.pricingQuotes?.[0];
   const proposal = session?.commercialProposals?.[0];
+  const discoveryComplete = Boolean(
+    session && Array.isArray(session.missingRequiredFacts) && session.missingRequiredFacts.length === 0,
+  );
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#071013] text-[#f7fbf8]">
@@ -256,7 +282,7 @@ export default function VegaCommercialOnboarding() {
                 body={quote ? `${money(quote.totals?.setupFeeCents || 0)} setup and ${money(quote.totals?.recurringAmountCents || 0)}/mo.` : "Create a deterministic quote when the scope is ready."}
                 button="Create quote"
                 onClick={() => runAction({ action: "quote" })}
-                disabled={!session || busy}
+                disabled={!discoveryComplete || busy}
               />
 
               <ActionPanel
@@ -265,7 +291,7 @@ export default function VegaCommercialOnboarding() {
                 body={proposal ? `Version ${proposal.version} is ${proposal.status.toLowerCase()}.` : "Generate a versioned proposal after pricing exists."}
                 button="Present proposal"
                 onClick={() => runAction({ action: "proposal" })}
-                disabled={!session || busy}
+                disabled={!discoveryComplete || busy || !quote}
               />
 
               <section className="rounded-md border border-[#244044] bg-[#0d171a] p-4">

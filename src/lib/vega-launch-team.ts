@@ -251,6 +251,10 @@ const requiredFacts: CommercialFactKey[] = [
   "billingConfirmation",
 ];
 
+const discoveryFacts = requiredFacts.filter(
+  (key): key is CommercialFactKey => !["planAcceptance", "billingConfirmation"].includes(key),
+);
+
 const factQuestions: Record<CommercialFactKey, string> = {
   businessIdentity: "What is the business name Vega should build this around?",
   businessWebsite: "Do you have a website or public page Vega can use to understand the business?",
@@ -310,7 +314,7 @@ export function selectNextMissingFact(facts: CommercialFact[]) {
     };
   }
 
-  const missing = requiredFacts.find((key) => !known.has(key));
+  const missing = discoveryFacts.find((key) => !known.has(key));
   if (!missing) return null;
   return { key: missing, question: factQuestions[missing], reason: "highest-impact-missing-fact" };
 }
@@ -363,6 +367,10 @@ function applyDirectAnswerToCurrentQuestion(message: string, existingFacts: Comm
     return updateFact("businessIdentity", text);
   }
 
+  if (["serviceOrProduct", "targetCustomer", "territory"].includes(next.key) && text.length >= 2 && !isDirectNo(text)) {
+    return updateFact(next.key, text, 0.92);
+  }
+
   if (next.key === "serviceCapacity") {
     if (bareNumber) return updateFact("serviceCapacity", `${bareNumber} new customers or jobs per month`, 0.98);
     if (/\b(?:can handle|capacity|per month|jobs?|customers?|accounts?)\b/i.test(lower)) {
@@ -388,8 +396,22 @@ function applyDirectAnswerToCurrentQuestion(message: string, existingFacts: Comm
     return updateFact("growthObjective", text);
   }
 
+  if (next.key === "growthObjective" && text.length >= 2 && !isDirectNo(text)) {
+    return updateFact("growthObjective", text, 0.86);
+  }
+
   if (next.key === "desiredOutcome" && /\b(?:replies|booked|calls|appointments?|proposals?|closed|jobs?|contracts?)\b/i.test(lower)) {
     return updateFact("desiredOutcome", text);
+  }
+
+
+  if (["outreachResponsibility", "phoneFollowUpResponsibility", "automationPreference"].includes(next.key) && text.length >= 2) {
+    return updateFact(next.key, text, 0.92);
+  }
+
+  if (next.key === "salesUpdateRecipientEmail") {
+    const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+    if (email) return updateFact("salesUpdateRecipientEmail", email, 0.98);
   }
 
   if (next.key === "bestOffer" && text.length >= 4 && !isDirectNo(text)) {
@@ -407,11 +429,18 @@ function applyDirectAnswerToCurrentQuestion(message: string, existingFacts: Comm
   if (next.key === "replyPath") {
     const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
     if (email) return updateFact("replyPath", email, 0.94);
+    const updateEmail = existingFacts.find((fact) => fact.key === "salesUpdateRecipientEmail")?.value;
+    if (updateEmail && /\b(?:same|that|sales manager|update email)\b/i.test(lower)) {
+      return updateFact("replyPath", updateEmail, 0.94);
+    }
   }
 
   if (next.key === "schedulingPath") {
     if (isDirectNo(text) || /\b(?:no calendar|not connected|manual|call me|text me|email me|not yet)\b/i.test(lower)) {
       return updateFact("schedulingPath", text || "Manual scheduling for now", 0.82);
+    }
+    if (/https?:\/\/[^\s]+|\b(?:calendar|calendly|booking|schedule|scheduler|appointment)\b/i.test(text)) {
+      return updateFact("schedulingPath", text, 0.94);
     }
   }
 
@@ -426,13 +455,22 @@ function applyPendingFactConfirmation(message: string, existingFacts: Commercial
   if (!pending) return existingFacts;
 
   if (intent === "rejected") {
-    return upsertFact(existingFacts, {
-      ...pending,
-      confidence: 0.2,
-      inferred: true,
-      confirmed: false,
-      evidence: [...pending.evidence, message.trim()].slice(-3),
-    });
+    const correction = message
+      .trim()
+      .replace(/^(?:no|nope|not quite|incorrect|wrong|change that|that's wrong|thats wrong)\b[,:;.!\s-]*/i, "")
+      .trim();
+    if (correction.length >= 2) {
+      return upsertFact(existingFacts, {
+        ...pending,
+        value: correction,
+        source: "customer",
+        confidence: 0.96,
+        inferred: false,
+        confirmed: true,
+        evidence: [...pending.evidence, message.trim()].slice(-3),
+      });
+    }
+    return existingFacts.filter((fact) => fact.key !== pending.key);
   }
 
   return upsertFact(existingFacts, {
@@ -902,6 +940,7 @@ export async function createCommercialQuote(sessionId: string) {
   const session = await prisma.aIOnboardingSession.findUnique({ where: { id: sessionId } });
   if (!session) throw new Error("Onboarding session not found.");
   const facts = normalizeFacts(session.collectedFacts);
+  assertDiscoveryComplete(facts);
   const recommendation = recommendProduct(facts);
   const input = buildPricingInput(recommendation.productCode, facts);
   const quote = calculatePricing(input);
@@ -927,6 +966,7 @@ export async function createCommercialProposal(sessionId: string) {
   await ensureVegaOnboardingSchema(prisma);
   const session = await prisma.aIOnboardingSession.findUnique({ where: { id: sessionId }, include: { commercialProposals: true } });
   if (!session) throw new Error("Onboarding session not found.");
+  assertDiscoveryComplete(normalizeFacts(session.collectedFacts));
   const quote = session.pricingQuoteId
     ? await prisma.pricingQuote.findUnique({ where: { id: session.pricingQuoteId } })
     : await createCommercialQuote(session.id);
@@ -1094,6 +1134,14 @@ function factMap(facts: CommercialFact[]) {
     acc[fact.key] = fact;
     return acc;
   }, {});
+}
+
+function assertDiscoveryComplete(facts: CommercialFact[]) {
+  const confirmed = new Set(facts.filter((fact) => fact.confirmed).map((fact) => fact.key));
+  const missing = discoveryFacts.filter((key) => !confirmed.has(key));
+  if (missing.length) {
+    throw new Error(`Complete Vega discovery before pricing. Missing: ${missing.join(", ")}.`);
+  }
 }
 
 function statusForMissingFact(key: CommercialFactKey) {

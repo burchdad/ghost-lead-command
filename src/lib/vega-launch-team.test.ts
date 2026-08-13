@@ -166,6 +166,72 @@ describe("Vega Launch Team fact engine", () => {
     assert.equal(withVolume.find((item) => item.key === "desiredLeadVolume")?.value, "40 qualified leads per month");
   });
 
+  it("advances through every discovery question with concise natural answers", () => {
+    const answers: Partial<Record<CommercialFact["key"], string>> = {
+      businessIdentity: "Naks Exterior Services",
+      businessWebsite: "not yet",
+      serviceOrProduct: "commercial window and exterior cleaning",
+      targetCustomer: "property managers and commercial building owners",
+      territory: "Tyler and nearby cities",
+      serviceCapacity: "30",
+      averageCustomerValue: "1500",
+      growthObjective: "add $30,000 in monthly contract revenue",
+      desiredLeadVolume: "40",
+      desiredOutcome: "booked appointments",
+      outreachResponsibility: "Vega should auto-send inside guardrails",
+      phoneFollowUpResponsibility: "my sales manager",
+      salesUpdateRecipientEmail: "sales@naks.com",
+      bestOffer: "a free exterior cleaning estimate",
+      differentiators: "same-day quotes and insured crews",
+      contactIdentity: "Alex at Naks Exterior Services",
+      replyPath: "use the same sales manager email",
+      schedulingPath: "manual scheduling for now",
+      automationPreference: "as much as possible",
+    };
+    let facts: CommercialFact[] = [];
+    const visited: string[] = [];
+
+    for (let step = 0; step < 30; step += 1) {
+      const next = selectNextMissingFact(facts);
+      if (!next) break;
+      if (next.reason === "inferred-fact-confirmation") {
+        const before = next.key;
+        facts = inferFactsFromMessage("that is correct", facts);
+        assert.notEqual(selectNextMissingFact(facts)?.key, before, `Vega repeated confirmation for ${before}`);
+        continue;
+      }
+      visited.push(next.key);
+      const answer = answers[next.key];
+      assert.ok(answer, `Missing regression answer for ${next.key}`);
+      const before = next.key;
+      facts = inferFactsFromMessage(answer, facts);
+      assert.notEqual(selectNextMissingFact(facts)?.key, before, `Vega repeated ${before}`);
+    }
+
+    assert.equal(selectNextMissingFact(facts), null);
+    for (const key of Object.keys(answers) as CommercialFact["key"][]) {
+      const captured = facts.find((item) => item.key === key);
+      assert.equal(captured?.confirmed, true, `${key} was not confirmed`);
+    }
+    assert.ok(visited.length >= 10, "The flow should exercise a meaningful sequence of direct questions");
+  });
+
+  it("turns a rejected inferred confirmation into a direct correction", () => {
+    const initial = [
+      fact("businessIdentity", "Naks Exterior Services"),
+      fact("businessWebsite", "No public website yet"),
+      fact("serviceOrProduct", "commercial exterior cleaning"),
+      fact("targetCustomer", "homeowners", false),
+    ];
+
+    const corrected = inferFactsFromMessage("No, property managers and commercial building owners", initial);
+    const target = corrected.find((item) => item.key === "targetCustomer");
+
+    assert.equal(target?.confirmed, true);
+    assert.match(target?.value || "", /property managers/);
+    assert.notEqual(selectNextMissingFact(corrected)?.key, "targetCustomer");
+  });
+
   it("parses OpenAI onboarding facts from structured JSON without accepting unknown keys", () => {
     const facts = parseAiOnboardingFacts(
       {
