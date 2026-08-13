@@ -6,6 +6,7 @@ import {
   buildPricingInput,
   calculatePricing,
   inferFactsFromMessage,
+  parseAiOnboardingFacts,
   recommendProduct,
   selectNextMissingFact,
   upsertFact,
@@ -107,6 +108,53 @@ describe("Vega Launch Team fact engine", () => {
     assert.equal(target?.confirmed, true);
     assert.equal(target?.source, "customer");
     assert.notEqual(next?.key, "targetCustomer");
+  });
+
+  it("treats a no-website answer as complete when Vega asked for the website", () => {
+    const initial = [
+      fact("businessIdentity", "Naks Exterior Services"),
+      fact("serviceOrProduct", "commercial window cleaning and exterior cleaning"),
+      fact("targetCustomer", "property managers and storefronts"),
+      fact("territory", "Tyler, Texas"),
+    ];
+    assert.equal(selectNextMissingFact(initial)?.key, "businessWebsite");
+
+    const facts = inferFactsFromMessage("Ghost AI is actually working on building it right now", initial);
+    const website = facts.find((item) => item.key === "businessWebsite");
+    const next = selectNextMissingFact(facts);
+
+    assert.equal(website?.value, "No public website yet");
+    assert.equal(website?.confirmed, true);
+    assert.notEqual(next?.key, "businessWebsite");
+  });
+
+  it("parses OpenAI onboarding facts from structured JSON without accepting unknown keys", () => {
+    const facts = parseAiOnboardingFacts(
+      {
+        facts: [
+          {
+            key: "averageCustomerValue",
+            value: "$1,200 per commercial cleaning contract",
+            confidence: 0.91,
+            confirmed: true,
+            evidence: "Most commercial cleaning contracts are around $1,200.",
+          },
+          {
+            key: "unknownField",
+            value: "should be ignored",
+            confidence: 0.99,
+            confirmed: true,
+            evidence: "bad",
+          },
+        ],
+        notes: [],
+      },
+      "Most commercial cleaning contracts are around $1,200.",
+    );
+
+    assert.equal(facts.length, 1);
+    assert.equal(facts[0]?.key, "averageCustomerValue");
+    assert.equal(facts[0]?.confirmed, true);
   });
 });
 

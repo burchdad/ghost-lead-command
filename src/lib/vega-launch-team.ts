@@ -101,6 +101,7 @@ export type PricingQuoteOutput = {
 const PRICE_VERSION = "vega-commercial-2026-07-20";
 const PROMPT_VERSION = "vega-launch-team-v1";
 const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const OPENAI_ONBOARDING_MODEL = process.env.OPENAI_ONBOARDING_MODEL || MODEL;
 
 export const VEGA_LAUNCH_TEAM_CONTRACTS: Record<VegaLaunchAgentType, LaunchAgentContract> = {
   VEGA_CONCIERGE: contract(
@@ -289,6 +290,15 @@ export function upsertFact(facts: CommercialFact[], fact: Omit<CommercialFact, "
   return [...facts.filter((item) => item.key !== fact.key), next];
 }
 
+function mergeFacts(existingFacts: CommercialFact[], incomingFacts: CommercialFact[]) {
+  return incomingFacts.reduce((facts, incoming) => {
+    const existing = facts.find((fact) => fact.key === incoming.key);
+    if (existing?.confirmed && incoming.source !== "customer") return facts;
+    if (existing?.confirmed && incoming.confidence < existing.confidence) return facts;
+    return upsertFact(facts, incoming);
+  }, existingFacts);
+}
+
 export function selectNextMissingFact(facts: CommercialFact[]) {
   const known = new Set(facts.filter((fact) => fact.confirmed || (fact.inferred && fact.confidence >= 0.86)).map((fact) => fact.key));
   const confirmationNeeded = facts.find((fact) => fact.inferred && !fact.confirmed && fact.confidence < 0.95);
@@ -305,6 +315,10 @@ export function selectNextMissingFact(facts: CommercialFact[]) {
   return { key: missing, question: factQuestions[missing], reason: "highest-impact-missing-fact" };
 }
 
+function isDirectNo(message: string) {
+  return /^(no|nope|not yet|not right now|none|we don't|we do not|doesn't have one|does not have one)\b/i.test(message.trim());
+}
+
 function confirmationIntent(message: string) {
   const lower = message.trim().toLowerCase();
   if (
@@ -318,6 +332,76 @@ function confirmationIntent(message: string) {
     return "rejected";
   }
   return null;
+}
+
+function applyDirectAnswerToCurrentQuestion(message: string, existingFacts: CommercialFact[]) {
+  const next = selectNextMissingFact(existingFacts);
+  if (!next || next.reason !== "highest-impact-missing-fact") return existingFacts;
+
+  const text = message.trim();
+  const lower = text.toLowerCase();
+  const updateFact = (key: CommercialFactKey, value: string, confidence = 0.9) =>
+    upsertFact(existingFacts, {
+      key,
+      value,
+      source: "customer",
+      confidence,
+      inferred: false,
+      confirmed: true,
+      requiredFor: ["proposal", "pricing", "launch"],
+      evidence: [text.slice(0, 240)],
+    });
+
+  if (next.key === "businessWebsite") {
+    if (isDirectNo(text) || /\b(?:building|working on|under construction|coming soon|not live|no site|no website)\b/i.test(lower)) {
+      return updateFact("businessWebsite", "No public website yet");
+    }
+  }
+
+  if (next.key === "businessIdentity" && text.length >= 2 && text.length <= 100 && !isDirectNo(text)) {
+    return updateFact("businessIdentity", text);
+  }
+
+  if (next.key === "serviceCapacity" && /\b(?:can handle|capacity|per month|jobs?|customers?|accounts?)\b/i.test(lower)) {
+    return updateFact("serviceCapacity", text);
+  }
+
+  if (next.key === "averageCustomerValue" && /\$|\b(?:worth|average|ticket|job|contract|month|monthly|annual|year)\b/i.test(lower)) {
+    return updateFact("averageCustomerValue", text);
+  }
+
+  if (next.key === "growthObjective" && /\b(?:want|need|goal|grow|book|close|revenue|contract|appointments?|leads?)\b/i.test(lower)) {
+    return updateFact("growthObjective", text);
+  }
+
+  if (next.key === "desiredOutcome" && /\b(?:replies|booked|calls|appointments?|proposals?|closed|jobs?|contracts?)\b/i.test(lower)) {
+    return updateFact("desiredOutcome", text);
+  }
+
+  if (next.key === "bestOffer" && text.length >= 4 && !isDirectNo(text)) {
+    return updateFact("bestOffer", text, 0.82);
+  }
+
+  if (next.key === "differentiators" && text.length >= 4 && !isDirectNo(text)) {
+    return updateFact("differentiators", text, 0.82);
+  }
+
+  if (next.key === "contactIdentity" && text.length >= 2 && !isDirectNo(text)) {
+    return updateFact("contactIdentity", text, 0.86);
+  }
+
+  if (next.key === "replyPath") {
+    const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+    if (email) return updateFact("replyPath", email, 0.94);
+  }
+
+  if (next.key === "schedulingPath") {
+    if (isDirectNo(text) || /\b(?:no calendar|not connected|manual|call me|text me|email me|not yet)\b/i.test(lower)) {
+      return updateFact("schedulingPath", text || "Manual scheduling for now", 0.82);
+    }
+  }
+
+  return existingFacts;
 }
 
 function applyPendingFactConfirmation(message: string, existingFacts: CommercialFact[]) {
@@ -348,7 +432,7 @@ function applyPendingFactConfirmation(message: string, existingFacts: Commercial
 }
 
 export function inferFactsFromMessage(message: string, existingFacts: CommercialFact[] = []) {
-  const facts = applyPendingFactConfirmation(message, [...existingFacts]);
+  const facts = applyDirectAnswerToCurrentQuestion(message, applyPendingFactConfirmation(message, [...existingFacts]));
   const text = message.trim();
   const lower = text.toLowerCase();
   const add = (key: CommercialFactKey, value: string, confidence = 0.78, confirmed = true) => {
@@ -418,6 +502,137 @@ export function inferFactsFromMessage(message: string, existingFacts: Commercial
   if (/\b(?:ghost handles calls|managed calls|done for me)\b/.test(lower)) add("phoneFollowUpResponsibility", "Ghost managed calling");
 
   return facts;
+}
+
+type AiFactExtractionResult = {
+  facts?: Array<{
+    key?: string;
+    value?: string;
+    confidence?: number;
+    confirmed?: boolean;
+    evidence?: string;
+  }>;
+  notes?: string[];
+};
+
+const validFactKeys = new Set<CommercialFactKey>(requiredFacts);
+
+export function parseAiOnboardingFacts(payload: unknown, customerMessage: string): CommercialFact[] {
+  const result = payload as AiFactExtractionResult;
+  if (!Array.isArray(result?.facts)) return [];
+
+  return result.facts
+    .map((item): CommercialFact | null => {
+      const key = String(item.key || "") as CommercialFactKey;
+      const value = String(item.value || "").trim();
+      if (!validFactKeys.has(key) || !value) return null;
+
+      const confidence = Math.max(0, Math.min(0.96, Number(item.confidence || 0.74)));
+      return {
+        key,
+        value,
+        source: item.confirmed === false ? "inference" : "customer",
+        confidence,
+        inferred: item.confirmed === false,
+        confirmed: item.confirmed !== false,
+        requiredFor: ["proposal", "pricing", "launch"],
+        evidence: [String(item.evidence || customerMessage).slice(0, 240)],
+        updatedAt: new Date().toISOString(),
+      };
+    })
+    .filter((item): item is CommercialFact => Boolean(item));
+}
+
+export async function inferFactsWithAi(message: string, existingFacts: CommercialFact[] = []) {
+  const deterministicFacts = inferFactsFromMessage(message, existingFacts);
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || process.env.VEGA_ONBOARDING_AI === "disabled") {
+    return { facts: deterministicFacts, provider: "deterministic" as const };
+  }
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: OPENAI_ONBOARDING_MODEL,
+        input: buildOnboardingFactPrompt(message, existingFacts),
+        text: {
+          format: {
+            type: "json_schema",
+            name: "vega_onboarding_fact_extraction",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                facts: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      key: { type: "string", enum: requiredFacts },
+                      value: { type: "string" },
+                      confidence: { type: "number" },
+                      confirmed: { type: "boolean" },
+                      evidence: { type: "string" },
+                    },
+                    required: ["key", "value", "confidence", "confirmed", "evidence"],
+                  },
+                },
+                notes: {
+                  type: "array",
+                  items: { type: "string" },
+                },
+              },
+              required: ["facts", "notes"],
+            },
+          },
+        },
+        max_output_tokens: 900,
+      }),
+    });
+
+    if (!response.ok) {
+      return { facts: deterministicFacts, provider: "deterministic" as const, warning: `OpenAI returned ${response.status}` };
+    }
+
+    const payload = await response.json();
+    const outputText =
+      payload.output_text ||
+      payload.output?.flatMap((item: { content?: { text?: string }[] }) => item.content || [])
+        .map((item: { text?: string }) => item.text)
+        .filter(Boolean)
+        .join("\n");
+    const aiFacts = parseAiOnboardingFacts(JSON.parse(outputText || "{}"), message);
+    return { facts: mergeFacts(deterministicFacts, aiFacts), provider: "openai" as const, model: OPENAI_ONBOARDING_MODEL };
+  } catch (error) {
+    return {
+      facts: deterministicFacts,
+      provider: "deterministic" as const,
+      warning: error instanceof Error ? error.message : "OpenAI onboarding interpretation failed",
+    };
+  }
+}
+
+function buildOnboardingFactPrompt(message: string, existingFacts: CommercialFact[]) {
+  return [
+    "You are Vega Concierge, an AI sales onboarding analyst for Ghost Lead Command.",
+    "Extract only facts the customer directly stated or clearly corrected. Do not invent facts.",
+    "Use confirmed=true for direct customer statements. Use confirmed=false only for obvious inferred market categories that Vega should later confirm.",
+    "If the customer says no/not yet to the currently requested website, extract businessWebsite as No public website yet.",
+    "If the customer gives an email for daily lead updates, use salesUpdateRecipientEmail. If they give the reply inbox prospects should email, use replyPath.",
+    "If the customer says a sales manager, VA, or team will handle calls, extract phoneFollowUpResponsibility.",
+    "If the customer says they want Vega to auto-send or automate outreach, extract automationPreference.",
+    "Return JSON only.",
+    `Allowed fact keys: ${requiredFacts.join(", ")}`,
+    `Existing facts: ${JSON.stringify(existingFacts.map(({ key, value, confirmed, inferred, confidence }) => ({ key, value, confirmed, inferred, confidence })))}`,
+    `Customer message: ${message}`,
+  ].join("\n");
 }
 
 export function recommendProduct(facts: CommercialFact[]) {
@@ -598,7 +813,8 @@ export async function continueCommercialOnboarding(input: { sessionId: string; m
     data: { sessionId: session.id, role: "customer", content: input.message },
   });
 
-  const facts = inferFactsFromMessage(input.message, normalizeFacts(session.collectedFacts));
+  const interpretation = await inferFactsWithAi(input.message, normalizeFacts(session.collectedFacts));
+  const facts = interpretation.facts;
   const recommendation = recommendProduct(facts);
   const quoteInput = buildPricingInput(recommendation.productCode, facts);
   const quote = calculatePricing(quoteInput);
@@ -622,7 +838,7 @@ export async function continueCommercialOnboarding(input: { sessionId: string; m
     onboardingSessionId: session.id,
     workspaceId: session.workspaceId || undefined,
     agentType: VegaLaunchAgentType.VEGA_CONCIERGE,
-    input: { message: input.message, currentStatus: session.status },
+    input: { message: input.message, currentStatus: session.status, interpretationProvider: interpretation.provider },
     structuredOutput: agentOutput,
     confidence: agentOutput.confidence,
   });
