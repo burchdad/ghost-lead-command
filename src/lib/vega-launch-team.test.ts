@@ -95,6 +95,19 @@ describe("Vega Launch Team fact engine", () => {
     assert.equal(target?.inferred, false);
     assert.notEqual(next?.key, "targetCustomer");
   });
+
+  it("accepts natural-language confirmation without repeating the same question", () => {
+    const initial = inferFactsFromMessage(
+      "Naks Exterior Services wants commercial window cleaning and exterior cleaning contracts around Tyler, Texas. Send daily lead updates and call tasks to sales@naks.com. The sales manager will handle phone follow-up.",
+    );
+    const confirmed = inferFactsFromMessage("that is correct", initial);
+    const target = confirmed.find((item) => item.key === "targetCustomer");
+    const next = selectNextMissingFact(confirmed);
+
+    assert.equal(target?.confirmed, true);
+    assert.equal(target?.source, "customer");
+    assert.notEqual(next?.key, "targetCustomer");
+  });
 });
 
 describe("Vega Launch Team product and pricing", () => {

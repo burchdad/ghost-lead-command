@@ -307,7 +307,11 @@ export function selectNextMissingFact(facts: CommercialFact[]) {
 
 function confirmationIntent(message: string) {
   const lower = message.trim().toLowerCase();
-  if (/^(yes|yep|yeah|correct|that's correct|thats correct|right|exactly|confirmed|that is right|that works|looks good)\b/.test(lower)) {
+  if (
+    /^(yes|yep|yeah|correct|that's correct|thats correct|that is correct|that's right|thats right|right|exactly|confirmed|that is right|that works|looks good)\b/.test(
+      lower,
+    )
+  ) {
     return "confirmed";
   }
   if (/^(no|nope|not quite|incorrect|wrong|change that|that's wrong|thats wrong)\b/.test(lower)) {
