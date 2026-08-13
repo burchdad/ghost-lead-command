@@ -340,6 +340,7 @@ function applyDirectAnswerToCurrentQuestion(message: string, existingFacts: Comm
 
   const text = message.trim();
   const lower = text.toLowerCase();
+  const bareNumber = text.match(/^\s*(\d{1,6}(?:\.\d{1,2})?)\s*$/)?.[1];
   const updateFact = (key: CommercialFactKey, value: string, confidence = 0.9) =>
     upsertFact(existingFacts, {
       key,
@@ -362,12 +363,25 @@ function applyDirectAnswerToCurrentQuestion(message: string, existingFacts: Comm
     return updateFact("businessIdentity", text);
   }
 
-  if (next.key === "serviceCapacity" && /\b(?:can handle|capacity|per month|jobs?|customers?|accounts?)\b/i.test(lower)) {
-    return updateFact("serviceCapacity", text);
+  if (next.key === "serviceCapacity") {
+    if (bareNumber) return updateFact("serviceCapacity", `${bareNumber} new customers or jobs per month`, 0.98);
+    if (/\b(?:can handle|capacity|per month|jobs?|customers?|accounts?)\b/i.test(lower)) {
+      return updateFact("serviceCapacity", text);
+    }
   }
 
-  if (next.key === "averageCustomerValue" && /\$|\b(?:worth|average|ticket|job|contract|month|monthly|annual|year)\b/i.test(lower)) {
-    return updateFact("averageCustomerValue", text);
+  if (next.key === "averageCustomerValue") {
+    if (bareNumber) return updateFact("averageCustomerValue", `$${bareNumber} per customer or job`, 0.94);
+    if (/\$|\b(?:worth|average|ticket|job|contract|month|monthly|annual|year)\b/i.test(lower)) {
+      return updateFact("averageCustomerValue", text);
+    }
+  }
+
+  if (next.key === "desiredLeadVolume") {
+    if (bareNumber) return updateFact("desiredLeadVolume", `${bareNumber} qualified leads per month`, 0.98);
+    if (/\b(?:leads?|prospects?|appointments?|per month|monthly)\b/i.test(lower)) {
+      return updateFact("desiredLeadVolume", text);
+    }
   }
 
   if (next.key === "growthObjective" && /\b(?:want|need|goal|grow|book|close|revenue|contract|appointments?|leads?)\b/i.test(lower)) {

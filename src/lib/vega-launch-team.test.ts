@@ -128,6 +128,44 @@ describe("Vega Launch Team fact engine", () => {
     assert.notEqual(next?.key, "businessWebsite");
   });
 
+  it("binds a bare number to Vega's current service-capacity question", () => {
+    const initial = [
+      fact("businessIdentity", "Naks Exterior Services"),
+      fact("businessWebsite", "No public website yet"),
+      fact("serviceOrProduct", "commercial window cleaning and exterior cleaning"),
+      fact("targetCustomer", "property managers and storefronts"),
+      fact("territory", "Tyler, Texas"),
+    ];
+    assert.equal(selectNextMissingFact(initial)?.key, "serviceCapacity");
+
+    const facts = inferFactsFromMessage("30", initial);
+    const capacity = facts.find((item) => item.key === "serviceCapacity");
+    const next = selectNextMissingFact(facts);
+
+    assert.equal(capacity?.value, "30 new customers or jobs per month");
+    assert.equal(capacity?.confirmed, true);
+    assert.equal(capacity?.source, "customer");
+    assert.notEqual(next?.key, "serviceCapacity");
+  });
+
+  it("binds bare numbers to the current value and lead-volume questions", () => {
+    const throughCapacity = [
+      fact("businessIdentity", "Naks Exterior Services"),
+      fact("businessWebsite", "No public website yet"),
+      fact("serviceOrProduct", "commercial window cleaning and exterior cleaning"),
+      fact("targetCustomer", "property managers and storefronts"),
+      fact("territory", "Tyler, Texas"),
+      fact("serviceCapacity", "30 new customers or jobs per month"),
+    ];
+
+    const withValue = inferFactsFromMessage("1500", throughCapacity);
+    assert.equal(withValue.find((item) => item.key === "averageCustomerValue")?.value, "$1500 per customer or job");
+
+    const withGrowth = inferFactsFromMessage("We want to grow commercial contract revenue", withValue);
+    const withVolume = inferFactsFromMessage("40", withGrowth);
+    assert.equal(withVolume.find((item) => item.key === "desiredLeadVolume")?.value, "40 qualified leads per month");
+  });
+
   it("parses OpenAI onboarding facts from structured JSON without accepting unknown keys", () => {
     const facts = parseAiOnboardingFacts(
       {
