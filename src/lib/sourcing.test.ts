@@ -103,6 +103,10 @@ test("Facebook business discovery corroborates public Pages with Google Maps loc
     return Response.json({
       organic_results: [
         {
+          title: "A promotional post from Naks Exterior Services",
+          link: "https://www.facebook.com/naksexteriorservices/posts/123456789/",
+        },
+        {
           position: 1,
           title: "Naks Exterior Services | Facebook",
           link: "https://www.facebook.com/naksexteriorservices/",

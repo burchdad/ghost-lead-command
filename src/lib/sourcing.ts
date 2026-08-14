@@ -277,7 +277,7 @@ async function fetchFacebookPageMarket(input: SourceSearchInput, market: string,
   const terms = [clean(input.query), clean(input.industries?.[0]), market].filter(Boolean).join(" ");
   const url = new URL("https://serpapi.com/search.json");
   url.searchParams.set("engine", "google");
-  url.searchParams.set("q", `site:facebook.com ${terms}`);
+  url.searchParams.set("q", `site:facebook.com ${terms} -inurl:posts -inurl:reel -inurl:videos -inurl:photos -inurl:groups -inurl:events`);
   url.searchParams.set("api_key", clean(process.env.SERPAPI_API_KEY));
   url.searchParams.set("hl", "en");
   url.searchParams.set("num", String(Math.min(100, Math.max(10, size))));
@@ -296,7 +296,9 @@ async function fetchFacebookPageMarket(input: SourceSearchInput, market: string,
 function isFacebookBusinessPageResult(result: SerpApiOrganicResult) {
   const link = clean(result.link).toLowerCase();
   if (!link.includes("facebook.com/")) return false;
-  return !/facebook\.com\/(?:groups|people|events|marketplace|watch|reel|share)\//i.test(link);
+  if (/facebook\.com\/(?:groups|people|events|marketplace|watch|reel|reels|share|gaming)\//i.test(link)) return false;
+  if (/\/(?:posts|photos|videos|reels|permalink|story\.php)(?:\/|\?|$)/i.test(link)) return false;
+  return true;
 }
 
 function facebookPageCompanyName(value: unknown) {
