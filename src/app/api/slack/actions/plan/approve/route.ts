@@ -4,7 +4,7 @@ import { isSlackActionAuthorized } from "@/lib/slack";
 import type { SourceProvider } from "@/lib/sourcing";
 
 function parseProvider(value: string | null): SourceProvider {
-  if (value === "google-maps" || value === "ghost-lead-agent" || value === "apollo" || value === "pdl") return value;
+  if (value === "google-maps" || value === "facebook-business" || value === "ghost-lead-agent" || value === "apollo" || value === "pdl") return value;
   return "pdl";
 }
 

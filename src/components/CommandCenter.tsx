@@ -124,6 +124,7 @@ type SourcingStatus = {
   apolloConfigured: boolean;
   ghostLeadAgentConfigured: boolean;
   googleMapsConfigured: boolean;
+  facebookBusinessConfigured: boolean;
   mockSourceEnabled: boolean;
   maxPreviewSize: number;
 };
@@ -131,7 +132,7 @@ type SourcingStatus = {
 type SourceCampaign = {
   id: string;
   name: string;
-  provider: "pdl" | "apollo" | "ghost-lead-agent" | "google-maps";
+  provider: "pdl" | "apollo" | "ghost-lead-agent" | "google-maps" | "facebook-business";
   query: string;
   location?: string | null;
   industries?: string | null;
@@ -964,10 +965,11 @@ export default function Home() {
     apolloConfigured: false,
     ghostLeadAgentConfigured: false,
     googleMapsConfigured: false,
+    facebookBusinessConfigured: false,
     mockSourceEnabled: false,
     maxPreviewSize: 100,
   });
-  const [sourceProvider, setSourceProvider] = useState<"pdl" | "apollo" | "ghost-lead-agent" | "google-maps">("pdl");
+  const [sourceProvider, setSourceProvider] = useState<"pdl" | "apollo" | "ghost-lead-agent" | "google-maps" | "facebook-business">("pdl");
   const [sourceQuery, setSourceQuery] = useState("founders revenue leaders growth operators at companies that need more qualified sales calls");
   const [sourceLocation, setSourceLocation] = useState("United States");
   const [sourceIndustry, setSourceIndustry] = useState("Software, SaaS, Marketing, Consulting, B2B Services");
@@ -4287,17 +4289,18 @@ export default function Home() {
                   <div className="grid gap-4">
                     <div className="grid gap-2">
                       <p className="text-sm text-[#aebbb7]">Provider</p>
-                      <div className="grid gap-2 sm:grid-cols-4">
+                      <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-5">
                         {[
                           { id: "pdl", label: "People Data Labs", active: sourcingStatus.pdlConfigured },
                           { id: "apollo", label: "Apollo", active: sourcingStatus.apolloConfigured },
                           { id: "google-maps", label: "Google Maps", active: sourcingStatus.googleMapsConfigured },
+                          { id: "facebook-business", label: "Facebook Businesses", active: sourcingStatus.facebookBusinessConfigured },
                           { id: "ghost-lead-agent", label: "Ghost Lead Agent", active: sourcingStatus.ghostLeadAgentConfigured },
                         ].map((provider) => (
                           <button
                             key={provider.id}
                             type="button"
-                            onClick={() => setSourceProvider(provider.id as "pdl" | "apollo" | "ghost-lead-agent" | "google-maps")}
+                            onClick={() => setSourceProvider(provider.id as "pdl" | "apollo" | "ghost-lead-agent" | "google-maps" | "facebook-business")}
                             className={`rounded-md border px-3 py-3 text-left text-sm transition ${
                               sourceProvider === provider.id
                                 ? "border-[#d8ff5f] bg-[#d8ff5f]/10 text-white"
@@ -4320,6 +4323,8 @@ export default function Home() {
                     <label className="grid gap-2 text-sm text-[#aebbb7]">
                       {sourceProvider === "ghost-lead-agent"
                         ? "Domains or websites"
+                        : sourceProvider === "facebook-business"
+                          ? "Facebook business location search"
                         : sourceProvider === "google-maps"
                           ? "Google Maps search"
                           : sourceProvider === "apollo"
@@ -4331,6 +4336,8 @@ export default function Home() {
                         placeholder={
                           sourceProvider === "ghost-lead-agent"
                             ? "example.com\nhttps://acme.io"
+                            : sourceProvider === "facebook-business"
+                              ? "commercial window cleaning businesses near Tyler, Texas"
                             : sourceProvider === "google-maps"
                               ? "marketing agencies near Dallas OR SaaS companies in Austin"
                               : sourceProvider === "apollo"

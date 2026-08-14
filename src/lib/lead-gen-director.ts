@@ -39,6 +39,7 @@ function splitCsv(value: string | null | undefined) {
 
 function hasProvider(provider: SourceProvider) {
   const status = getSourcingStatus();
+  if (provider === "facebook-business") return status.facebookBusinessConfigured;
   if (provider === "google-maps") return status.googleMapsConfigured;
   if (provider === "ghost-lead-agent") return status.ghostLeadAgentConfigured;
   if (provider === "apollo") return status.apolloConfigured;

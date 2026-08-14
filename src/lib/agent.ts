@@ -194,7 +194,7 @@ function mergeDiagnostics(results: AgentSourceResult[], fallbackMarkets?: string
 function expandedQueries(baseQuery: string, niche: string, provider: SourceProvider) {
   const base = clean(baseQuery);
   const lowerNiche = clean(niche).toLowerCase();
-  if (provider !== "google-maps") return [base].filter(Boolean);
+  if (provider !== "google-maps" && provider !== "facebook-business") return [base].filter(Boolean);
   const service = lowerNiche || "local service";
   const variants = [
     base,
@@ -439,7 +439,7 @@ function localManualFallbackLimit(requestedQueueLimit: number) {
 }
 
 function canRunLocalManualFallback(provider: SourceProvider, policy: OperatorRunPolicy) {
-  if (provider !== "google-maps") return false;
+  if (provider !== "google-maps" && provider !== "facebook-business") return false;
   if (policy.effective.size <= 0) return false;
   return !policy.blockedReasons.some((reason) => /source|daily outreach queue/i.test(reason));
 }

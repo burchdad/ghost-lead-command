@@ -26,7 +26,7 @@ export async function POST(
   }
 
   const provider =
-    campaign.provider === "ghost-lead-agent" || campaign.provider === "google-maps" || campaign.provider === "apollo"
+    campaign.provider === "ghost-lead-agent" || campaign.provider === "google-maps" || campaign.provider === "facebook-business" || campaign.provider === "apollo"
       ? campaign.provider
       : "pdl";
 

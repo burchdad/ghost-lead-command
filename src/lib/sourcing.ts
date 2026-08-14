@@ -1,4 +1,4 @@
-export type SourceProvider = "pdl" | "apollo" | "ghost-lead-agent" | "google-maps";
+export type SourceProvider = "pdl" | "apollo" | "ghost-lead-agent" | "google-maps" | "facebook-business";
 
 export type SourceSearchInput = {
   provider: SourceProvider;
@@ -79,6 +79,14 @@ type SerpApiMapsResult = {
   gps_coordinates?: { latitude?: number; longitude?: number };
 };
 
+type SerpApiOrganicResult = {
+  position?: number;
+  title?: string;
+  link?: string;
+  displayed_link?: string;
+  snippet?: string;
+};
+
 type ApolloPerson = {
   id?: string;
   person_id?: string;
@@ -144,6 +152,7 @@ export function getSourcingStatus() {
     apolloConfigured: Boolean(clean(process.env.APOLLO_API_KEY)),
     ghostLeadAgentConfigured: Boolean(clean(process.env.GHOST_LEAD_AGENT_SEARCH_URL)),
     googleMapsConfigured: Boolean(clean(process.env.SERPAPI_API_KEY)),
+    facebookBusinessConfigured: Boolean(clean(process.env.SERPAPI_API_KEY)),
     mockSourceEnabled: mockSourceEnabled(),
     maxPreviewSize: 100,
   };
@@ -152,8 +161,173 @@ export function getSourcingStatus() {
 export async function searchFreshLeads(input: SourceSearchInput) {
   if (input.provider === "ghost-lead-agent") return searchGhostLeadAgent(input);
   if (input.provider === "google-maps") return searchGoogleMaps(input);
+  if (input.provider === "facebook-business") return searchFacebookBusinesses(input);
   if (input.provider === "apollo") return searchApollo(input);
   return searchPeopleDataLabs(input);
+}
+
+async function searchFacebookBusinesses(input: SourceSearchInput) {
+  const apiKey = clean(process.env.SERPAPI_API_KEY);
+  if (!apiKey) {
+    return {
+      provider: "facebook-business" as const,
+      dryRun: false,
+      total: 0,
+      scrollToken: null,
+      leads: [],
+      reviewLeads: [],
+      diagnostics: emptyDiagnostics(sourceMarkets(input)),
+      message: "SerpAPI is not configured. Add SERPAPI_API_KEY to discover publicly indexed Facebook business Pages.",
+    };
+  }
+
+  const markets = sourceMarkets(input).slice(0, 8);
+  const perMarketSize = Math.max(5, Math.ceil(clampSize(input.size) / Math.max(1, markets.length)) + 2);
+  const fetched = await Promise.all(
+    markets.map(async (market) => {
+      const [maps, facebook] = await Promise.all([
+        fetchGoogleMapsMarket(input, market, perMarketSize),
+        fetchFacebookPageMarket(input, market, perMarketSize * 2),
+      ]);
+      return { market, maps, facebook };
+    }),
+  );
+  const allFailed = fetched.every((result) => result.maps.error && result.facebook.error);
+  if (allFailed) {
+    const detail = fetched.find((result) => result.maps.error || result.facebook.error);
+    return {
+      provider: "facebook-business" as const,
+      dryRun: false,
+      total: 0,
+      scrollToken: null,
+      leads: [],
+      reviewLeads: [],
+      diagnostics: emptyDiagnostics(markets),
+      message: detail?.facebook.error || detail?.maps.error || "Facebook business discovery failed.",
+    };
+  }
+
+  const candidates: SourceLead[] = [];
+  for (const result of fetched) {
+    const pages = result.facebook.results.filter(isFacebookBusinessPageResult);
+    const matchedPages = new Set<string>();
+    for (const [index, mapResult] of result.maps.results.entries()) {
+      const page = pages.find((candidate) => businessNamesMatch(mapResult.title, candidate.title));
+      if (!page) continue;
+      if (page.link) matchedPages.add(page.link);
+      const lead = await normalizeGoogleMapsResult(mapResult, index, input);
+      candidates.push({
+        ...lead,
+        id: `facebook-business:${lead.id}`,
+        source: "Facebook business Page + Google Maps via SerpAPI",
+        sourceUrl: clean(page.link),
+        intentSignals: [
+          "public Facebook business Page indexed for the target market",
+          "business identity and location corroborated by Google Maps",
+          ...lead.intentSignals,
+        ],
+        signalSummary: "Facebook business Page and Google Maps location evidence corroborate this local business.",
+      });
+    }
+
+    for (const [index, page] of pages.entries()) {
+      if (!page.link || matchedPages.has(page.link)) continue;
+      const companyName = facebookPageCompanyName(page.title);
+      if (!companyName) continue;
+      candidates.push({
+        id: `facebook-business:research:${result.market}:${index}:${companyName}`,
+        name: `Team at ${companyName}`,
+        companyName,
+        title: "Business owner or location manager",
+        email: "",
+        phone: "",
+        niche: clean(input.industries?.[0]) || "Local Business",
+        location: result.market,
+        source: "Publicly indexed Facebook business Page via SerpAPI",
+        website: "",
+        sourceUrl: page.link,
+        score: 62,
+        confidence: "needs cross-source verification",
+        buyerFit: "Unknown",
+        intentSignals: ["public Facebook business Page indexed for the target market"],
+        signalSummary: "Facebook Page found; verify the business identity, location, and contact path before outreach.",
+      });
+    }
+  }
+
+  const leads = dedupeSourceLeads(candidates);
+  const classified = classifySourceLeads(leads);
+  const qualified = classified.qualified.sort((a, b) => b.score - a.score).slice(0, clampSize(input.size));
+  const reviewLeads = classified.review.sort((a, b) => b.score - a.score).slice(0, clampSize(input.size));
+  return {
+    provider: "facebook-business" as const,
+    dryRun: false,
+    total: leads.length,
+    scrollToken: null,
+    leads: qualified,
+    reviewLeads,
+    diagnostics: sourceDiagnostics(leads, qualified, reviewLeads, markets),
+    message: qualified.length
+      ? undefined
+      : `Facebook business discovery found ${leads.length} Page candidates; ${reviewLeads.length} require cross-source verification or contact enrichment.`,
+  };
+}
+
+async function fetchFacebookPageMarket(input: SourceSearchInput, market: string, size: number) {
+  const terms = [clean(input.query), clean(input.industries?.[0]), market].filter(Boolean).join(" ");
+  const url = new URL("https://serpapi.com/search.json");
+  url.searchParams.set("engine", "google");
+  url.searchParams.set("q", `site:facebook.com ${terms}`);
+  url.searchParams.set("api_key", clean(process.env.SERPAPI_API_KEY));
+  url.searchParams.set("hl", "en");
+  url.searchParams.set("num", String(Math.min(100, Math.max(10, size))));
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    return {
+      results: [] as SerpApiOrganicResult[],
+      error: `SerpAPI Facebook Page discovery returned ${response.status}${detail ? `: ${detail.slice(0, 240)}` : ""}.`,
+    };
+  }
+  const payload = (await response.json()) as { organic_results?: SerpApiOrganicResult[]; error?: string };
+  return { results: (payload.organic_results || []).slice(0, size), error: payload.error || null };
+}
+
+function isFacebookBusinessPageResult(result: SerpApiOrganicResult) {
+  const link = clean(result.link).toLowerCase();
+  if (!link.includes("facebook.com/")) return false;
+  return !/facebook\.com\/(?:groups|people|events|marketplace|watch|reel|share)\//i.test(link);
+}
+
+function facebookPageCompanyName(value: unknown) {
+  return clean(value)
+    .replace(/\s*[|\-–—]\s*Facebook.*$/i, "")
+    .replace(/\s*\|\s*.*$/i, "")
+    .trim();
+}
+
+function businessNameKey(value: unknown) {
+  return facebookPageCompanyName(value)
+    .toLowerCase()
+    .replace(/\b(?:llc|inc|company|co|corp|corporation|official|page)\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function businessNamesMatch(left: unknown, right: unknown) {
+  const a = businessNameKey(left);
+  const b = businessNameKey(right);
+  return Boolean(a && b && (a === b || a.includes(b) || b.includes(a)));
+}
+
+function dedupeSourceLeads(leads: SourceLead[]) {
+  const deduped = new Map<string, SourceLead>();
+  for (const lead of leads) {
+    const key = businessNameKey(lead.companyName) || lead.id;
+    const previous = deduped.get(key);
+    if (!previous || lead.score > previous.score || (!previous.phone && lead.phone)) deduped.set(key, lead);
+  }
+  return [...deduped.values()];
 }
 
 async function searchApollo(input: SourceSearchInput) {
@@ -975,7 +1149,8 @@ function isReviewReadySourceLead(lead: SourceLead, issues = sourceLeadIssues(lea
   if (isInstitutionalCompany(lead.companyName)) return false;
   if (issues.includes("institutional-company") || issues.includes("vendor-risk")) return false;
   if (isVendorCompany(lead.companyName) || lead.buyerFit === "Vendor risk") return false;
-  if (!lead.email && !lead.phone && !lead.website) return false;
+  const hasFacebookResearchPath = /facebook/i.test(lead.source) && Boolean(lead.sourceUrl);
+  if (!lead.email && !lead.phone && !lead.website && !hasFacebookResearchPath) return false;
   if (lead.score < 45) return false;
   const softIssues = [...issues, !lead.email ? "missing-email" : "", !lead.phone ? "missing-phone" : ""].filter(Boolean);
   return softIssues.some((reason) =>

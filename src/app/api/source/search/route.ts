@@ -9,8 +9,8 @@ export async function POST(request: Request) {
   const body = await request.json();
   const provider = String(body.provider || "pdl") as SourceProvider;
 
-  if (provider !== "pdl" && provider !== "apollo" && provider !== "ghost-lead-agent" && provider !== "google-maps") {
-    return NextResponse.json({ error: "provider must be pdl, apollo, ghost-lead-agent, or google-maps" }, { status: 400 });
+  if (provider !== "pdl" && provider !== "apollo" && provider !== "ghost-lead-agent" && provider !== "google-maps" && provider !== "facebook-business") {
+    return NextResponse.json({ error: "provider must be pdl, apollo, ghost-lead-agent, google-maps, or facebook-business" }, { status: 400 });
   }
 
   const result = await searchFreshLeads({
