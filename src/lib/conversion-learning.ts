@@ -2,6 +2,7 @@ import { getPerplexityStatus } from "@/lib/perplexity";
 import { getSenderHealth } from "@/lib/conversion-quality";
 import { getPrisma } from "@/lib/prisma";
 import { signalPlays } from "@/lib/signal-plays";
+import { getCalibrationSalesMemory } from "@/lib/vega-operational-readiness";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
 export type LearningRow = {
@@ -150,7 +151,7 @@ function closenessScore(input: {
 export async function computeConversionLearning(): Promise<ConversionLearning> {
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
-  const [leads, queue, replies, senderHealth] = await Promise.all([
+  const [leads, queue, replies, senderHealth, calibrationMemory] = await Promise.all([
     prisma.lead.findMany({
       where: { workspaceId: workspace.id },
       include: { contact: true },
@@ -160,6 +161,7 @@ export async function computeConversionLearning(): Promise<ConversionLearning> {
     prisma.outreachQueueItem.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 1000 }),
     prisma.reply.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 1000 }),
     getSenderHealth({ workspaceId: workspace.id }),
+    getCalibrationSalesMemory(workspace.id),
   ]);
 
   const queueByLead = new Map<string, typeof queue>();
@@ -225,6 +227,8 @@ export async function computeConversionLearning(): Promise<ConversionLearning> {
   const socialSignalCoverage = rate(socialSignals, Math.max(leads.length, 1));
   const recommendedPlayIds = recommendedPlays({ bestSource, bestSignal, replyRate: overallReplyRate, socialCoverage: socialSignalCoverage });
   const perplexity = getPerplexityStatus();
+  const calibrationGood = calibrationMemory.filter((item) => item.verdict === "GOOD").length;
+  const calibrationRejected = calibrationMemory.filter((item) => ["BAD_FIT", "WRONG_COMPANY", "WRONG_PERSON"].includes(String(item.verdict))).length;
 
   const recommendations = [
     bestSource
@@ -242,6 +246,9 @@ export async function computeConversionLearning(): Promise<ConversionLearning> {
     overallReplyRate < 3
       ? "Keep daily volume moderate and test sharper signal-first copy before scaling auto-send."
       : "Reply rate is viable; increase queue cap only on the top-performing source/signal pair.",
+    calibrationMemory.length
+      ? `Operator calibration memory contains ${calibrationMemory.length} reviewed leads: ${calibrationGood} good and ${calibrationRejected} rejected-fit examples.`
+      : "Complete Vega operational calibration so operator fit judgments become Sales Memory evidence.",
   ];
 
   const nextActions = [
@@ -284,7 +291,8 @@ export async function computeConversionLearning(): Promise<ConversionLearning> {
       "Native LinkedIn lead sync is still gated by LinkedIn approval.",
       "Automatic social DM orchestration should stay manual/compliant until account limits are proven.",
       "Booked-call conversion learning needs more reply and calendar outcomes.",
-    ],
+      calibrationMemory.length < 10 ? "Operational calibration needs at least 10 reviewed leads before managed autonomy." : "",
+    ].filter(Boolean),
     nextActions,
   };
 }

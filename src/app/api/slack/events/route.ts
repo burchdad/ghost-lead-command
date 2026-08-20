@@ -27,6 +27,7 @@ import { isCallAssistWorkRequest, runVegaCallAssistWork } from "@/lib/vega-call-
 import { isDominanceLoopRequest, runVegaDominanceLoop } from "@/lib/vega-dominance-loop";
 import { isVegaOpsRequest, runVegaOpsBrief, shouldExecuteOps } from "@/lib/vega-ops-brief";
 import { isRevenueWatchRequest, runVegaRevenueWatch } from "@/lib/vega-revenue-watch";
+import { runVegaExecutive } from "@/lib/vega-executive";
 import { classifyVegaSpecialistRequest, runVegaSpecialist, specialistSlackSummary } from "@/lib/vega-specialists";
 import {
   getBookingDiagnosisReport,
@@ -248,26 +249,7 @@ export async function POST(request: Request) {
       specialistKind,
     }),
     detail: instruction || text || "No Slack text received.",
-    status:
-      isLeadInstruction ||
-      isReplyInstruction ||
-      isAuditInstruction ||
-      isDigestInstruction ||
-      isNovaInstruction ||
-      isMorningStandupInstruction ||
-      isApprovalInstruction ||
-      isClosingInstruction ||
-      isDominanceInstruction ||
-      isOpsInstruction ||
-      isRevenueWatchInstruction ||
-      isCallAssistInstruction ||
-      isWarmLeadInstruction ||
-      isBookingDiagnosisInstruction ||
-      isConversionAuditInstruction ||
-      isProductionProofInstruction ||
-      specialistKind
-        ? "running"
-        : "blocked",
+    status: "running",
     type: "slack",
     payload: {
       eventId: payload.event_id,
@@ -316,11 +298,27 @@ export async function POST(request: Request) {
   ) {
     await notifySlackVegaLeadRequestResult({
       instruction,
-      status: "failed",
-      summary:
-        "I heard Vega, but I could not detect a lead sourcing, dominance loop, proof-loop, closing sprint, approval, reply-work, call-assist, audit, digest, or Nova brief request. Try: Vega, production proof. Or: Vega, work calls.",
+      status: "received",
+      summary: "Vega Executive is reading the request against live pipeline and conversion data now.",
     });
-    return NextResponse.json({ ok: true, ignored: true, reason: "not a Vega lead request" });
+    after(async () => {
+      try {
+        const result = await runVegaExecutive({ text: instruction });
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "finished",
+          summary: result.summary,
+          result: { found: 0, qualified: 0, queued: 0, message: result.detail },
+        });
+      } catch (error) {
+        await notifySlackVegaLeadRequestResult({
+          instruction,
+          status: "failed",
+          summary: error instanceof Error ? error.message : "Unknown Vega Executive failure.",
+        });
+      }
+    });
+    return NextResponse.json({ ok: true, accepted: true, assistant: "vega-executive" });
   }
 
   if (isProductionProofInstruction) {

@@ -50,6 +50,73 @@ model Workspace {
   experimentProposals    ExperimentProposal[]
   agencyMemberships      AgencyMembership[]
   agencyClientWorkspaces AgencyClientWorkspace[]
+  vegaOperationalReadiness VegaOperationalReadiness?
+  vegaCalibrationItems     VegaCalibrationItem[]
+}
+
+enum VegaOperationalReadinessState {
+  NOT_CONFIGURED
+  CALIBRATING
+  APPROVAL_MODE
+  MANAGED_AUTONOMY
+  BLOCKED
+}
+
+enum VegaCalibrationVerdict {
+  GOOD
+  BAD_FIT
+  WRONG_PERSON
+  WRONG_COMPANY
+  NEEDS_RESEARCH
+}
+
+model VegaOperationalReadiness {
+  id                   String                              @id @default(cuid())
+  workspaceId          String                              @unique
+  state                VegaOperationalReadinessState       @default(NOT_CONFIGURED)
+  salesProfile         Json?
+  icps                  Json?
+  offers                Json?
+  territories           Json?
+  qualificationRules   Json?
+  teamResponsibilities Json?
+  outreachPolicy       Json?
+  integrationSnapshot  Json?
+  healthSnapshot       Json?
+  blockerSnapshot      Json?
+  calibrationTarget    Int                                 @default(10)
+  calibrationReviewed  Int                                 @default(0)
+  calibrationScore     Int                                 @default(0)
+  autonomyRequested    Boolean                             @default(false)
+  policyVersion        String                              @default("vega-operator-v1")
+  lastEvaluatedAt      DateTime?
+  createdAt            DateTime                            @default(now())
+  updatedAt            DateTime                            @updatedAt
+  workspace            Workspace                           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  calibrationItems     VegaCalibrationItem[]
+
+  @@index([state])
+}
+
+model VegaCalibrationItem {
+  id            String                    @id @default(cuid())
+  readinessId   String
+  workspaceId   String
+  leadId        String?
+  snapshot      Json
+  verdict       VegaCalibrationVerdict?
+  notes         String?
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  memoryEvidence Json?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  readiness     VegaOperationalReadiness  @relation(fields: [readinessId], references: [id], onDelete: Cascade)
+  workspace     Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([readinessId, leadId])
+  @@index([workspaceId, verdict])
+  @@index([readinessId, reviewedAt])
 }
 
 enum VegaLaunchAgentType {

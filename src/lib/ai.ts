@@ -17,7 +17,7 @@ type GenerateArgs = {
   input?: string;
 };
 
-const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const model = process.env.VEGA_AGENT_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
 export async function generateSalesText(args: GenerateArgs) {
   const apiKey = process.env.OPENAI_API_KEY;

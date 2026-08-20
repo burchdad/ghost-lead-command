@@ -2,18 +2,15 @@ import { NextResponse } from "next/server";
 import { createAutomationEvent } from "@/lib/automation";
 import { sanitizeCustomerMessage, sanitizeSubject } from "@/lib/message-sanitizer";
 import { getPrisma } from "@/lib/prisma";
+import {
+  getSendGridSuppressionReason,
+  isSendGridSuppressionEvent,
+  isTrackableSendGridEvent,
+  normalizeSendGridEventType,
+  type SendGridDeliveryEvent,
+} from "@/lib/sendgrid-events";
 import { addSuppressionRecord } from "@/lib/suppression";
 import { getDefaultWorkspace } from "@/lib/workspace";
-
-type SendGridEvent = {
-  email?: string;
-  event?: string;
-  reason?: string;
-  response?: string;
-  sg_message_id?: string;
-  url?: string;
-  timestamp?: number;
-};
 
 function clean(value: string | null | undefined) {
   return value?.trim() || "";
@@ -28,22 +25,7 @@ function eventAuthorized(request: Request) {
   return token === secret;
 }
 
-function suppressibleEvent(event: string) {
-  return ["bounce", "dropped", "spamreport", "unsubscribe", "group_unsubscribe"].includes(event);
-}
-
-function trackableEvent(event: string) {
-  return ["processed", "delivered", "open", "click", "deferred", "bounce", "dropped", "spamreport", "unsubscribe", "group_unsubscribe"].includes(
-    event,
-  );
-}
-
-function suppressionReason(event: SendGridEvent) {
-  const reason = clean(event.reason) || clean(event.response) || "SendGrid event";
-  return `SendGrid ${event.event || "event"}: ${reason}`.slice(0, 240);
-}
-
-function eventBody(event: SendGridEvent) {
+function eventBody(event: SendGridDeliveryEvent) {
   const type = clean(event.event).toLowerCase() || "event";
   const detail = clean(event.reason) || clean(event.response) || clean(event.url);
   const messageId = clean(event.sg_message_id);
@@ -131,7 +113,7 @@ export async function POST(request: Request) {
   }
 
   const payload = await request.json().catch(() => []);
-  const events = (Array.isArray(payload) ? payload : [payload]).filter(Boolean) as SendGridEvent[];
+  const events = (Array.isArray(payload) ? payload : [payload]).filter(Boolean) as SendGridDeliveryEvent[];
   const prisma = getPrisma();
   const workspace = await getDefaultWorkspace();
   let suppressed = 0;
@@ -140,8 +122,8 @@ export async function POST(request: Request) {
 
   for (const event of events) {
     const email = clean(event.email).toLowerCase();
-    const type = clean(event.event).toLowerCase();
-    if (!email || !trackableEvent(type)) continue;
+    const type = normalizeSendGridEventType(event.event);
+    if (!email || !isTrackableSendGridEvent(type)) continue;
 
     const lead = await prisma.lead.findFirst({
       where: { workspaceId: workspace.id, contact: { email: { equals: email, mode: "insensitive" } } },
@@ -192,12 +174,13 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!suppressibleEvent(type)) continue;
+    if (!isSendGridSuppressionEvent(type)) continue;
 
     await addSuppressionRecord({
+      workspaceId: workspace.id,
       type: "email",
       value: email,
-      reason: suppressionReason(event),
+      reason: getSendGridSuppressionReason(event),
       source: "sendgrid-event",
     });
     suppressed += 1;
@@ -221,7 +204,7 @@ export async function POST(request: Request) {
         },
         data: {
           status: "failed",
-          reason: suppressionReason(event),
+          reason: getSendGridSuppressionReason(event),
         },
       });
       markedFailed += update.count;

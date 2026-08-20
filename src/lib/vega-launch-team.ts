@@ -100,8 +100,8 @@ export type PricingQuoteOutput = {
 
 const PRICE_VERSION = "vega-commercial-2026-07-20";
 const PROMPT_VERSION = "vega-launch-team-v1";
-const MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-const OPENAI_ONBOARDING_MODEL = process.env.OPENAI_ONBOARDING_MODEL || MODEL;
+const MODEL = process.env.VEGA_AGENT_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const OPENAI_ONBOARDING_MODEL = process.env.VEGA_ONBOARDING_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
 export const VEGA_LAUNCH_TEAM_CONTRACTS: Record<VegaLaunchAgentType, LaunchAgentContract> = {
   VEGA_CONCIERGE: contract(
@@ -255,6 +255,29 @@ const discoveryFacts = requiredFacts.filter(
   (key): key is CommercialFactKey => !["planAcceptance", "billingConfirmation"].includes(key),
 );
 
+// These facts are sufficient to shape and price a commercial plan. Remaining
+// discovery facts continue accumulating with confidence, but do not trap the
+// customer in a sequential questionnaire.
+export const commercialProgressionFacts: CommercialFactKey[] = [
+  "businessIdentity",
+  "serviceOrProduct",
+  "targetCustomer",
+  "territory",
+  "desiredOutcome",
+  "outreachResponsibility",
+  "phoneFollowUpResponsibility",
+  "salesUpdateRecipientEmail",
+];
+
+export const liveLaunchCriticalFacts: CommercialFactKey[] = [
+  ...commercialProgressionFacts,
+  "bestOffer",
+  "contactIdentity",
+  "replyPath",
+  "schedulingPath",
+  "automationPreference",
+];
+
 const factQuestions: Record<CommercialFactKey, string> = {
   businessIdentity: "What is the business name Vega should build this around?",
   businessWebsite: "Do you have a website or public page Vega can use to understand the business?",
@@ -305,7 +328,7 @@ function mergeFacts(existingFacts: CommercialFact[], incomingFacts: CommercialFa
 
 export function selectNextMissingFact(facts: CommercialFact[]) {
   const known = new Set(facts.filter((fact) => fact.confirmed || (fact.inferred && fact.confidence >= 0.86)).map((fact) => fact.key));
-  const confirmationNeeded = facts.find((fact) => fact.inferred && !fact.confirmed && fact.confidence < 0.95);
+  const confirmationNeeded = facts.find((fact) => commercialProgressionFacts.includes(fact.key) && fact.inferred && !fact.confirmed && fact.confidence < 0.95);
   if (confirmationNeeded) {
     return {
       key: confirmationNeeded.key,
@@ -314,7 +337,7 @@ export function selectNextMissingFact(facts: CommercialFact[]) {
     };
   }
 
-  const missing = discoveryFacts.find((key) => !known.has(key));
+  const missing = commercialProgressionFacts.find((key) => !known.has(key));
   if (!missing) return null;
   return { key: missing, question: factQuestions[missing], reason: "highest-impact-missing-fact" };
 }
@@ -400,7 +423,11 @@ function applyDirectAnswerToCurrentQuestion(message: string, existingFacts: Comm
     return updateFact("growthObjective", text, 0.86);
   }
 
-  if (next.key === "desiredOutcome" && /\b(?:replies|booked|calls|appointments?|proposals?|closed|jobs?|contracts?)\b/i.test(lower)) {
+  if (next.key === "desiredOutcome" && (
+    /\b(?:want|goal|outcome|priority|need)\b.*\b(?:replies|booked|calls|appointments?|proposals?|closed|jobs?|contracts?)\b/i.test(lower)
+    || /\b(?:book|close|win)\b.*\b(?:calls|appointments?|jobs?|contracts?)\b/i.test(lower)
+    || /^(?:more\s+)?(?:replies|booked\s+(?:calls|appointments?)|proposals?|closed\s+(?:jobs|contracts?))\b/i.test(lower)
+  )) {
     return updateFact("desiredOutcome", text);
   }
 
@@ -522,8 +549,15 @@ export function inferFactsFromMessage(message: string, existingFacts: Commercial
     add("replyPath", email, 0.94);
   }
 
-  const desiredVolume = lower.match(/(?:need|want|source|get|generate)\s+(\d{1,4})\s+(?:new\s+)?(?:leads|prospects|appointments)/);
-  if (desiredVolume) add("desiredLeadVolume", desiredVolume[1]);
+  const desiredVolume = lower.match(/(?:need|want|source|get|generate)\s+(\d{1,4})\s+(?:(?:new|qualified)\s+){0,2}(?:leads|prospects|appointments)/);
+  if (desiredVolume) add("desiredLeadVolume", `${desiredVolume[1]} qualified leads per month`, 0.94);
+
+  const capacity = lower.match(/(?:can\s+handle|capacity(?:\s+is)?|handle)\s+(?:about\s+|up\s+to\s+)?(\d{1,4})\s+(?:new\s+)?(?:customers?|jobs?|accounts?)(?:\s+per\s+month)?/);
+  if (capacity) add("serviceCapacity", `${capacity[1]} new customers or jobs per month`, 0.94);
+
+  const customerValue = text.match(/(?:customer|job|contract|account)\s+(?:is\s+)?(?:worth|averages?|value(?:d)?\s+at)\s+(?:about\s+|roughly\s+)?\$?([\d,]+(?:\.\d{1,2})?)/i)
+    || text.match(/(?:worth|average\s+(?:customer|job|contract)|ticket)\s+(?:about\s+|roughly\s+)?\$?([\d,]+(?:\.\d{1,2})?)/i);
+  if (customerValue) add("averageCustomerValue", `$${customerValue[1].replace(/,/g, "")} per customer or job`, 0.92);
 
   const radius = lower.match(/within\s+(\d{1,3})\s*(?:mile|mi)/);
   const location = text.match(/\b(?:in|around|near|within|serving|covering)\s+([A-Z][A-Za-z .'-]+,\s*[A-Z]{2}|[A-Z][A-Za-z .'-]+,\s*Texas)/);
@@ -805,8 +839,7 @@ export function buildLaunchQa(input: {
   dryRunOnly?: boolean;
 }) {
   const confirmed = new Set(input.facts.filter((fact) => fact.confirmed).map((fact) => fact.key));
-  const blockers: Array<{ key: string; remediation: string }> = requiredFacts
-    .filter((key) => !["planAcceptance", "billingConfirmation"].includes(key))
+  const blockers: Array<{ key: string; remediation: string }> = liveLaunchCriticalFacts
     .filter((key) => !confirmed.has(key))
     .map((key) => ({ key, remediation: factQuestions[key] }));
   if (!input.quoteAccepted) blockers.push({ key: "planAcceptance", remediation: "Customer must explicitly approve the proposal scope." });
@@ -884,6 +917,12 @@ export async function continueCommercialOnboarding(input: { sessionId: string; m
     recommendations: [recommendation],
     blockers: qa.blockers,
     nextRecommendedAgent: next ? VegaLaunchAgentType.VEGA_CONCIERGE : VegaLaunchAgentType.PROPOSAL_AGENT,
+    progressiveConfidence: discoveryFacts
+      .filter((key) => !commercialProgressionFacts.includes(key))
+      .map((key) => {
+        const fact = facts.find((item) => item.key === key);
+        return { key, value: fact?.value || null, confidence: fact?.confidence || 0, confirmed: Boolean(fact?.confirmed) };
+      }),
   };
 
   await recordAgentRun({
@@ -927,7 +966,12 @@ export async function continueCommercialOnboarding(input: { sessionId: string; m
       role: "assistant",
       content: reply,
       agentType: VegaLaunchAgentType.VEGA_CONCIERGE,
-      structuredParts: { recommendation, nextQuestion: next, launchReadiness: qa } as unknown as Prisma.InputJsonValue,
+      structuredParts: {
+        recommendation,
+        nextQuestion: next,
+        launchReadiness: qa,
+        progressiveConfidence: agentOutput.progressiveConfidence,
+      } as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -1138,9 +1182,9 @@ function factMap(facts: CommercialFact[]) {
 
 function assertDiscoveryComplete(facts: CommercialFact[]) {
   const confirmed = new Set(facts.filter((fact) => fact.confirmed).map((fact) => fact.key));
-  const missing = discoveryFacts.filter((key) => !confirmed.has(key));
+  const missing = commercialProgressionFacts.filter((key) => !confirmed.has(key));
   if (missing.length) {
-    throw new Error(`Complete Vega discovery before pricing. Missing: ${missing.join(", ")}.`);
+    throw new Error(`Complete Vega's launch-critical commercial brief before pricing. Missing: ${missing.join(", ")}.`);
   }
 }
 

@@ -110,25 +110,18 @@ describe("Vega Launch Team fact engine", () => {
     assert.notEqual(next?.key, "targetCustomer");
   });
 
-  it("treats a no-website answer as complete when Vega asked for the website", () => {
+  it("does not let secondary website discovery block commercial progression", () => {
     const initial = [
       fact("businessIdentity", "Naks Exterior Services"),
       fact("serviceOrProduct", "commercial window cleaning and exterior cleaning"),
       fact("targetCustomer", "property managers and storefronts"),
       fact("territory", "Tyler, Texas"),
     ];
-    assert.equal(selectNextMissingFact(initial)?.key, "businessWebsite");
-
-    const facts = inferFactsFromMessage("Ghost AI is actually working on building it right now", initial);
-    const website = facts.find((item) => item.key === "businessWebsite");
-    const next = selectNextMissingFact(facts);
-
-    assert.equal(website?.value, "No public website yet");
-    assert.equal(website?.confirmed, true);
-    assert.notEqual(next?.key, "businessWebsite");
+    assert.equal(selectNextMissingFact(initial)?.key, "desiredOutcome");
+    assert.notEqual(selectNextMissingFact(initial)?.key, "businessWebsite");
   });
 
-  it("binds a bare number to Vega's current service-capacity question", () => {
+  it("captures secondary operating evidence when the customer provides context", () => {
     const initial = [
       fact("businessIdentity", "Naks Exterior Services"),
       fact("businessWebsite", "No public website yet"),
@@ -136,19 +129,16 @@ describe("Vega Launch Team fact engine", () => {
       fact("targetCustomer", "property managers and storefronts"),
       fact("territory", "Tyler, Texas"),
     ];
-    assert.equal(selectNextMissingFact(initial)?.key, "serviceCapacity");
-
-    const facts = inferFactsFromMessage("30", initial);
+    const facts = inferFactsFromMessage("We can handle 30 new customers or jobs per month", initial);
     const capacity = facts.find((item) => item.key === "serviceCapacity");
-    const next = selectNextMissingFact(facts);
 
     assert.equal(capacity?.value, "30 new customers or jobs per month");
     assert.equal(capacity?.confirmed, true);
     assert.equal(capacity?.source, "customer");
-    assert.notEqual(next?.key, "serviceCapacity");
+    assert.equal(selectNextMissingFact(facts)?.key, "desiredOutcome");
   });
 
-  it("binds bare numbers to the current value and lead-volume questions", () => {
+  it("extracts several secondary facts from one natural-language answer", () => {
     const throughCapacity = [
       fact("businessIdentity", "Naks Exterior Services"),
       fact("businessWebsite", "No public website yet"),
@@ -158,35 +148,21 @@ describe("Vega Launch Team fact engine", () => {
       fact("serviceCapacity", "30 new customers or jobs per month"),
     ];
 
-    const withValue = inferFactsFromMessage("1500", throughCapacity);
+    const withValue = inferFactsFromMessage("A customer is worth about $1500 and we want 40 qualified leads per month", throughCapacity);
     assert.equal(withValue.find((item) => item.key === "averageCustomerValue")?.value, "$1500 per customer or job");
-
-    const withGrowth = inferFactsFromMessage("We want to grow commercial contract revenue", withValue);
-    const withVolume = inferFactsFromMessage("40", withGrowth);
-    assert.equal(withVolume.find((item) => item.key === "desiredLeadVolume")?.value, "40 qualified leads per month");
+    assert.equal(withValue.find((item) => item.key === "desiredLeadVolume")?.value, "40 qualified leads per month");
   });
 
-  it("advances through every discovery question with concise natural answers", () => {
+  it("advances through launch-critical facts without forcing the secondary questionnaire", () => {
     const answers: Partial<Record<CommercialFact["key"], string>> = {
       businessIdentity: "Naks Exterior Services",
-      businessWebsite: "not yet",
       serviceOrProduct: "commercial window and exterior cleaning",
       targetCustomer: "property managers and commercial building owners",
       territory: "Tyler and nearby cities",
-      serviceCapacity: "30",
-      averageCustomerValue: "1500",
-      growthObjective: "add $30,000 in monthly contract revenue",
-      desiredLeadVolume: "40",
       desiredOutcome: "booked appointments",
       outreachResponsibility: "Vega should auto-send inside guardrails",
       phoneFollowUpResponsibility: "my sales manager",
       salesUpdateRecipientEmail: "sales@naks.com",
-      bestOffer: "a free exterior cleaning estimate",
-      differentiators: "same-day quotes and insured crews",
-      contactIdentity: "Alex at Naks Exterior Services",
-      replyPath: "use the same sales manager email",
-      schedulingPath: "manual scheduling for now",
-      automationPreference: "as much as possible",
     };
     let facts: CommercialFact[] = [];
     const visited: string[] = [];
@@ -213,7 +189,9 @@ describe("Vega Launch Team fact engine", () => {
       const captured = facts.find((item) => item.key === key);
       assert.equal(captured?.confirmed, true, `${key} was not confirmed`);
     }
-    assert.ok(visited.length >= 10, "The flow should exercise a meaningful sequence of direct questions");
+    const launchCritical = new Set(["businessIdentity", "serviceOrProduct", "targetCustomer", "territory", "desiredOutcome", "outreachResponsibility", "phoneFollowUpResponsibility", "salesUpdateRecipientEmail"]);
+    assert.ok(visited.length >= 5, "The flow should still collect a useful commercial brief");
+    assert.ok(visited.every((key) => launchCritical.has(key)), "Secondary facts must not become blocking questionnaire steps");
   });
 
   it("turns a rejected inferred confirmation into a direct correction", () => {
