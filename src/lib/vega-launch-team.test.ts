@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { VegaProductCode } from "@prisma/client";
 import {
   buildLaunchQa,
+  buildNaturalConciergeFallback,
   buildPricingInput,
   calculatePricing,
   inferFactsFromMessage,
@@ -10,6 +11,7 @@ import {
   recommendProduct,
   selectNextMissingFact,
   upsertFact,
+  wantsProposalPrepared,
   type CommercialFact,
 } from "@/lib/vega-launch-team";
 
@@ -237,6 +239,74 @@ describe("Vega Launch Team fact engine", () => {
     assert.equal(facts.length, 1);
     assert.equal(facts[0]?.key, "averageCustomerValue");
     assert.equal(facts[0]?.confirmed, true);
+  });
+});
+
+describe("Vega Concierge conversation", () => {
+  const completeFacts = [
+    fact("businessIdentity", "Bright Mobile Detail"),
+    fact("serviceOrProduct", "mobile detailing"),
+    fact("targetCustomer", "dealerships and fleet operators"),
+    fact("territory", "Tyler, Texas within 50 miles"),
+    fact("desiredOutcome", "booked calls"),
+    fact("outreachResponsibility", "send after approval"),
+    fact("phoneFollowUpResponsibility", "owner"),
+    fact("salesUpdateRecipientEmail", "owner@example.com"),
+  ];
+
+  it("does not repeat the product pitch while collecting the next fact", () => {
+    const facts = inferFactsFromMessage("send after approval", completeFacts.slice(0, 5));
+    const recommendation = recommendProduct(facts);
+    const nextQuestion = selectNextMissingFact(facts);
+    const fallback = buildNaturalConciergeFallback({
+      customerMessage: "send after approval",
+      facts,
+      recommendation,
+      nextQuestion,
+      quote: calculatePricing(buildPricingInput(recommendation.productCode, facts)),
+      history: [{ role: "assistant", content: "I would steer this toward Vega Scout because source quality is still being validated." }],
+    });
+
+    assert.doesNotMatch(fallback, /steer this toward|source quality is still being validated/i);
+    assert.match(fallback, /Who will call warm leads/i);
+    assert.equal((fallback.match(/\?/g) || []).length, 1);
+  });
+
+  it("moves a completed brief to one clear next action", () => {
+    const recommendation = recommendProduct(completeFacts);
+    const fallback = buildNaturalConciergeFallback({
+      customerMessage: "anything else?",
+      facts: completeFacts,
+      recommendation,
+      nextQuestion: null,
+      quote: calculatePricing(buildPricingInput(recommendation.productCode, completeFacts)),
+      history: [],
+    });
+
+    assert.match(fallback, /create the quote/i);
+    assert.doesNotMatch(fallback, /What outcome|Who will call|What email/i);
+  });
+
+  it("recognizes natural approval only when Vega was discussing a proposal or quote", () => {
+    assert.equal(wantsProposalPrepared("let's do it", "I have enough to prepare a proposal."), true);
+    assert.equal(wantsProposalPrepared("go ahead", "Your quote and scope are ready to review."), true);
+    assert.equal(wantsProposalPrepared("let's do it", "Who are the best customers to win first?"), false);
+  });
+
+  it("does not repeat a proposal-ready message after the proposal is prepared", () => {
+    const recommendation = recommendProduct(completeFacts);
+    const fallback = buildNaturalConciergeFallback({
+      customerMessage: "let's do it",
+      facts: completeFacts,
+      recommendation,
+      nextQuestion: null,
+      quote: calculatePricing(buildPricingInput(recommendation.productCode, completeFacts)),
+      history: [{ role: "assistant", content: "I have enough to prepare a proposal. The current fit is Vega Scout." }],
+      proposalPrepared: true,
+    });
+
+    assert.match(fallback, /proposal is ready/i);
+    assert.doesNotMatch(fallback, /I have enough to prepare/i);
   });
 });
 

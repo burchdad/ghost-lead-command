@@ -601,6 +601,21 @@ type AiFactExtractionResult = {
   notes?: string[];
 };
 
+type OnboardingConversationMessage = {
+  role: string;
+  content: string;
+};
+
+type ConciergeReplyInput = {
+  customerMessage: string;
+  facts: CommercialFact[];
+  recommendation: ReturnType<typeof recommendProduct>;
+  nextQuestion: ReturnType<typeof selectNextMissingFact>;
+  quote: PricingQuoteOutput;
+  history: OnboardingConversationMessage[];
+  proposalPrepared?: boolean;
+};
+
 const validFactKeys = new Set<CommercialFactKey>(requiredFacts);
 
 export function parseAiOnboardingFacts(payload: unknown, customerMessage: string): CommercialFact[] {
@@ -719,6 +734,161 @@ function buildOnboardingFactPrompt(message: string, existingFacts: CommercialFac
     `Existing facts: ${JSON.stringify(existingFacts.map(({ key, value, confirmed, inferred, confidence }) => ({ key, value, confirmed, inferred, confidence })))}`,
     `Customer message: ${message}`,
   ].join("\n");
+}
+
+export function wantsProposalPrepared(message: string, previousAssistantMessage = "") {
+  const normalized = message.trim().toLowerCase();
+  if (/\b(?:create|build|prepare|present|show)\b.*\bproposal\b/.test(normalized)) return true;
+  if (!/^(?:yes|yep|yeah|sure|okay|ok|go ahead|let'?s do it|lets do it|do it|proceed|sounds good)[.!\s]*$/.test(normalized)) {
+    return false;
+  }
+  return /\b(?:prepare|present|review|proposal|quote|pricing|scope)\b/i.test(previousAssistantMessage);
+}
+
+export function buildNaturalConciergeFallback(input: ConciergeReplyInput) {
+  const lastAssistant = [...input.history].reverse().find((message) => message.role === "assistant")?.content || "";
+  const confirmation = confirmationIntent(input.customerMessage);
+
+  if (input.proposalPrepared) {
+    return "Your proposal is ready. Review the scope and pricing on the right, and tell me what you want changed before checkout.";
+  }
+
+  if (!input.nextQuestion) {
+    if (/\b(?:enough to prepare|proposal|quote)\b/i.test(lastAssistant)) {
+      return "Your commercial brief is complete. You can create the quote now, or tell me what you want adjusted first.";
+    }
+    return "I have enough to build your commercial plan. The next step is to create the quote, then I can present the full proposal for review.";
+  }
+
+  const acknowledgement = confirmation
+    ? "Perfect, I updated that."
+    : input.customerMessage.trim().length <= 20
+      ? "Got it."
+      : "Thanks, that gives me useful context.";
+  return `${acknowledgement}\n\n${input.nextQuestion.question}`;
+}
+
+export async function generateNaturalConciergeReply(input: ConciergeReplyInput) {
+  const fallback = buildNaturalConciergeFallback(input);
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || process.env.VEGA_ONBOARDING_AI === "disabled") {
+    return { text: fallback, provider: "deterministic" as const };
+  }
+
+  const recentHistory = input.history
+    .filter((message) => message.content?.trim())
+    .slice(-10)
+    .map((message) => ({ role: message.role === "customer" ? "customer" : "assistant", content: message.content.slice(0, 1200) }));
+  const confirmedFacts = input.facts
+    .filter((fact) => fact.confirmed)
+    .map(({ key, value }) => ({ key, value }));
+  const inferredFacts = input.facts
+    .filter((fact) => fact.inferred && !fact.confirmed)
+    .map(({ key, value, confidence }) => ({ key, value, confidence }));
+  const exactPricing = !input.nextQuestion
+    ? `${money(input.quote.setupFeeCents)} setup and ${money(input.quote.recurringAmountCents)}/month`
+    : "Do not discuss pricing yet.";
+
+  const prompt = [
+    "You are Vega, the AI Sales Director for Ghost Lead Command. Conduct this onboarding like an excellent conversational AI, not a form wizard.",
+    "Write a direct, warm, useful reply in 2-5 short sentences. Answer the customer's question or react to their actual message before advancing onboarding.",
+    "Acknowledge only information that is new. Never repeat the full business summary, product recommendation, or a paragraph from an earlier Vega message.",
+    "Ask at most one question. When NEXT QUESTION is supplied, end with that objective naturally; do not ask a different onboarding question.",
+    "When NEXT QUESTION is null, do not restart discovery. Explain the single next action available.",
+    "Do not invent customer facts, research results, integrations, guarantees, capabilities, discounts, or prices.",
+    "Product selection, pricing, checkout, outreach policy, and launch QA are deterministic. You may explain them but never alter them.",
+    `Exact deterministic pricing, if available: ${exactPricing}`,
+    `Proposal prepared: ${Boolean(input.proposalPrepared)}`,
+    `Deterministic product recommendation: ${input.recommendation.productCode}. Reason: ${input.recommendation.why}`,
+    `Vega may handle only these responsibilities in this package: ${JSON.stringify(input.recommendation.vegaHandles)}`,
+    `The customer handles these responsibilities: ${JSON.stringify(input.recommendation.customerHandles)}`,
+    `Explicitly excluded: ${JSON.stringify(input.recommendation.excluded)}`,
+    `Confirmed facts: ${JSON.stringify(confirmedFacts)}`,
+    `Unconfirmed inferences: ${JSON.stringify(inferredFacts)}`,
+    `NEXT QUESTION: ${input.nextQuestion ? input.nextQuestion.question : "null"}`,
+    `Recent conversation: ${JSON.stringify(recentHistory)}`,
+    `Current customer message: ${input.customerMessage}`,
+    "Return JSON only.",
+  ].join("\n");
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: OPENAI_ONBOARDING_MODEL,
+        input: prompt,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "vega_concierge_reply",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: { reply: { type: "string" } },
+              required: ["reply"],
+            },
+          },
+        },
+        max_output_tokens: 450,
+      }),
+    });
+    if (!response.ok) return { text: fallback, provider: "deterministic" as const, warning: `OpenAI returned ${response.status}` };
+
+    const payload = await response.json();
+    const outputText =
+      payload.output_text ||
+      payload.output?.flatMap((item: { content?: { text?: string }[] }) => item.content || [])
+        .map((item: { text?: string }) => item.text)
+        .filter(Boolean)
+        .join("\n");
+    const reply = String(JSON.parse(outputText || "{}").reply || "").trim();
+    if (!isUsableConciergeReply(reply, input, recentHistory)) {
+      return { text: fallback, provider: "deterministic" as const, warning: "OpenAI reply failed Vega conversation policy." };
+    }
+    return { text: reply, provider: "openai" as const, model: OPENAI_ONBOARDING_MODEL };
+  } catch (error) {
+    return {
+      text: fallback,
+      provider: "deterministic" as const,
+      warning: error instanceof Error ? error.message : "OpenAI onboarding response failed",
+    };
+  }
+}
+
+function isUsableConciergeReply(
+  reply: string,
+  input: ConciergeReplyInput,
+  history: OnboardingConversationMessage[],
+) {
+  if (reply.length < 12 || reply.length > 1200) return false;
+  if ((reply.match(/\?/g) || []).length > 1) return false;
+  if (input.nextQuestion && !reply.includes("?")) return false;
+  if (/\b(?:guaranteed revenue|guarantee results|discounted to)\b/i.test(reply)) return false;
+  if (input.nextQuestion && /\$\s?\d|\b\d[\d,]*\s*(?:\/mo|per month)\b/i.test(reply)) return false;
+  const mentionedPrices = reply.match(/\$\s?[\d,]+/g) || [];
+  if (!input.nextQuestion && mentionedPrices.length) {
+    const allowedPrices = new Set([
+      money(input.quote.setupFeeCents).replace(/\s/g, ""),
+      money(input.quote.recurringAmountCents).replace(/\s/g, ""),
+    ]);
+    if (mentionedPrices.some((price) => !allowedPrices.has(price.replace(/\s/g, "")))) return false;
+  }
+  const mentionedProduct = reply.match(/Vega\s+(?:Scout|Reach|Convert|Managed|White\s+Label)/i)?.[0];
+  if (mentionedProduct) {
+    const normalizedMention = mentionedProduct.replace(/\s+/g, "_").toUpperCase();
+    if (normalizedMention !== input.recommendation.productCode) return false;
+  }
+  const normalizedReply = reply.replace(/\s+/g, " ").trim().toLowerCase();
+  return !history.some((message) => {
+    if (message.role !== "assistant") return false;
+    const prior = message.content.replace(/\s+/g, " ").trim().toLowerCase();
+    return prior.length > 40 && (normalizedReply === prior || normalizedReply.includes(prior));
+  });
 }
 
 export function recommendProduct(facts: CommercialFact[]) {
@@ -891,7 +1061,10 @@ export async function startCommercialOnboarding(input: { visitorId?: string; mes
 export async function continueCommercialOnboarding(input: { sessionId: string; message: string }) {
   const prisma = getPrisma();
   await ensureVegaOnboardingSchema(prisma);
-  const session = await prisma.aIOnboardingSession.findUnique({ where: { id: input.sessionId }, include: { messages: true } });
+  const session = await prisma.aIOnboardingSession.findUnique({
+    where: { id: input.sessionId },
+    include: { messages: { orderBy: { createdAt: "asc" } }, commercialProposals: { orderBy: { version: "desc" }, take: 1 } },
+  });
   if (!session) throw new Error("Onboarding session not found.");
 
   await prisma.aIOnboardingMessage.create({
@@ -934,10 +1107,6 @@ export async function continueCommercialOnboarding(input: { sessionId: string; m
     confidence: agentOutput.confidence,
   });
 
-  const reply = next
-    ? buildConciergeQuestion(facts, recommendation, next.question)
-    : buildProposalReadyMessage(recommendation, quote);
-
   const updated = await prisma.aIOnboardingSession.update({
     where: { id: session.id },
     data: {
@@ -960,17 +1129,38 @@ export async function continueCommercialOnboarding(input: { sessionId: string; m
 
   await maybeRegisterClientUpdateRecipient(facts);
 
+  const previousAssistantMessage = [...session.messages].reverse().find((message) => message.role === "assistant")?.content || "";
+  const shouldPrepareProposal = !next
+    && !session.commercialProposals.length
+    && wantsProposalPrepared(input.message, previousAssistantMessage);
+  if (shouldPrepareProposal) {
+    await createCommercialProposal(updated.id);
+  }
+
+  const naturalReply = await generateNaturalConciergeReply({
+    customerMessage: input.message,
+    facts,
+    recommendation,
+    nextQuestion: next,
+    quote,
+    history: session.messages.map((message) => ({ role: message.role, content: message.content })),
+    proposalPrepared: shouldPrepareProposal || session.commercialProposals.length > 0,
+  });
+
   await prisma.aIOnboardingMessage.create({
     data: {
       sessionId: session.id,
       role: "assistant",
-      content: reply,
+      content: naturalReply.text,
       agentType: VegaLaunchAgentType.VEGA_CONCIERGE,
       structuredParts: {
         recommendation,
         nextQuestion: next,
         launchReadiness: qa,
         progressiveConfidence: agentOutput.progressiveConfidence,
+        conversationProvider: naturalReply.provider,
+        conversationModel: "model" in naturalReply ? naturalReply.model : null,
+        conversationWarning: "warning" in naturalReply ? naturalReply.warning : null,
       } as unknown as Prisma.InputJsonValue,
     },
   });
@@ -1197,23 +1387,6 @@ function statusForMissingFact(key: CommercialFactKey) {
   }
   if (key === "billingConfirmation") return AIOnboardingStatus.AWAITING_CHECKOUT;
   return AIOnboardingStatus.RECOMMENDING_PRODUCT;
-}
-
-function buildConciergeQuestion(facts: CommercialFact[], recommendation: ReturnType<typeof recommendProduct>, question: string) {
-  const profile = buildBusinessProfileDraft(facts);
-  return [
-    profile.service ? `Got it. I am shaping this around ${profile.service}.` : "Got it. I am starting the commercial brief.",
-    `Right now I would likely steer this toward ${recommendation.productCode.replace("VEGA_", "Vega ")} because ${recommendation.why}`,
-    question,
-  ].join("\n\n");
-}
-
-function buildProposalReadyMessage(recommendation: ReturnType<typeof recommendProduct>, quote: PricingQuoteOutput) {
-  return [
-    `I have enough to prepare a proposal. The current fit is ${recommendation.productCode.replace("VEGA_", "Vega ")}.`,
-    `Deterministic quote: ${money(quote.setupFeeCents)} setup and ${money(quote.recurringAmountCents)}/mo before any authorized discount.`,
-    "I can present the proposal for confirmation, then hand you to secure hosted checkout. I will keep launch in dry-run until payment, sender identity, reply path, and scheduling are verified.",
-  ].join("\n\n");
 }
 
 function buildBusinessProfileDraft(facts: CommercialFact[]) {

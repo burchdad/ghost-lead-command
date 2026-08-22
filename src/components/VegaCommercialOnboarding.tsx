@@ -92,6 +92,7 @@ export default function VegaCommercialOnboarding() {
   });
   const [billingConfirmation, setBillingConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState("");
   const [error, setError] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -113,6 +114,7 @@ export default function VegaCommercialOnboarding() {
       setError(err instanceof Error ? err.message : "Vega onboarding action failed.");
     } finally {
       setBusy(false);
+      setPendingMessage("");
     }
   }
 
@@ -154,6 +156,7 @@ export default function VegaCommercialOnboarding() {
       return;
     }
     setMessage("");
+    setPendingMessage(content);
     void runAction({ action: session ? "message" : "start", message: content });
   }
 
@@ -242,6 +245,19 @@ export default function VegaCommercialOnboarding() {
                     {item.agentType ? <p className="mt-3 text-xs uppercase tracking-[0.14em] opacity-70">{item.agentType}</p> : null}
                   </VegaMessageBubble>
                 ))}
+                {pendingMessage ? (
+                  <VegaMessageBubble side="customer" speaker="Customer" className="text-[#071013]">
+                    <p className="whitespace-pre-wrap">{pendingMessage}</p>
+                  </VegaMessageBubble>
+                ) : null}
+                {busy && pendingMessage ? (
+                  <VegaMessageBubble side="vega" speaker={brand.aiDirectorName} className="text-[#071013]">
+                    <div className="flex items-center gap-2" role="status" aria-label="Vega is thinking">
+                      <Loader2 className="animate-spin" size={16} />
+                      <span>Thinking through your answer...</span>
+                    </div>
+                  </VegaMessageBubble>
+                ) : null}
                 <div ref={endRef} />
               </div>
 
@@ -253,6 +269,12 @@ export default function VegaCommercialOnboarding() {
                     name="message"
                     value={message}
                     onChange={(event) => setMessage(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        event.currentTarget.form?.requestSubmit();
+                      }
+                    }}
                     placeholder="Example: I run a mobile detailing company in Tyler and want dealership and fleet work within 40 miles."
                     className="min-h-20 flex-1 resize-none rounded-md border border-[#244044] bg-[#071013] p-3 text-sm text-[#f7fbf8] outline-none focus:border-[#78dcca]"
                   />
