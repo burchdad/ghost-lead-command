@@ -58,7 +58,10 @@ test("commercial onboarding is a customer conversation with contextual proposal 
   assert.match(onboardingSource, /Accept plan/);
   assert.match(onboardingSource, /Continue to secure checkout/);
   assert.match(onboardingSource, /ProposalPreview/);
-  assert.match(onboardingSource, /lg:grid-cols-\[340px_minmax\(0,1fr\)\]/);
+  assert.match(onboardingSource, /lg:grid-cols-\[minmax\(380px,0\.9fr\)_minmax\(0,1\.3fr\)\]/);
+  assert.match(onboardingSource, /Hi, I’m Vega, your AI sales director/);
+  assert.doesNotMatch(onboardingSource, /Talk naturally\. Vega will remember the details you share/);
+  assert.doesNotMatch(onboardingSource, /Vega is an AI assistant from Ghost AI Solutions/);
   assert.doesNotMatch(onboardingSource, /billingConfirmation|VEGA_CONCIERGE|REVIEWING_PROPOSAL|READY_FOR_DRY_RUN/);
 });
 

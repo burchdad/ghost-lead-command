@@ -1,9 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowRight, Check, FileText, Loader2, MessageCircle, Send, Sparkles, Volume2, VolumeX } from "lucide-react";
+import { ArrowRight, Check, FileText, Loader2, MessageCircle, Send, Volume2, VolumeX } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { brand } from "@/config/brand";
 import { vegaAssets } from "@/config/vega-assets";
 
 type Message = { id: string; role: string; content: string; visibleToCustomer: boolean };
@@ -26,7 +25,7 @@ type SessionPayload = { id: string; status: string; messages: Message[]; commerc
 const initialMessage: Message = {
   id: "initial-vega-prompt",
   role: "assistant",
-  content: "Hi, I’m Vega. Tell me what your business does and the kind of customers you would like more of. I’ll help shape a practical plan with you.",
+  content: "Hi, I’m Vega, your AI sales director. Tell me what your business does and the kind of customers you would like more of. I’ll help shape a practical plan with you.",
   visibleToCustomer: true,
 };
 const sessionStorageKey = "vega-commercial-onboarding-session";
@@ -43,6 +42,7 @@ export default function VegaCommercialOnboarding() {
   const [error, setError] = useState("");
   const [notice] = useState(initialCheckoutNotice);
   const endRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const lastSpokenMessageId = useRef("");
 
@@ -72,7 +72,8 @@ export default function VegaCommercialOnboarding() {
   }
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const conversation = messagesRef.current;
+    if (conversation) conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
   }, [session?.messages.length, pendingMessage, proposalOpen]);
 
   useEffect(() => {
@@ -145,36 +146,28 @@ export default function VegaCommercialOnboarding() {
   }
 
   return (
-    <main className="min-h-screen bg-[#071013] text-[#f7fbf8]">
-      <header className="sticky top-0 z-20 border-b border-[#203438] bg-[#071013]/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <Image src={vegaAssets.avatarSmall} alt="Vega" width={38} height={38} className="h-9 w-9 rounded-full object-cover" />
-            <div><p className="text-sm font-semibold">{brand.aiDirectorName}</p><p className="text-xs text-[#9eb2af]">AI Sales Director</p></div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setVoiceEnabled((enabled) => !enabled);
-              if (voiceEnabled && "speechSynthesis" in window) window.speechSynthesis.cancel();
-            }}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[#2b4549] text-[#c9d7d4] hover:bg-[#102024]"
-            aria-label={voiceEnabled ? "Turn Vega voice off" : "Turn Vega voice on"}
-            title={voiceEnabled ? "Turn Vega voice off" : "Hear Vega speak"}
-          >
-            {voiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
-          </button>
-        </div>
-      </header>
+    <main className="relative min-h-screen bg-[#071013] text-[#f7fbf8]">
+      <button
+        type="button"
+        onClick={() => {
+          setVoiceEnabled((enabled) => !enabled);
+          if (voiceEnabled && "speechSynthesis" in window) window.speechSynthesis.cancel();
+        }}
+        className="fixed right-4 top-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#0c191c]/90 text-[#c9d7d4] shadow-[0_8px_30px_rgba(0,0,0,0.3)] ring-1 ring-[#2b4549] backdrop-blur hover:bg-[#102428] sm:right-6 sm:top-6"
+        aria-label={voiceEnabled ? "Turn Vega voice off" : "Turn Vega voice on"}
+        title={voiceEnabled ? "Turn Vega voice off" : "Hear Vega speak"}
+      >
+        {voiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+      </button>
 
-      <div className="mx-auto grid max-w-6xl gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[340px_minmax(0,1fr)] lg:py-7">
+      <div className="mx-auto grid min-h-screen max-w-7xl gap-5 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(380px,0.9fr)_minmax(0,1.3fr)] lg:gap-8 lg:py-6">
         <VegaMeetingStage busy={busy} speaking={speaking} />
-        <section className="flex min-h-[calc(100vh-116px)] min-w-0 flex-col overflow-hidden rounded-lg border border-[#203438] bg-[#0b1619] shadow-[0_24px_80px_rgba(0,0,0,0.3)]">
-          <div className="border-b border-[#203438] px-4 py-3 sm:px-5">
-            <p className="text-sm font-medium">Conversation with Vega</p>
-            <p className="mt-0.5 text-xs text-[#8fa5a2]">Ask questions, shape your plan, and pick up where you left off.</p>
+        <section className="flex min-h-[620px] min-w-0 flex-col overflow-hidden lg:h-[calc(100vh-3rem)] lg:min-h-[680px]">
+          <div className="px-1 pb-4 pt-2 sm:px-3">
+            <p className="text-base font-semibold">Conversation with Vega</p>
+            <p className="mt-1 text-sm text-[#8fa5a2]">Talk naturally. Vega will remember the details and guide the next step.</p>
           </div>
-          <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+          <div ref={messagesRef} className="flex-1 space-y-4 overflow-y-auto px-1 py-2 sm:px-3">
             {notice ? <div className="rounded-md border border-[#55c9b8]/40 bg-[#0d2a27] p-3 text-sm text-[#c9f3ec]">{notice}</div> : null}
             {visibleMessages.map((item) => {
               const isCustomer = item.role === "customer";
@@ -200,8 +193,8 @@ export default function VegaCommercialOnboarding() {
             ) : null}
             <div ref={endRef} />
           </div>
-          {error ? <div className="mx-4 mb-3 rounded-md border border-[#f87171]/40 bg-[#351313] p-3 text-sm text-[#fecaca]">{error}</div> : null}
-          <form onSubmit={sendMessage} className="border-t border-[#203438] bg-[#091316] p-3 sm:p-4">
+          {error ? <div className="mx-1 mb-3 rounded-md border border-[#f87171]/40 bg-[#351313] p-3 text-sm text-[#fecaca] sm:mx-3">{error}</div> : null}
+          <form onSubmit={sendMessage} className="px-1 pb-1 pt-3 sm:px-3">
             <div className="flex items-end gap-2">
               <textarea
                 ref={composerRef}
@@ -217,7 +210,6 @@ export default function VegaCommercialOnboarding() {
                 {busy ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
               </button>
             </div>
-            <p className="mt-2 text-center text-[11px] text-[#728885]">Vega is an AI assistant from Ghost AI Solutions.</p>
           </form>
         </section>
       </div>
@@ -228,31 +220,23 @@ export default function VegaCommercialOnboarding() {
 function VegaMeetingStage({ busy, speaking }: { busy: boolean; speaking: boolean }) {
   const state = busy ? "Thinking" : speaking ? "Speaking" : "Listening";
   return (
-    <aside className="lg:sticky lg:top-24 lg:self-start">
-      <div className={`vega-meeting-stage relative aspect-[4/3] overflow-hidden rounded-lg border border-[#2c4247] bg-[#0d171a] ${speaking ? "is-speaking" : ""} ${busy ? "is-thinking" : ""}`}>
-        <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between p-3">
-          <span className="rounded-md bg-black/55 px-2 py-1 text-xs font-medium text-white">Vega</span>
+    <aside className="lg:sticky lg:top-6 lg:self-start">
+      <div className={`vega-meeting-stage relative h-[390px] overflow-hidden sm:h-[470px] lg:h-[calc(100vh-3rem)] lg:min-h-[680px] ${speaking ? "is-speaking" : ""} ${busy ? "is-thinking" : ""}`}>
+        <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-start p-3 sm:p-4">
           <span className="inline-flex items-center gap-1.5 rounded-md bg-black/55 px-2 py-1 text-xs text-white"><span className={`h-2 w-2 rounded-full ${busy ? "bg-[#f7c948]" : "bg-[#55c9b8]"}`} />{state}</span>
         </div>
         <div className="vega-meeting-light absolute inset-0" />
-        <div className="vega-meeting-avatar absolute inset-6 top-12 flex items-end justify-center">
+        <div className="vega-meeting-avatar absolute inset-x-0 bottom-0 top-8 flex items-end justify-center lg:top-10">
           <Image
             src={busy ? vegaAssets.thinking : vegaAssets.portrait}
             alt="Vega, AI Sales Director"
             fill
             priority
-            sizes="(max-width: 767px) 100vw, 340px"
+            sizes="(max-width: 1023px) 100vw, 520px"
             className="object-contain object-bottom"
           />
         </div>
-        <div className="absolute inset-x-0 bottom-0 z-10 bg-[#081113]/90 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div><p className="text-sm font-semibold">Vega</p><p className="text-xs text-[#9eb2af]">AI Sales Director</p></div>
-            <div className="vega-waveform flex h-7 items-center gap-1" aria-hidden="true">{[0, 1, 2, 3, 4, 5, 6].map((bar) => <span key={bar} style={{ animationDelay: `${bar * 90}ms` }} />)}</div>
-          </div>
-        </div>
       </div>
-      <div className="mt-3 flex items-start gap-2 rounded-md border border-[#203438] bg-[#0b1619] p-3 text-xs leading-5 text-[#9eb2af]"><Sparkles className="mt-0.5 shrink-0 text-[#a995ff]" size={15} /><p>Talk naturally. Vega will remember the details you share and ask only what she still needs.</p></div>
     </aside>
   );
 }
