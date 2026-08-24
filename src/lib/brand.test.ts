@@ -51,6 +51,15 @@ test("Vega components power the homepage and onboarding identity", () => {
   assert.match(vegaComponentSource, /vegaAssets\.neutral/);
 });
 
+test("commercial onboarding keeps actions in the left rail and proposals in the conversation", () => {
+  assert.match(onboardingSource, /Commercial plan/);
+  assert.match(onboardingSource, /latestAssistantMessageId/);
+  assert.match(onboardingSource, /View proposal/);
+  assert.match(onboardingSource, /ProposalPreview/);
+  assert.match(onboardingSource, /lg:grid-cols-\[380px_minmax\(0,1fr\)\]/);
+  assert.doesNotMatch(onboardingSource, /xl:grid-cols-\[1fr_360px\]/);
+});
+
 test("plan pricing and recommendation label remain shared config data", () => {
   const convert = publicVegaPlans.find((plan) => plan.code === "vega_convert");
   const managed = publicVegaPlans.find((plan) => plan.code === "vega_managed");

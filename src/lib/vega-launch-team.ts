@@ -750,7 +750,7 @@ export function buildNaturalConciergeFallback(input: ConciergeReplyInput) {
   const confirmation = confirmationIntent(input.customerMessage);
 
   if (input.proposalPrepared) {
-    return "Your proposal is ready. Review the scope and pricing on the right, and tell me what you want changed before checkout.";
+    return "Your proposal is ready. Use View proposal below to review the scope and pricing, then tell me what you want changed before checkout.";
   }
 
   if (!input.nextQuestion) {

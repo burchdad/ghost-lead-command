@@ -46,7 +46,20 @@ type SessionPayload = {
   };
   messages: Message[];
   pricingQuotes: Array<{ id: string; totals?: { setupFeeCents?: number; recurringAmountCents?: number; finalAmount?: number; includedAllowances?: Record<string, number> } }>;
-  commercialProposals: Array<{ id: string; version: number; status: string; productCode: string; billingSummary?: { setupFeeCents?: number; recurringAmountCents?: number } }>;
+  commercialProposals: Array<{
+    id: string;
+    version: number;
+    status: string;
+    productCode: string;
+    fulfillmentMode?: string;
+    vegaResponsibilities?: string[];
+    customerResponsibilities?: string[];
+    setupScope?: string[];
+    recurringScope?: string[];
+    limitations?: string[];
+    termsReference?: string;
+    billingSummary?: { setupFeeCents?: number; recurringAmountCents?: number };
+  }>;
   humanReviewTasks: Array<{ id: string; reason: string; status: string }>;
 };
 
@@ -93,6 +106,7 @@ export default function VegaCommercialOnboarding() {
   const [billingConfirmation, setBillingConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingMessage, setPendingMessage] = useState("");
+  const [proposalOpen, setProposalOpen] = useState(false);
   const [error, setError] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -121,6 +135,10 @@ export default function VegaCommercialOnboarding() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [session?.messages.length]);
+
+  useEffect(() => {
+    if (proposalOpen) endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [proposalOpen]);
 
   useEffect(() => {
     const sessionId = window.localStorage.getItem(sessionStorageKey);
@@ -163,14 +181,18 @@ export default function VegaCommercialOnboarding() {
   const facts = Array.isArray(session?.collectedFacts) ? session.collectedFacts : [];
   const quote = session?.pricingQuotes?.[0];
   const proposal = session?.commercialProposals?.[0];
+  const latestAssistantMessageId = useMemo(
+    () => [...(session?.messages || [])].reverse().find((item) => item.role !== "customer" && item.visibleToCustomer !== false)?.id,
+    [session?.messages],
+  );
   const discoveryComplete = Boolean(
     session && Array.isArray(session.missingRequiredFacts) && session.missingRequiredFacts.length === 0,
   );
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#071013] text-[#f7fbf8]">
-      <div className="grid min-h-screen min-w-0 lg:grid-cols-[360px_1fr]">
-        <aside className="min-w-0 border-r border-[#244044] bg-[#0d171a] p-4 sm:p-5">
+      <div className="grid min-h-screen min-w-0 lg:grid-cols-[380px_minmax(0,1fr)]">
+        <aside className="order-2 min-w-0 border-r border-[#244044] bg-[#0d171a] p-4 sm:p-5 lg:order-1 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
           <div className="rounded-md border border-[#244044] bg-[#101d20] p-4">
             <VegaIdentity />
             <GhostProductAttribution className="mt-4 text-[#91a8a5]" />
@@ -218,9 +240,70 @@ export default function VegaCommercialOnboarding() {
               <VegaApprovalState />
             </div>
           </section>
+
+          <section className="mt-4 space-y-3 border-t border-[#244044] pt-4">
+            <h2 className="text-sm font-semibold">Commercial plan</h2>
+            <ActionPanel
+              title="Product recommendation"
+              icon={Rocket}
+              body={session?.productRecommendation?.why || "Vega will recommend Scout, Reach, Convert, Managed, or White Label once enough facts are known."}
+              meta={session?.productRecommendation?.productCode}
+            />
+
+            <ActionPanel
+              title="Pricing"
+              icon={CreditCard}
+              body={quote ? `${money(quote.totals?.setupFeeCents || 0)} setup and ${money(quote.totals?.recurringAmountCents || 0)}/mo.` : "Create a deterministic quote when the scope is ready."}
+              button={quote ? undefined : "Create quote"}
+              onClick={() => runAction({ action: "quote" })}
+              disabled={!discoveryComplete || busy}
+            />
+
+            <ActionPanel
+              title="Proposal"
+              icon={FileText}
+              body={proposal ? `Version ${proposal.version} is ${proposal.status.toLowerCase()}.` : "Generate a versioned proposal after pricing exists."}
+              button={proposal ? "View proposal" : "Prepare proposal"}
+              onClick={() => proposal ? setProposalOpen(true) : runAction({ action: "proposal" })}
+              disabled={!discoveryComplete || busy || (!proposal && !quote)}
+            />
+
+            <section className="rounded-md border border-[#244044] bg-[#101d20] p-4">
+              <h3 className="text-sm font-semibold">Hosted checkout</h3>
+              <p className="mt-2 text-sm leading-6 text-[#b8ccca]">
+                Vega needs explicit billing confirmation before creating checkout. No card data is collected here.
+              </p>
+              <textarea
+                value={billingConfirmation}
+                onChange={(event) => setBillingConfirmation(event.target.value)}
+                placeholder="I confirm the setup fee, monthly amount, billing interval, included allowances, overage rules, and cancellation terms."
+                className="mt-3 min-h-24 w-full resize-none rounded-md border border-[#244044] bg-[#071013] p-3 text-sm text-[#f7fbf8] outline-none focus:border-[#78dcca]"
+              />
+              <button
+                type="button"
+                onClick={() => runAction({ action: "checkout", billingConfirmation })}
+                disabled={!session || busy || !proposal}
+                className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md bg-[#78dcca] px-4 py-2 text-sm font-semibold text-[#071013] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <CreditCard size={17} />
+                Create hosted checkout
+              </button>
+            </section>
+
+            {session?.humanReviewTasks?.length ? (
+              <section className="rounded-md border border-[#fbbf24]/40 bg-[#221906] p-4">
+                <h3 className="text-sm font-semibold text-[#fde68a]">Human review</h3>
+                <div className="mt-3 space-y-2">
+                  {session.humanReviewTasks.map((task) => (
+                    <p key={task.id} className="text-sm leading-6 text-[#fef3c7]">{task.reason}</p>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </section>
         </aside>
 
-        <section className="flex min-h-screen min-w-0 flex-col">
+        <section className="order-1 flex min-h-screen min-w-0 flex-col lg:order-2">
           <header className="border-b border-[#244044] bg-[#0b1417] px-4 py-4 sm:px-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -231,8 +314,8 @@ export default function VegaCommercialOnboarding() {
             </div>
           </header>
 
-          <div className="grid min-w-0 flex-1 gap-4 p-4 sm:p-5 xl:grid-cols-[1fr_360px]">
-            <div className="flex min-h-[640px] min-w-0 flex-col rounded-md border border-[#244044] bg-[#0d171a]">
+          <div className="min-w-0 flex-1 p-4 sm:p-5">
+            <div className="mx-auto flex min-h-[640px] min-w-0 max-w-5xl flex-col rounded-md border border-[#244044] bg-[#0d171a]">
               <div className="flex-1 space-y-4 overflow-auto p-4 sm:p-5">
                 {(!session ? [initialMessage] : session.messages).filter((item) => item.visibleToCustomer !== false).map((item) => (
                   <VegaMessageBubble
@@ -243,6 +326,20 @@ export default function VegaCommercialOnboarding() {
                   >
                     <p className="whitespace-pre-wrap">{item.content}</p>
                     {item.agentType ? <p className="mt-3 text-xs uppercase tracking-[0.14em] opacity-70">{item.agentType}</p> : null}
+                    {proposal && item.id === latestAssistantMessageId ? (
+                      <div className="mt-4 border-t border-[#071013]/15 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => setProposalOpen((open) => !open)}
+                          aria-expanded={proposalOpen}
+                          className="inline-flex min-h-10 items-center gap-2 rounded-md bg-[#071013] px-4 py-2 text-sm font-semibold text-white"
+                        >
+                          <FileText size={17} />
+                          {proposalOpen ? "Hide proposal" : "View proposal"}
+                        </button>
+                        {proposalOpen ? <ProposalPreview proposal={proposal} /> : null}
+                      </div>
+                    ) : null}
                   </VegaMessageBubble>
                 ))}
                 {pendingMessage ? (
@@ -289,66 +386,6 @@ export default function VegaCommercialOnboarding() {
                 </div>
               </form>
             </div>
-
-            <aside className="space-y-4">
-              <ActionPanel
-                title="Product recommendation"
-                icon={Rocket}
-                body={session?.productRecommendation?.why || "Vega will recommend Scout, Reach, Convert, Managed, or White Label once enough facts are known."}
-                meta={session?.productRecommendation?.productCode}
-              />
-
-              <ActionPanel
-                title="Pricing"
-                icon={CreditCard}
-                body={quote ? `${money(quote.totals?.setupFeeCents || 0)} setup and ${money(quote.totals?.recurringAmountCents || 0)}/mo.` : "Create a deterministic quote when the scope is ready."}
-                button="Create quote"
-                onClick={() => runAction({ action: "quote" })}
-                disabled={!discoveryComplete || busy}
-              />
-
-              <ActionPanel
-                title="Proposal"
-                icon={FileText}
-                body={proposal ? `Version ${proposal.version} is ${proposal.status.toLowerCase()}.` : "Generate a versioned proposal after pricing exists."}
-                button="Present proposal"
-                onClick={() => runAction({ action: "proposal" })}
-                disabled={!discoveryComplete || busy || !quote}
-              />
-
-              <section className="rounded-md border border-[#244044] bg-[#0d171a] p-4">
-                <h3 className="text-sm font-semibold">Hosted checkout boundary</h3>
-                <p className="mt-2 text-sm leading-6 text-[#b8ccca]">
-                  Vega needs explicit billing confirmation before creating checkout. No card data is collected here.
-                </p>
-                <textarea
-                  value={billingConfirmation}
-                  onChange={(event) => setBillingConfirmation(event.target.value)}
-                  placeholder="I confirm the setup fee, monthly amount, billing interval, included allowances, overage rules, and cancellation terms."
-                  className="mt-3 min-h-24 w-full resize-none rounded-md border border-[#244044] bg-[#071013] p-3 text-sm text-[#f7fbf8] outline-none focus:border-[#78dcca]"
-                />
-                <button
-                  type="button"
-                  onClick={() => runAction({ action: "checkout", billingConfirmation })}
-                  disabled={!session || busy || !proposal}
-                  className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md bg-[#78dcca] px-4 py-2 text-sm font-semibold text-[#071013] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <CreditCard size={17} />
-                  Create hosted checkout
-                </button>
-              </section>
-
-              {session?.humanReviewTasks?.length ? (
-                <section className="rounded-md border border-[#fbbf24]/40 bg-[#221906] p-4">
-                  <h3 className="text-sm font-semibold text-[#fde68a]">Human review</h3>
-                  <div className="mt-3 space-y-2">
-                    {session.humanReviewTasks.map((task) => (
-                      <p key={task.id} className="text-sm leading-6 text-[#fef3c7]">{task.reason}</p>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-            </aside>
           </div>
           <footer className="border-t border-[#244044] px-5 py-4 text-xs text-[#91a8a5]">
             <PoweredByGhost /> <span className="ml-2">{brand.legalAttributionText}</span>
@@ -408,6 +445,74 @@ function ActionPanel({
       ) : null}
     </section>
   );
+}
+
+function ProposalPreview({ proposal }: { proposal: SessionPayload["commercialProposals"][number] }) {
+  const setupFee = proposal.billingSummary?.setupFeeCents || 0;
+  const recurringAmount = proposal.billingSummary?.recurringAmountCents || 0;
+
+  return (
+    <section className="mt-3 rounded-md border border-[#071013]/15 bg-white/70 p-4 text-[#071013]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#445b5d]">Commercial proposal - Version {proposal.version}</p>
+          <h3 className="mt-1 text-lg font-semibold">{humanizeProductCode(proposal.productCode)}</h3>
+          {proposal.fulfillmentMode ? <p className="mt-1 text-sm text-[#445b5d]">{humanize(proposal.fulfillmentMode)} fulfillment</p> : null}
+        </div>
+        <span className="rounded-sm bg-[#071013] px-2 py-1 text-xs font-semibold uppercase text-white">{humanize(proposal.status)}</span>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <ProposalMetric label="Setup" value={money(setupFee)} />
+        <ProposalMetric label="Monthly" value={`${money(recurringAmount)}/mo`} />
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <ProposalList title="Setup includes" items={proposal.setupScope} />
+        <ProposalList title="Ongoing service" items={proposal.recurringScope} />
+        <ProposalList title="Vega handles" items={proposal.vegaResponsibilities} />
+        <ProposalList title="Your team handles" items={proposal.customerResponsibilities} />
+      </div>
+
+      {proposal.limitations?.length ? (
+        <div className="mt-4 border-t border-[#071013]/15 pt-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#445b5d]">Launch boundaries</p>
+          <p className="mt-1 text-sm leading-6">{proposal.limitations.join(" / ")}</p>
+        </div>
+      ) : null}
+      {proposal.termsReference ? <p className="mt-3 text-xs leading-5 text-[#526a6b]">{proposal.termsReference}</p> : null}
+    </section>
+  );
+}
+
+function ProposalMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-sm bg-[#071013] p-3 text-white">
+      <p className="text-xs uppercase tracking-[0.12em] text-[#91a8a5]">{label}</p>
+      <p className="mt-1 font-mono text-base font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function ProposalList({ title, items }: { title: string; items?: string[] }) {
+  if (!items?.length) return null;
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#445b5d]">{title}</p>
+      <ul className="mt-2 space-y-1 text-sm leading-5">
+        {items.map((item) => <li key={item}>- {humanize(item)}</li>)}
+      </ul>
+    </div>
+  );
+}
+
+function humanizeProductCode(value: string) {
+  return humanize(value.replace(/^VEGA_/, "Vega "));
+}
+
+function humanize(value: string) {
+  const normalized = value.replace(/[_-]+/g, " ").trim();
+  return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : value;
 }
 
 function money(cents: number) {
