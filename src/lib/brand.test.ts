@@ -45,19 +45,21 @@ test("Vega components power the homepage and onboarding identity", () => {
   assert.match(pageSource, /VegaDirectorPanel/);
   assert.match(pageSource, /VegaPlanCard/);
   assert.match(pageSource, /VegaMessageBubble/);
-  assert.match(onboardingSource, /VegaMessageBubble/);
-  assert.match(onboardingSource, /VegaIdentity/);
-  assert.match(onboardingSource, /GhostProductAttribution/);
+  assert.match(onboardingSource, /Conversation with Vega/);
+  assert.match(onboardingSource, /VegaMeetingStage/);
+  assert.match(onboardingSource, /AI Sales Director/);
   assert.match(vegaComponentSource, /vegaAssets\.neutral/);
 });
 
-test("commercial onboarding keeps actions in the left rail and proposals in the conversation", () => {
-  assert.match(onboardingSource, /Commercial plan/);
-  assert.match(onboardingSource, /latestAssistantMessageId/);
-  assert.match(onboardingSource, /View proposal/);
+test("commercial onboarding is a customer conversation with contextual proposal actions", () => {
+  assert.doesNotMatch(onboardingSource, /Commercial plan|Known facts|Launch QA|Current agent|Hosted checkout/);
+  assert.match(onboardingSource, /latestAssistantMessage/);
+  assert.match(onboardingSource, /Review plan/);
+  assert.match(onboardingSource, /Accept plan/);
+  assert.match(onboardingSource, /Continue to secure checkout/);
   assert.match(onboardingSource, /ProposalPreview/);
-  assert.match(onboardingSource, /lg:grid-cols-\[380px_minmax\(0,1fr\)\]/);
-  assert.doesNotMatch(onboardingSource, /xl:grid-cols-\[1fr_360px\]/);
+  assert.match(onboardingSource, /lg:grid-cols-\[340px_minmax\(0,1fr\)\]/);
+  assert.doesNotMatch(onboardingSource, /billingConfirmation|VEGA_CONCIERGE|REVIEWING_PROPOSAL|READY_FOR_DRY_RUN/);
 });
 
 test("plan pricing and recommendation label remain shared config data", () => {

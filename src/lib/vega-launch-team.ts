@@ -8,6 +8,7 @@ import {
 } from "@prisma/client";
 import { isLikelyEmail, registerClientCampaignUpdateRecipient } from "@/lib/client-campaign-updates";
 import { getPrisma } from "@/lib/prisma";
+import { createStripeCheckoutSession } from "@/lib/stripe-checkout";
 import { ensureVegaOnboardingSchema } from "@/lib/vega-onboarding-schema";
 import { getDefaultWorkspace } from "@/lib/workspace";
 
@@ -170,9 +171,9 @@ export const VEGA_LAUNCH_TEAM_CONTRACTS: Record<VegaLaunchAgentType, LaunchAgent
   ),
   BILLING_CONCIERGE: contract(
     VegaLaunchAgentType.BILLING_CONCIERGE,
-    "Confirms billing terms and hands the customer to a hosted checkout provider.",
-    ["accepted proposal", "explicit billing confirmation"],
-    { checkoutAction: "hosted checkout link or mock adapter state" },
+    "Confirms proposal acceptance and hands the customer to secure Stripe Checkout.",
+    ["accepted proposal", "deterministic quote"],
+    { checkoutAction: "Stripe-hosted checkout session" },
     true,
     ["billing dispute", "refund request", "payment failure"],
   ),
@@ -216,7 +217,7 @@ function contract(
       blockers: "hard blockers",
       nextRecommendedAgent: "next Vega Launch Team specialist",
     },
-    allowedTools: ["session-facts", "public-research-adapter", "deterministic-pricing", "mock-checkout", "launch-qa"],
+    allowedTools: ["session-facts", "public-research-adapter", "deterministic-pricing", "stripe-hosted-checkout", "launch-qa"],
     workspaceScope: agentType === VegaLaunchAgentType.VEGA_CONCIERGE ? "session" : "workspace",
     customerVisible,
     promptVersion: PROMPT_VERSION,
@@ -1235,24 +1236,56 @@ export async function createCommercialProposal(sessionId: string) {
   return proposal;
 }
 
-export async function createHostedCheckout(sessionId: string, explicitBillingConfirmation: string) {
+export async function createHostedCheckout(sessionId: string, proposalId?: string) {
   const prisma = getPrisma();
   await ensureVegaOnboardingSchema(prisma);
-  const session = await prisma.aIOnboardingSession.findUnique({ where: { id: sessionId } });
-  if (!session?.proposalId) throw new Error("Proposal must be presented before checkout.");
-  if (!hasExplicitBillingConfirmation(explicitBillingConfirmation)) {
-    await createHumanReviewTask(sessionId, "Billing confirmation was not explicit enough for checkout.");
-    throw new Error("Explicit billing confirmation is required before hosted checkout.");
-  }
-  const checkoutSessionId = `mock_checkout_${session.proposalId}`;
-  await prisma.aIOnboardingSession.update({
-    where: { id: session.id },
-    data: { checkoutSessionId, status: AIOnboardingStatus.AWAITING_CHECKOUT, lastActivityAt: new Date() },
+  const session = await prisma.aIOnboardingSession.findUnique({
+    where: { id: sessionId },
+    include: { commercialProposals: { orderBy: { version: "desc" }, take: 1 } },
   });
+  const proposal = session?.commercialProposals[0];
+  if (!session || !proposal || (proposalId && proposal.id !== proposalId)) {
+    throw new Error("The latest proposal must be reviewed before checkout.");
+  }
+  if (proposal.status !== CommercialProposalStatus.PRESENTED && proposal.status !== CommercialProposalStatus.ACCEPTED) {
+    throw new Error("This proposal is not available for acceptance.");
+  }
+
+  const billing = proposal.billingSummary as Prisma.JsonObject;
+  const checkout = await createStripeCheckoutSession({
+    sessionId: session.id,
+    proposalId: proposal.id,
+    proposalVersion: proposal.version,
+    productCode: proposal.productCode,
+    setupFeeCents: Number(billing.setupFeeCents || 0),
+    recurringAmountCents: Number(billing.recurringAmountCents || 0),
+  });
+
+  await prisma.$transaction([
+    prisma.commercialProposal.update({
+      where: { id: proposal.id },
+      data: { status: CommercialProposalStatus.ACCEPTED, approvedAt: proposal.approvedAt || new Date() },
+    }),
+    prisma.pricingQuote.update({ where: { id: proposal.pricingQuoteId }, data: { acceptedAt: new Date() } }),
+    prisma.aIOnboardingSession.update({
+      where: { id: session.id },
+      data: { checkoutSessionId: checkout.id, status: AIOnboardingStatus.AWAITING_CHECKOUT, lastActivityAt: new Date() },
+    }),
+    prisma.aIOnboardingMessage.create({
+      data: {
+        sessionId: session.id,
+        role: "assistant",
+        content: "Your plan is approved. Continue to secure checkout when you are ready. I will keep everything here if you need to return.",
+        visibleToCustomer: true,
+        agentType: VegaLaunchAgentType.BILLING_CONCIERGE,
+      },
+    }),
+  ]);
+
   return {
-    checkoutSessionId,
-    provider: "mock-hosted-checkout",
-    url: `${process.env.NEXT_PUBLIC_APP_URL || "https://leadgen.ghostai.solutions"}/onboarding/ai?checkout=${checkoutSessionId}`,
+    checkoutSessionId: checkout.id,
+    provider: "stripe",
+    url: checkout.url,
   };
 }
 
@@ -1264,6 +1297,7 @@ export async function provisionCommercialWorkspace(sessionId: string, paymentEve
   if (!paymentEventId.startsWith("verified_") && !paymentEventId.startsWith("manual_")) {
     throw new Error("Provisioning requires verified payment or authorized manual activation.");
   }
+  if (session.provisioningStatus) return session;
   const workspace = session.workspaceId ? { id: session.workspaceId } : await getDefaultWorkspace();
   const updated = await prisma.aIOnboardingSession.update({
     where: { id: session.id },
@@ -1324,21 +1358,6 @@ async function recordAgentRun(input: {
       confidence: input.confidence,
       cost: 0,
       completedAt: new Date(),
-    },
-  });
-}
-
-async function createHumanReviewTask(sessionId: string, reason: string) {
-  const prisma = getPrisma();
-  await ensureVegaOnboardingSchema(prisma);
-  const session = await prisma.aIOnboardingSession.findUnique({ where: { id: sessionId } });
-  return prisma.humanReviewTask.create({
-    data: {
-      workspaceId: session?.workspaceId,
-      onboardingSessionId: sessionId,
-      reason,
-      priority: "high",
-      payload: { reason } as Prisma.InputJsonValue,
     },
   });
 }
@@ -1449,16 +1468,6 @@ function buildCampaignDraft(facts: CommercialFact[], productCode: VegaProductCod
     dryRun: true,
     liveSendReadiness: "not-ready-during-onboarding",
   };
-}
-
-function hasExplicitBillingConfirmation(message: string) {
-  const lower = message.toLowerCase();
-  return (
-    /\b(confirm|approved|approve|accept|accepted|agree)\b/.test(lower) &&
-    /\b(setup|one[- ]time)\b/.test(lower) &&
-    /\b(month|monthly|recurring)\b/.test(lower) &&
-    /\b(allowance|included|overage)\b/.test(lower)
-  );
 }
 
 function money(cents: number) {

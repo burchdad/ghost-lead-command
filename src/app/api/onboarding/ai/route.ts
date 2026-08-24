@@ -5,7 +5,6 @@ import {
   createCommercialQuote,
   createHostedCheckout,
   getCommercialOnboardingSession,
-  provisionCommercialWorkspace,
   startCommercialOnboarding,
 } from "@/lib/vega-launch-team";
 
@@ -57,21 +56,19 @@ export async function POST(request: Request) {
     }
 
     if (action === "checkout") {
-      const checkout = await createHostedCheckout(sessionId, String(body.billingConfirmation || ""));
+      const checkout = await createHostedCheckout(sessionId, body.proposalId ? String(body.proposalId) : undefined);
       const session = await getCommercialOnboardingSession(sessionId);
       return NextResponse.json({ checkout, session });
     }
 
-    if (action === "provision") {
-      const provisioned = await provisionCommercialWorkspace(sessionId, String(body.paymentEventId || ""));
-      const session = await getCommercialOnboardingSession(provisioned.id);
-      return NextResponse.json({ provisioned, session });
-    }
-
     return NextResponse.json({ error: `Unsupported onboarding action: ${action}` }, { status: 400 });
   } catch (error) {
+    console.error("Vega commercial onboarding request failed", error);
     return NextResponse.json(
-      { error: "Vega commercial onboarding failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      {
+        error: "Vega is having trouble saving this part of the conversation. Your message is still here, so please try again in a moment.",
+        code: "ONBOARDING_UNAVAILABLE",
+      },
       { status: 500 },
     );
   }

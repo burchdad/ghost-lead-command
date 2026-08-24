@@ -1,5 +1,15 @@
 # Ghost Lead Command
 
+## Stripe onboarding checkout
+
+Customer proposal acceptance creates a Stripe-hosted Checkout Session. Configure these values in Vercel for Production and Preview:
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `NEXT_PUBLIC_APP_URL` (for example, `https://leadgen.ghostai.solutions`)
+
+Register the Stripe webhook endpoint at `/api/stripe/webhook` and subscribe it to `checkout.session.completed` and `checkout.session.async_payment_succeeded`. Pricing remains deterministic in Vega's versioned proposal; payment details are collected only by Stripe.
+
 Ghost Lead Command is the unified sales operating cockpit for Ghost AI Solutions.
 
 It is designed to connect the pieces already built across the Ghost repos into one lead-to-cash workflow:
