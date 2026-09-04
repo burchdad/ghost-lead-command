@@ -1,6 +1,51 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { searchFreshLeads } from "./sourcing";
+import type { SourceLead } from "./sourcing";
+import { mapsStart, nextMapsStart } from "./source-pagination";
+import { callSourceDecision } from "./call-source-policy";
+
+test("Maps pagination uses bounded offsets and never follows arbitrary next URLs", () => {
+  assert.equal(mapsStart("20"), 20);
+  assert.throws(() => mapsStart("bad"));
+  assert.throws(() => mapsStart("120"));
+  assert.equal(nextMapsStart("https://serpapi.com/search.json?start=40", 20), "40");
+  assert.equal(nextMapsStart("https://serpapi.com/search.json?start=20", 20), null);
+  assert.equal(nextMapsStart(undefined, 0), null);
+});
+
+test("call readiness does not require email or named buyer and honors channel suppression", () => {
+  const lead = { companyName: "Example HVAC", phone: "+1 (903) 555-0100", email: "", website: "https://example.com", score: 65, buyerFit: "Unclear" } as SourceLead;
+  assert.equal(callSourceDecision(lead, []), "call-ready");
+  assert.equal(callSourceDecision(lead, [{ type: "phone", value: "9035550100" }]), "suppressed");
+  assert.equal(callSourceDecision(lead, [{ type: "company", value: "example hvac" }]), "suppressed");
+  assert.equal(callSourceDecision(lead, [{ type: "domain", value: "example.com" }]), "suppressed");
+  assert.equal(callSourceDecision(lead, [{ type: "email", value: "bounced@example.com" }]), "call-ready");
+  assert.equal(callSourceDecision({ ...lead, phone: "123" }, []), "missing-usable-phone");
+  assert.equal(callSourceDecision({ ...lead, buyerFit: "Vendor risk" }, []), "poor-fit");
+});
+
+test("Google Maps returns a real next offset and keeps phone sourcing independent of email enrichment", async () => {
+  const originalFetch = global.fetch;
+  const originalKey = process.env.SERPAPI_API_KEY;
+  process.env.SERPAPI_API_KEY = "test";
+  global.fetch = (async (input) => {
+    const url = new URL(String(input));
+    assert.equal(url.hostname, "serpapi.com");
+    assert.equal(url.searchParams.get("start"), "20");
+    assert.equal(url.searchParams.has("next_page_token"), false);
+    return Response.json({ local_results: [{ place_id: "test1", title: "Example HVAC", phone: "9035550100", website: "https://example.com", address: "Tyler, Texas" }], serpapi_pagination: { next: "https://serpapi.com/search.json?start=40" } });
+  }) as typeof fetch;
+  try {
+    const result = await searchFreshLeads({ provider: "google-maps", query: "HVAC", location: "Tyler, Texas", size: 50, scrollToken: "20", mode: "call-ready" });
+    assert.equal(result.scrollToken, "40");
+    assert.equal(result.leads[0].phone, "9035550100");
+    assert.equal(result.leads[0].email, "");
+  } finally {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.SERPAPI_API_KEY; else process.env.SERPAPI_API_KEY = originalKey;
+  }
+});
 
 test("Apollo source search normalizes people into Vega source leads", async () => {
   const originalApiKey = process.env.APOLLO_API_KEY;

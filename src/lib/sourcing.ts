@@ -1,3 +1,5 @@
+import { mapsStart, nextMapsStart } from "./source-pagination";
+
 export type SourceProvider = "pdl" | "apollo" | "ghost-lead-agent" | "google-maps" | "facebook-business";
 
 export type SourceSearchInput = {
@@ -9,6 +11,7 @@ export type SourceSearchInput = {
   industries?: string[];
   size?: number;
   scrollToken?: string;
+  mode?: "call-ready";
 };
 
 export type SourceLead = {
@@ -492,9 +495,10 @@ async function fetchGoogleMapsMarket(input: SourceSearchInput, market: string, s
   url.searchParams.set("api_key", clean(process.env.SERPAPI_API_KEY));
   url.searchParams.set("hl", "en");
   url.searchParams.set("type", "search");
-  if (input.scrollToken) url.searchParams.set("next_page_token", input.scrollToken);
+  const start = mapsStart(input.scrollToken);
+  url.searchParams.set("start", String(start));
 
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(20000) });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     return {
@@ -507,13 +511,14 @@ async function fetchGoogleMapsMarket(input: SourceSearchInput, market: string, s
   const payload = (await response.json()) as {
     local_results?: SerpApiMapsResult[];
     place_results?: SerpApiMapsResult;
-    serpapi_pagination?: { next_page_token?: string };
+    serpapi_pagination?: { next?: string };
     error?: string;
   };
   const results = payload.local_results || (payload.place_results ? [payload.place_results] : []);
   return {
-    results: results.slice(0, size),
-    scrollToken: payload.serpapi_pagination?.next_page_token || null,
+    // Preserve the complete page: filtering and dedupe may need every candidate.
+    results: results.slice(0, Math.max(20, size)),
+    scrollToken: nextMapsStart(payload.serpapi_pagination?.next, start),
     error: payload.error || null,
   };
 }
@@ -579,7 +584,7 @@ async function searchPeopleDataLabs(input: SourceSearchInput) {
   };
   const leads = (payload.data || []).map((person) => normalizePdlPerson(person));
   const qualified = leads
-    .filter((lead) => !isSuppressedSourceLead(lead))
+    .filter((lead) => input.mode === "call-ready" ? isReviewReadySourceLead(lead) || !isSuppressedSourceLead(lead) : !isSuppressedSourceLead(lead))
     .sort((a, b) => b.score - a.score);
 
   return {
@@ -684,7 +689,7 @@ function buildApolloSearchPayload(input: SourceSearchInput) {
     person_titles: titles,
     person_locations: location ? [location] : undefined,
     organization_locations: location ? [location] : undefined,
-    contact_email_status: ["verified"],
+    ...(input.mode === "call-ready" ? {} : { contact_email_status: ["verified"] }),
     per_page: clampSize(input.size),
     page,
   };
@@ -921,7 +926,8 @@ async function normalizeGoogleMapsResult(
 ): Promise<SourceLead> {
   const companyName = clean(result.title) || "Unknown Company";
   const website = normalizeWebsite(result.website || "");
-  const websiteContact = website ? await extractWebsiteContact(website) : { email: "", phone: "" };
+  const websiteContact = website && !(input.mode === "call-ready" && result.phone)
+    ? await extractWebsiteContact(website) : { email: "", phone: "" };
   const phone = clean(result.phone) || websiteContact.phone;
   const email = websiteContact.email;
   const niche = clean(result.type) || clean(result.types?.[0]) || clean(input.industries?.[0]) || "Local Business";
