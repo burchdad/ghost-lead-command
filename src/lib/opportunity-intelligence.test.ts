@@ -58,7 +58,7 @@ function item(overrides: Partial<OutreachQueueItem> = {}): OutreachQueueItem {
 test("manual or enrich queue items are not send-ready approval cards", () => {
   const decision = evaluateOpportunityQueueItem({ ...item(), lead: lead() });
   assert.equal(decision.sendReady, false);
-  assert.equal(decision.cardTitle, "VEGA RESEARCH REQUIRED");
+  assert.equal(decision.cardTitle, "GHOST DIRECTOR RESEARCH REQUIRED");
   assert.equal(decision.leadFit, 87);
   assert.equal(decision.intent, 68);
   assert.equal(decision.decisionLane, "RESEARCH");
@@ -121,7 +121,7 @@ test("phone-ready manual paths become call-first with email explicitly blocked",
   });
 
   assert.equal(decision.decisionLane, "CALL_FIRST");
-  assert.equal(decision.cardTitle, "VEGA CALL-FIRST TASK");
+  assert.equal(decision.cardTitle, "GHOST DIRECTOR CALL-FIRST TASK");
   assert.match(decision.executionStatus, /Call-first ready; email blocked/i);
 });
 
@@ -137,7 +137,7 @@ test("website-only paths become manual contact form rather than call-first", () 
   });
 
   assert.equal(decision.decisionLane, "MANUAL_CONTACT_FORM");
-  assert.equal(decision.cardTitle, "VEGA MANUAL CONTACT TASK");
+  assert.equal(decision.cardTitle, "GHOST DIRECTOR MANUAL CONTACT TASK");
   assert.match(decision.executionStatus, /Contact-form ready; email blocked/i);
 });
 

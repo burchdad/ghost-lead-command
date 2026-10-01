@@ -126,14 +126,14 @@ export function evaluateOpportunityQueueItem(item: QueueItemWithLead): Opportuni
   const opportunityTrust = clamp(Math.min(intent || 0, sendReady ? confidence : Math.max(10, confidence + 10)));
   const cardTitle =
     decisionLane === "SUPPRESS_REVIEW"
-      ? "VEGA SUPPRESSION REVIEW"
+      ? "GHOST DIRECTOR SUPPRESSION REVIEW"
       : decisionLane === "CALL_FIRST"
-        ? "VEGA CALL-FIRST TASK"
+        ? "GHOST DIRECTOR CALL-FIRST TASK"
         : decisionLane === "MANUAL_CONTACT_FORM"
-          ? "VEGA MANUAL CONTACT TASK"
+          ? "GHOST DIRECTOR MANUAL CONTACT TASK"
         : sendReady
           ? "Lead Command approval ready"
-          : "VEGA RESEARCH REQUIRED";
+          : "GHOST DIRECTOR RESEARCH REQUIRED";
   const nextAction =
     decisionLane === "CALL_FIRST"
       ? "Call the business or use the website contact form before email outreach."

@@ -127,7 +127,7 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
     }
     const summary = `Ghost Director created a call/contact-form task for ${updated.lead?.companyName || "that lead"}. No SendGrid email was sent.`;
     await recordOutreachSlackAction({ action: "call_task", itemId, ok: true, summary, payload });
-    await postSlackInteractionFollowup(payload.response_url, `VEGA CALL TASK CREATED\n\n${summary}`, { inChannel: true });
+    await postSlackInteractionFollowup(payload.response_url, `GHOST DIRECTOR CALL TASK CREATED\n\n${summary}`, { inChannel: true });
     return slackEphemeral(summary);
   }
 
@@ -185,7 +185,7 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
     });
     const startSummary = `Ghost Director moved ${updated.lead?.companyName || "that lead"} into contact research. Contact Path Agent is running now. No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
     await recordOutreachSlackAction({ action: "research_started", itemId, ok: true, summary: startSummary, payload });
-    await postSlackInteractionFollowup(payload.response_url, `VEGA CONTACT RESEARCH STARTED\n\n${startSummary}`, { inChannel: true });
+    await postSlackInteractionFollowup(payload.response_url, `GHOST DIRECTOR CONTACT RESEARCH STARTED\n\n${startSummary}`, { inChannel: true });
 
     after(async () => {
       try {
@@ -194,13 +194,13 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
         await recordOutreachSlackAction({ action: "research_finished", itemId, ok: researchResult.status === "done", summary, payload });
         await postSlackInteractionFollowup(
           payload.response_url,
-          `VEGA CONTACT RESEARCH RESULT\n\n${summary}\n\nNext lane: ${researchResult.nextMove}`,
+          `GHOST DIRECTOR CONTACT RESEARCH RESULT\n\n${summary}\n\nNext lane: ${researchResult.nextMove}`,
           { inChannel: true },
         );
       } catch (error) {
         const summary = `Ghost Director contact research failed for ${updated.lead?.companyName || "that lead"}: ${error instanceof Error ? error.message : "Unknown error."}`;
         await recordOutreachSlackAction({ action: "research_failed", itemId, ok: false, summary, payload });
-        await postSlackInteractionFollowup(payload.response_url, `VEGA CONTACT RESEARCH FAILED\n\n${summary}`, { inChannel: true });
+        await postSlackInteractionFollowup(payload.response_url, `GHOST DIRECTOR CONTACT RESEARCH FAILED\n\n${summary}`, { inChannel: true });
       }
     });
 

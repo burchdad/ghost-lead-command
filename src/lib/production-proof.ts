@@ -560,7 +560,7 @@ export async function runVegaProductionProof(input: { instruction?: string; post
   };
 
   const summaryLines = [
-    "VEGA DAILY CAMPAIGN REPORT",
+    "GHOST DIRECTOR DAILY CAMPAIGN REPORT",
     "",
     "Yesterday",
     lineItem("Emails attempted", report.yesterday.emailsAttempted),
