@@ -14,12 +14,12 @@ export async function GET(request: Request) {
 
   try {
     const url = new URL(request.url);
-    const instruction = url.searchParams.get("instruction") || "Vega closing sprint for 10 closes this week";
+    const instruction = url.searchParams.get("instruction") || "Ghost Director closing sprint for 10 closes this week";
     const result = await runVegaClosingSprint(parseClosingSprintInstruction(instruction));
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega closing sprint failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director closing sprint failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const instruction = body.instruction ? String(body.instruction) : "Vega closing sprint for 10 closes this week";
+    const instruction = body.instruction ? String(body.instruction) : "Ghost Director closing sprint for 10 closes this week";
     const parsed = parseClosingSprintInstruction(instruction);
     const result = await runVegaClosingSprint({
       ...parsed,
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega closing sprint failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director closing sprint failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }

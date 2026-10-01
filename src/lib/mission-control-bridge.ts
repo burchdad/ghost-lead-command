@@ -20,7 +20,7 @@ function novaToken() {
 }
 
 function leadDirectorAgentName() {
-  return clean(process.env.LEAD_DIRECTOR_AGENT_NAME) || "Vega Lead Director AI";
+  return clean(process.env.LEAD_DIRECTOR_AGENT_NAME) || "Ghost Director Lead Director AI";
 }
 
 export function getMissionControlBridgeStatus() {

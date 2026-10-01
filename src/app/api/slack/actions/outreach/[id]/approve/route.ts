@@ -17,7 +17,7 @@ export async function GET(
   const delivery = result.ok ? result.body.delivery : null;
   const isManual = delivery?.channel === "manual";
   return slackActionClosePage(
-    result.ok ? "Vega approved outreach" : "Vega approval failed",
+    result.ok ? "Ghost Director approved outreach" : "Ghost Director approval failed",
     result.ok
       ? isManual
         ? "Manual contact task approved. No SendGrid email was sent. You can close this tab."

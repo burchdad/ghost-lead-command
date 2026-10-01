@@ -166,7 +166,7 @@ export async function repairMissingPhoneAssistSchedules(input: {
       where: { id: task.id },
       data: {
         scheduledFor,
-        reason: `Vega repaired missing phone-assist schedule using createdAt + ${delayHours}h.`,
+        reason: `Ghost Director repaired missing phone-assist schedule using createdAt + ${delayHours}h.`,
       },
     });
   }

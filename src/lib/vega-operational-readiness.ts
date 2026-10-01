@@ -358,7 +358,7 @@ export async function labelCalibrationItem(input: {
     data: {
       verdict: input.verdict,
       notes: clean(input.notes) || null,
-      reviewedBy: clean(input.reviewedBy) || "Vega operator",
+      reviewedBy: clean(input.reviewedBy) || "Ghost Director operator",
       reviewedAt: new Date(),
       memoryEvidence: memoryEvidence as unknown as Prisma.InputJsonValue,
     },

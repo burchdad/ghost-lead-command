@@ -252,7 +252,7 @@ export async function pushReadyBookingTasks(input: { limit?: number } = {}) {
             { channel: "email" },
           ),
           status: "pending",
-          reason: "Vega booking handoff prepared from a hot/booked reply.",
+          reason: "Ghost Director booking handoff prepared from a hot/booked reply.",
         },
       });
       queued += 1;
@@ -285,7 +285,7 @@ export async function pushReadyBookingTasks(input: { limit?: number } = {}) {
           channel: "email",
           direction: "outbound",
           classification: "booking-handoff",
-          body: `Vega prepared booking handoff for ${lead.companyName}. Calendar link: ${meetingLink}`,
+          body: `Ghost Director prepared booking handoff for ${lead.companyName}. Calendar link: ${meetingLink}`,
           metadata: { taskId: task.id, queueStatus: hasPendingHandoff ? "already-pending" : "queued" },
         },
       }),
@@ -294,7 +294,7 @@ export async function pushReadyBookingTasks(input: { limit?: number } = {}) {
   }
 
   await createAutomationEvent({
-    title: "Vega booking handoff push",
+    title: "Ghost Director booking handoff push",
     detail: `Reviewed ${tasks.length} ready booking tasks. Queued ${queued}, already pending ${alreadyPending}, scheduled ${scheduled}, blocked ${blocked}.`,
     status: queued || scheduled || alreadyPending ? "done" : tasks.length ? "needs_review" : "blocked",
     type: "booking",

@@ -28,13 +28,13 @@ export function isDominanceLoopRequest(text: string) {
 }
 
 export async function runVegaDominanceLoop(input: { instruction?: string; autoApprove?: boolean } = {}) {
-  const instruction = clean(input.instruction) || "Vega dominance loop";
+  const instruction = clean(input.instruction) || "Ghost Director dominance loop";
   const queueLimit = parseLimit(instruction, Number(process.env.VEGA_DOMINANCE_QUEUE_LIMIT || 10));
   const location = parseLocation(instruction);
   const autoApprove = input.autoApprove ?? /\b(?:approve|send|release|auto)\b/i.test(instruction);
 
   await createAutomationEvent({
-    title: "Vega dominance loop started",
+    title: "Ghost Director dominance loop started",
     detail: `Dominance loop started. Queue target ${queueLimit}, auto-approve ${autoApprove ? "on" : "off"}.`,
     status: "running",
     type: "agent",
@@ -55,7 +55,7 @@ export async function runVegaDominanceLoop(input: { instruction?: string; autoAp
     queueLimit,
     location,
   });
-  const watch = await runVegaRevenueWatch({ instruction: "Vega dominance loop watch", execute: true });
+  const watch = await runVegaRevenueWatch({ instruction: "Ghost Director dominance loop watch", execute: true });
 
   const topIntent = intent.items[0];
   const nextMoves = [
@@ -75,7 +75,7 @@ export async function runVegaDominanceLoop(input: { instruction?: string; autoAp
   ].join(" ");
 
   await createAutomationEvent({
-    title: "Vega dominance loop finished",
+    title: "Ghost Director dominance loop finished",
     detail: summary.slice(0, 900),
     status: director.summary.queued || sprint.after.pendingApprovals || sprint.after.bookingTasksReady ? "done" : "needs_review",
     type: "agent",

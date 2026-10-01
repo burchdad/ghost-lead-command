@@ -14,7 +14,7 @@ export async function GET(
   const { id } = await params;
   const result = await suppressOutreachQueueItem(id);
   return slackActionClosePage(
-    result.ok ? "Vega suppressed lead" : "Vega suppress failed",
+    result.ok ? "Ghost Director suppressed lead" : "Ghost Director suppress failed",
     result.ok
       ? `Suppression records added: ${result.body.suppressed}. You can close this tab.`
       : result.body.error || "Suppress failed.",

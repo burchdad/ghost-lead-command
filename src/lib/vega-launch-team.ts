@@ -1,3 +1,4 @@
+import { servicePlans, servicePriceVersion, servicePlanName, serviceScope } from "@/config/service-plans";
 import type { Prisma } from "@prisma/client";
 import {
   AIOnboardingStatus,
@@ -99,7 +100,7 @@ export type PricingQuoteOutput = {
   lineItems: Array<{ label: string; amountCents: number; type: "setup" | "recurring" | "discount" }>;
 };
 
-const PRICE_VERSION = "vega-commercial-2026-07-20";
+const PRICE_VERSION = servicePriceVersion;
 const PROMPT_VERSION = "vega-launch-team-v1";
 const MODEL = process.env.VEGA_AGENT_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const OPENAI_ONBOARDING_MODEL = process.env.VEGA_ONBOARDING_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini";
@@ -133,7 +134,7 @@ export const VEGA_LAUNCH_TEAM_CONTRACTS: Record<VegaLaunchAgentType, LaunchAgent
     VegaLaunchAgentType.OFFER_ARCHITECT,
     "Turns confirmed services into grounded positioning, CTA, proof, objections, and phone openers.",
     ["business profile", "target market", "confirmed claims"],
-    { offerDraft: "campaign-ready offer", prohibitedClaims: "claims Vega must not make" },
+    { offerDraft: "campaign-ready offer", prohibitedClaims: "claims Ghost Director must not make" },
     false,
     ["performance guarantee requested", "unconfirmed proof point"],
   ),
@@ -147,7 +148,7 @@ export const VEGA_LAUNCH_TEAM_CONTRACTS: Record<VegaLaunchAgentType, LaunchAgent
   ),
   PRODUCT_ADVISOR: contract(
     VegaLaunchAgentType.PRODUCT_ADVISOR,
-    "Recommends the right Vega product and explains responsibilities, exclusions, and alternatives.",
+    "Recommends the right Ghost Director product and explains responsibilities, exclusions, and alternatives.",
     ["business goals", "capacity", "campaign complexity", "budget signals"],
     { productRecommendation: "product fit with alternatives" },
     true,
@@ -215,7 +216,7 @@ function contract(
       factsRequiringConfirmation: "facts that need customer confirmation",
       recommendations: "structured recommendations",
       blockers: "hard blockers",
-      nextRecommendedAgent: "next Vega Launch Team specialist",
+      nextRecommendedAgent: "next Ghost Director Launch Team specialist",
     },
     allowedTools: ["session-facts", "public-research-adapter", "deterministic-pricing", "stripe-hosted-checkout", "launch-qa"],
     workspaceScope: agentType === VegaLaunchAgentType.VEGA_CONCIERGE ? "session" : "workspace",
@@ -280,26 +281,26 @@ export const liveLaunchCriticalFacts: CommercialFactKey[] = [
 ];
 
 const factQuestions: Record<CommercialFactKey, string> = {
-  businessIdentity: "What is the business name Vega should build this around?",
-  businessWebsite: "Do you have a website or public page Vega can use to understand the business?",
+  businessIdentity: "What is the business name Ghost Director should build this around?",
+  businessWebsite: "Do you have a website or public page Ghost Director can use to understand the business?",
   serviceOrProduct: "What service or product are we selling first?",
   targetCustomer: "Who are the best customers to win first?",
-  territory: "What territory should Vega focus on?",
+  territory: "What territory should Ghost Director focus on?",
   serviceCapacity: "How many new customers or jobs can the team realistically handle per month?",
   averageCustomerValue: "Roughly what is a good new customer worth?",
   growthObjective: "What growth target should this campaign support?",
-  desiredLeadVolume: "How many qualified leads do you want Vega to source each month?",
+  desiredLeadVolume: "How many qualified leads do you want Ghost Director to source each month?",
   desiredOutcome: "What outcome matters most: more replies, booked calls, proposals, or closed jobs?",
-  outreachResponsibility: "Should Vega draft only, send after approval, or auto-send inside guardrails?",
+  outreachResponsibility: "Should Ghost Director draft only, send after approval, or auto-send inside guardrails?",
   phoneFollowUpResponsibility: "Who will call warm leads after email: you, your team, a VA, or Ghost?",
-  salesUpdateRecipientEmail: "What email should Vega use for the sales manager's daily lead updates, call tasks, and warm-lead alerts?",
+  salesUpdateRecipientEmail: "What email should Ghost Director use for the sales manager's daily lead updates, call tasks, and warm-lead alerts?",
   bestOffer: "What is the lowest-friction offer we can put in front of prospects?",
   differentiators: "What makes this business meaningfully different from competitors?",
   contactIdentity: "Who should prospects see as the sender or point of contact?",
   replyPath: "Where should replies go so nothing gets missed?",
-  schedulingPath: "What calendar or booking path should Vega use for interested prospects?",
-  automationPreference: "How much autonomy do you want Vega to have at launch?",
-  planAcceptance: "Do you approve the recommended Vega plan and scope?",
+  schedulingPath: "What calendar or booking path should Ghost Director use for interested prospects?",
+  automationPreference: "How much autonomy do you want Ghost Director to have at launch?",
+  planAcceptance: "Do you approve the recommended Ghost Director plan and scope?",
   billingConfirmation: "Please confirm the exact setup fee, recurring amount, billing interval, allowances, overage behavior, and cancellation terms before checkout.",
 };
 
@@ -584,7 +585,7 @@ export function inferFactsFromMessage(message: string, existingFacts: Commercial
   if (/\b(sales manager|manager will handle|handle phone follow[- ]?up|phone follow[- ]?up)\b/.test(lower)) {
     add("phoneFollowUpResponsibility", "client sales manager");
   }
-  if (/\b(auto[- ]?send|automate|automatic)\b/.test(lower)) add("automationPreference", "auto-send inside Vega safety guardrails");
+  if (/\b(auto[- ]?send|automate|automatic)\b/.test(lower)) add("automationPreference", "auto-send inside Ghost Director safety guardrails");
   if (/\b(office manager|va|assistant|team)\b/.test(lower)) add("phoneFollowUpResponsibility", "customer team or VA");
   if (/\b(?:ghost handles calls|managed calls|done for me)\b/.test(lower)) add("phoneFollowUpResponsibility", "Ghost managed calling");
 
@@ -723,13 +724,13 @@ export async function inferFactsWithAi(message: string, existingFacts: Commercia
 
 function buildOnboardingFactPrompt(message: string, existingFacts: CommercialFact[]) {
   return [
-    "You are Vega Concierge, an AI sales onboarding analyst for Ghost Lead Command.",
+    "You are Ghost Director Concierge, an AI sales onboarding analyst for Ghost Lead Command.",
     "Extract only facts the customer directly stated or clearly corrected. Do not invent facts.",
-    "Use confirmed=true for direct customer statements. Use confirmed=false only for obvious inferred market categories that Vega should later confirm.",
+    "Use confirmed=true for direct customer statements. Use confirmed=false only for obvious inferred market categories that Ghost Director should later confirm.",
     "If the customer says no/not yet to the currently requested website, extract businessWebsite as No public website yet.",
     "If the customer gives an email for daily lead updates, use salesUpdateRecipientEmail. If they give the reply inbox prospects should email, use replyPath.",
     "If the customer says a sales manager, VA, or team will handle calls, extract phoneFollowUpResponsibility.",
-    "If the customer says they want Vega to auto-send or automate outreach, extract automationPreference.",
+    "If the customer says they want Ghost Director to auto-send or automate outreach, extract automationPreference.",
     "Return JSON only.",
     `Allowed fact keys: ${requiredFacts.join(", ")}`,
     `Existing facts: ${JSON.stringify(existingFacts.map(({ key, value, confirmed, inferred, confidence }) => ({ key, value, confirmed, inferred, confidence })))}`,
@@ -791,17 +792,17 @@ export async function generateNaturalConciergeReply(input: ConciergeReplyInput) 
     : "Do not discuss pricing yet.";
 
   const prompt = [
-    "You are Vega, the AI Sales Director for Ghost Lead Command. Conduct this onboarding like an excellent conversational AI, not a form wizard.",
+    "You are Ghost Director, the AI Sales Director for Ghost Lead Command. Conduct this onboarding like an excellent conversational AI, not a form wizard.",
     "Write a direct, warm, useful reply in 2-5 short sentences. Answer the customer's question or react to their actual message before advancing onboarding.",
-    "Acknowledge only information that is new. Never repeat the full business summary, product recommendation, or a paragraph from an earlier Vega message.",
+    "Acknowledge only information that is new. Never repeat the full business summary, product recommendation, or a paragraph from an earlier Ghost Director message.",
     "Ask at most one question. When NEXT QUESTION is supplied, end with that objective naturally; do not ask a different onboarding question.",
     "When NEXT QUESTION is null, do not restart discovery. Explain the single next action available.",
     "Do not invent customer facts, research results, integrations, guarantees, capabilities, discounts, or prices.",
     "Product selection, pricing, checkout, outreach policy, and launch QA are deterministic. You may explain them but never alter them.",
     `Exact deterministic pricing, if available: ${exactPricing}`,
     `Proposal prepared: ${Boolean(input.proposalPrepared)}`,
-    `Deterministic product recommendation: ${input.recommendation.productCode}. Reason: ${input.recommendation.why}`,
-    `Vega may handle only these responsibilities in this package: ${JSON.stringify(input.recommendation.vegaHandles)}`,
+    `Deterministic product recommendation: ${servicePlanName(input.recommendation.productCode)}. Reason: ${input.recommendation.why}`,
+    `Ghost Director may handle only these responsibilities in this package: ${JSON.stringify(input.recommendation.vegaHandles)}`,
     `The customer handles these responsibilities: ${JSON.stringify(input.recommendation.customerHandles)}`,
     `Explicitly excluded: ${JSON.stringify(input.recommendation.excluded)}`,
     `Confirmed facts: ${JSON.stringify(confirmedFacts)}`,
@@ -849,7 +850,7 @@ export async function generateNaturalConciergeReply(input: ConciergeReplyInput) 
         .join("\n");
     const reply = String(JSON.parse(outputText || "{}").reply || "").trim();
     if (!isUsableConciergeReply(reply, input, recentHistory)) {
-      return { text: fallback, provider: "deterministic" as const, warning: "OpenAI reply failed Vega conversation policy." };
+      return { text: fallback, provider: "deterministic" as const, warning: "OpenAI reply failed Ghost Director conversation policy." };
     }
     return { text: reply, provider: "openai" as const, model: OPENAI_ONBOARDING_MODEL };
   } catch (error) {
@@ -879,9 +880,9 @@ function isUsableConciergeReply(
     ]);
     if (mentionedPrices.some((price) => !allowedPrices.has(price.replace(/\s/g, "")))) return false;
   }
-  const mentionedProduct = reply.match(/Vega\s+(?:Scout|Reach|Convert|Managed|White\s+Label)/i)?.[0];
+  const mentionedProduct = reply.match(/\b(?:Scout|Reach|Convert|Managed|White\s+Label)\b(?=\s+(?:plan|package|tier)|[.,]|$)/i)?.[0];
   if (mentionedProduct) {
-    const normalizedMention = mentionedProduct.replace(/\s+/g, "_").toUpperCase();
+    const normalizedMention = "VEGA_" + mentionedProduct.replace(/\s+/g, "_").toUpperCase();
     if (normalizedMention !== input.recommendation.productCode) return false;
   }
   const normalizedReply = reply.replace(/\s+/g, " ").trim().toLowerCase();
@@ -930,13 +931,7 @@ export function calculatePricing(input: PricingInput): PricingQuoteOutput {
   if ((input.authorizedDiscountCents || 0) > 50000 && !input.customOverrideApproved) {
     throw new Error("Unauthorized discount requires HUMAN_REVIEW.");
   }
-  const base = {
-    VEGA_SCOUT: { setup: 75000, recurring: 50000, leads: 50, outreach: 0, research: 50, calls: 0 },
-    VEGA_REACH: { setup: 150000, recurring: 100000, leads: 150, outreach: 75, research: 150, calls: 0 },
-    VEGA_CONVERT: { setup: 250000, recurring: 175000, leads: 300, outreach: 150, research: 300, calls: 50 },
-    VEGA_MANAGED: { setup: 400000, recurring: 350000, leads: 500, outreach: 250, research: 500, calls: 150 },
-    VEGA_WHITE_LABEL: { setup: 750000, recurring: 500000, leads: 750, outreach: 350, research: 750, calls: 200 },
-  }[input.productCode];
+  const base = servicePlans[input.productCode];
 
   const extraCampaigns = Math.max(0, input.campaignCount - 1) * 35000;
   const extraTerritories = Math.max(0, input.territoryCount - 1) * 20000;
@@ -977,7 +972,7 @@ export function calculatePricing(input: PricingInput): PricingQuoteOutput {
     expiration,
     lineItems: [
       { label: "One-time setup", amountCents: setupFeeCents, type: "setup" },
-      { label: "Monthly Vega subscription", amountCents: recurringAmountCents, type: "recurring" },
+      { label: "Monthly Ghost Lead Command service", amountCents: recurringAmountCents, type: "recurring" },
       ...(discountAmount ? [{ label: "Authorized discount", amountCents: -discountAmount, type: "discount" as const }] : []),
     ],
   };
@@ -1226,8 +1221,8 @@ export async function createCommercialProposal(sessionId: string) {
       setupScope: ["business profile", "target market", "dry-run campaign", "approval workflow"] as Prisma.InputJsonValue,
       recurringScope: ["lead sourcing", "outreach coordination", "reply monitoring", "sales-manager email reporting"] as Prisma.InputJsonValue,
       billingSummary: quote.totals || {},
-      limitations: ["No live outreach during onboarding", "No invented claims", "No guaranteed revenue outcomes"] as Prisma.InputJsonValue,
-      termsReference: "Ghost AI Solutions standard commercial terms; final legal terms reviewed at checkout.",
+      limitations: ["No live outreach during onboarding", "No invented claims", "No guaranteed revenue outcomes", serviceScope.qualification, serviceScope.outreach, serviceScope.calling, serviceScope.exclusions, serviceScope.billing] as Prisma.InputJsonValue,
+      termsReference: "Ghost Lead Command service terms (/terms), effective October 1, 2026. The accepted proposal controls scope and billing; existing agreements retain their terms.",
       pricingQuoteId: quote.id,
       status: CommercialProposalStatus.PRESENTED,
     },
@@ -1377,7 +1372,7 @@ async function maybeRegisterClientUpdateRecipient(facts: CommercialFact[]) {
       source: "onboarding",
     });
   } catch (error) {
-    console.warn("Vega onboarding skipped client update registration.", error instanceof Error ? error.message : error);
+    console.warn("Ghost Director onboarding skipped client update registration.", error instanceof Error ? error.message : error);
     return null;
   }
 }
@@ -1393,7 +1388,7 @@ function assertDiscoveryComplete(facts: CommercialFact[]) {
   const confirmed = new Set(facts.filter((fact) => fact.confirmed).map((fact) => fact.key));
   const missing = commercialProgressionFacts.filter((key) => !confirmed.has(key));
   if (missing.length) {
-    throw new Error(`Complete Vega's launch-critical commercial brief before pricing. Missing: ${missing.join(", ")}.`);
+    throw new Error(`Complete Ghost Director's launch-critical commercial brief before pricing. Missing: ${missing.join(", ")}.`);
   }
 }
 
@@ -1450,7 +1445,7 @@ function buildOfferDraft(facts: CommercialFact[]) {
 function buildCampaignDraft(facts: CommercialFact[], productCode: VegaProductCode) {
   const byKey = factMap(facts);
   return {
-    campaignName: `${byKey.serviceOrProduct?.value || "Vega"} launch campaign`,
+    campaignName: `${byKey.serviceOrProduct?.value || "Ghost Director"} launch campaign`,
     serviceIndustry: byKey.serviceOrProduct?.value || "to confirm",
     targetCustomerGroups: byKey.targetCustomer?.value || "to confirm",
     territory: byKey.territory?.value || "to confirm",

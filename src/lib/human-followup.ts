@@ -127,7 +127,7 @@ export async function queueHumanCallAssistAfterEmail(input: {
       `Next attempt: ${scheduledFor.toISOString()}`,
       "Final disposition: pending",
       "",
-      `Why this lead: ${lead.nextAction || "Vega marked this as a fit for the Lead Command offer."}`,
+      `Why this lead: ${lead.nextAction || "Ghost Director marked this as a fit for the Lead Command offer."}`,
       "",
       "Suggested opener:",
       opener,
@@ -150,7 +150,7 @@ export async function queueHumanCallAssistAfterEmail(input: {
       status: "pending",
       scheduledFor,
       reason: sanitizeInternalReason(
-        `Vega queued a human phone follow-up ${delay} hours after SendGrid email send. Source queue item: ${input.sourceQueueItemId || "unknown"}.`,
+        `Ghost Director queued a human phone follow-up ${delay} hours after SendGrid email send. Source queue item: ${input.sourceQueueItemId || "unknown"}.`,
       ),
     },
     include: { lead: true },

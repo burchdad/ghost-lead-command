@@ -18,7 +18,7 @@ export async function GET(
   }
 
   return slackActionClosePage(
-    result.ok ? "Vega rewrote outreach" : "Vega rewrite failed",
+    result.ok ? "Ghost Director rewrote outreach" : "Ghost Director rewrite failed",
     result.ok
       ? "A fresh approval card was posted in Slack. You can close this tab."
       : result.body.error || "Rewrite failed.",

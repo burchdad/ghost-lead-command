@@ -74,31 +74,31 @@ export async function runMorningStandup(input: MorningStandupInput = {}) {
   const nextMoves = getClosingSprintNextMoves(metrics, bottleneck);
   const targets = dailyTargets(metrics);
   const vegaOrders = [
-    warmLeads.leads[0] ? `Vega, work ${warmLeads.leads[0].companyName}` : "",
-    "Vega, refresh intent feed",
-    `Vega, need ${targets.sourceTarget} new HVAC leads between ${location} score 75`,
-    "Vega, queue LinkedIn tasks",
-    "Vega, tune copy",
+    warmLeads.leads[0] ? `Ghost Director, work ${warmLeads.leads[0].companyName}` : "",
+    "Ghost Director, refresh intent feed",
+    `Ghost Director, need ${targets.sourceTarget} new HVAC leads between ${location} score 75`,
+    "Ghost Director, queue LinkedIn tasks",
+    "Ghost Director, tune copy",
     metrics.sendgridReady >= 5
-      ? `Vega, auto-send outreach ${targets.approvalTarget}`
-      : "Vega, run specialists",
-    "Vega, work replies",
-    "Vega, push bookings",
-    "Vega, build phone-assist list",
+      ? `Ghost Director, auto-send outreach ${targets.approvalTarget}`
+      : "Ghost Director, run specialists",
+    "Ghost Director, work replies",
+    "Ghost Director, push bookings",
+    "Ghost Director, build phone-assist list",
   ].filter(Boolean);
   const novaDirective =
     bottleneck === "booking-handoff"
       ? "Nova should pressure booking conversion first: every hot reply needs a calendar path or Stephen escalation."
       : bottleneck === "approvals"
-        ? "Nova should hold Stephen accountable to approve the reviewed batch before Vega adds more volume."
+        ? "Nova should hold Stephen accountable to approve the reviewed batch before Ghost Director adds more volume."
         : bottleneck === "outbound-volume" || bottleneck === "fresh-sourcing"
-          ? "Nova should authorize Vega to prioritize new contactable lead volume before strategy discussion."
-          : "Nova should keep Vega focused on the single bottleneck and ask for proof of movement by midday.";
+          ? "Nova should authorize Ghost Director to prioritize new contactable lead volume before strategy discussion."
+          : "Nova should keep Ghost Director focused on the single bottleneck and ask for proof of movement by midday.";
   const stephenAsk =
     metrics.manualTasks > 0
-      ? `Work or assign ${metrics.manualTasks} phone/manual contact task${metrics.manualTasks === 1 ? "" : "s"} while Vega owns the email send lane.`
+      ? `Work or assign ${metrics.manualTasks} phone/manual contact task${metrics.manualTasks === 1 ? "" : "s"} while Ghost Director owns the email send lane.`
       : metrics.sendgridReady > 0
-        ? `Let Vega auto-send the next ${targets.approvalTarget} eligible emails; Stephen/VA only steps in for calls, blocked sends, and hot replies.`
+        ? `Let Ghost Director auto-send the next ${targets.approvalTarget} eligible emails; Stephen/VA only steps in for calls, blocked sends, and hot replies.`
       : "Review the standup bottleneck and unblock the first manual contact path or booking task.";
 
   const payload = {
@@ -117,7 +117,7 @@ export async function runMorningStandup(input: MorningStandupInput = {}) {
   const slack = await notifySlackMorningStandup(payload);
 
   await createAutomationEvent({
-    title: "Nova and Vega morning standup",
+    title: "Nova and Ghost Director morning standup",
     detail: `Morning standup posted. Bottleneck: ${bottleneck}. Stephen ask: ${stephenAsk}`,
     status: slack.sent ? "done" : "blocked",
     type: "agent",

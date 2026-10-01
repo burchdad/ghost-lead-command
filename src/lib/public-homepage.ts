@@ -1,3 +1,5 @@
+import { servicePlans, serviceMoney } from "../config/service-plans";
+
 export type PublicVegaPlan = {
   code: "vega_scout" | "vega_reach" | "vega_convert" | "vega_managed";
   name: string;
@@ -28,35 +30,35 @@ export const publicPromptExamples = [
 export const publicVegaPlans: PublicVegaPlan[] = [
   {
     code: "vega_scout",
-    name: "Vega Scout",
+    name: "Scout",
     target: "Find the market",
-    priceLabel: "Starting at $497/month",
+    priceLabel: `Starting at ${serviceMoney(servicePlans.VEGA_SCOUT.recurring)}/month`,
     vegaHandles: "Qualified prospects, contact paths, buying signals, and recommended next actions.",
     customerHandles: "You review the market direction and decide which accounts should move forward.",
     outcome: "A researched, prioritized target list.",
   },
   {
     code: "vega_reach",
-    name: "Vega Reach",
+    name: "Reach",
     target: "Start conversations",
-    priceLabel: "Starting at $1,250/month",
+    priceLabel: `Starting at ${serviceMoney(servicePlans.VEGA_REACH.recurring)}/month`,
     vegaHandles: "Personalized outreach, approval controls, follow-up automation, tracking, and sender protection.",
-    customerHandles: "You approve the campaign rules and decide how much sending Vega can handle.",
+    customerHandles: "You approve the campaign rules and decide how much sending Ghost Director can handle.",
     outcome: "Controlled outreach with clear visibility into response signals.",
   },
   {
     code: "vega_convert",
-    name: "Vega Convert",
+    name: "Convert",
     label: "Full conversion workflow",
     target: "Move interest toward appointments",
-    priceLabel: "Starting at $2,500/month",
+    priceLabel: `Starting at ${serviceMoney(servicePlans.VEGA_CONVERT.recurring)}/month`,
     vegaHandles: "Reply handling, phone-assist tasks, callbacks, booking workflows, and pipeline management.",
     customerHandles: "Your team handles key calls, or Ghost can help work the queue.",
     outcome: "Interested prospects moved toward qualified conversations.",
   },
   {
     code: "vega_managed",
-    name: "Vega Managed",
+    name: "Managed",
     tone: "ghost",
     target: "Let Ghost run the operation",
     priceLabel: "Custom based on territory, volume, and human support",
@@ -85,22 +87,22 @@ export const publicOperatingProof = [
   {
     label: "Human leverage",
     value: "Calls",
-    detail: "Vega reserves people for trust-heavy moments instead of asking them to work every lead manually",
+    detail: "Ghost Director reserves people for trust-heavy moments instead of asking them to work every lead manually",
   },
 ];
 
 export const publicMarketPositioning = [
   {
     title: "Not just a lead list",
-    text: "Vega does not stop at prospect discovery. She decides whether each opportunity should be emailed, called, researched, reviewed, or suppressed.",
+    text: "Ghost Director does not stop at prospect discovery. She decides whether each opportunity should be emailed, called, researched, reviewed, or suppressed.",
   },
   {
     title: "Not a cold-email blaster",
-    text: "Sender health, contact confidence, suppression, and follow-up timing govern how much automation Vega is allowed to run.",
+    text: "Sender health, contact confidence, suppression, and follow-up timing govern how much automation Ghost Director is allowed to run.",
   },
   {
     title: "Not a replacement for humans",
-    text: "Vega handles the repetitive sales operation and routes people toward conversations, callbacks, and booking handoffs.",
+    text: "Ghost Director handles the repetitive sales operation and routes people toward conversations, callbacks, and booking handoffs.",
   },
 ];
 

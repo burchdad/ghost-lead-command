@@ -35,6 +35,7 @@ import {
   publicProofMilestones,
   publicVegaPlans,
 } from "@/lib/public-homepage";
+import { servicePlans, serviceMoney, serviceScope, type ServicePlanCode } from "@/config/service-plans";
 
 export const metadata: Metadata = {
   metadataBase: new URL(brand.productUrl),
@@ -58,7 +59,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: publicMetadata.openGraphTitle,
-    description: "Tell Vega who you want to reach and start building a qualified customer pipeline.",
+    description: "Tell Ghost Director who you want to reach and start building a qualified customer pipeline.",
     images: [vegaAssets.heroArtwork],
   },
 };
@@ -67,7 +68,7 @@ const commandSteps = [
   {
     icon: Radar,
     title: "Find",
-    text: "Vega identifies companies, decision-makers, referral partners, and buyer signals inside your target market.",
+    text: "Ghost Director identifies companies, decision-makers, referral partners, and buyer signals inside your target market.",
   },
   {
     icon: Target,
@@ -77,7 +78,7 @@ const commandSteps = [
   {
     icon: Send,
     title: "Reach",
-    text: "Vega creates personalized outreach, manages approvals, follows up, and protects sender health.",
+    text: "Ghost Director creates personalized outreach, manages approvals, follows up, and protects sender health.",
   },
   {
     icon: CalendarCheck2,
@@ -88,7 +89,7 @@ const commandSteps = [
 
 const customerMetrics = [
   ["Connected Sources", "Maps, business data, web research, public signals, and connected lead providers"],
-  ["AI Sales Director", "Vega coordinates sourcing, qualification, outreach, follow-up, and conversion workflows"],
+  ["AI Sales Director", "Ghost Director coordinates sourcing, qualification, outreach, follow-up, and conversion workflows"],
   ["Human Control", "Your team, Ghost operators, or both"],
   ["Primary Goal", "Qualified conversations, booked calls, and measurable pipeline"],
 ];
@@ -135,7 +136,7 @@ export default function Home() {
               </a>
             ))}
             <Link href="/command" className="hover:text-[var(--vega-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--vega-focus-ring)]">
-              Sign in
+              Operator access
             </Link>
           </nav>
 
@@ -143,7 +144,7 @@ export default function Home() {
             section="nav"
             className="ml-auto inline-flex h-10 shrink-0 items-center justify-center rounded-md bg-[var(--vega-purple)] px-3 text-xs font-bold text-white transition hover:bg-[var(--vega-purple-600)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vega-focus-ring)] sm:px-4 sm:text-sm xl:ml-2"
           >
-            Start with Vega
+            Start with Ghost Director
           </OnboardingCta>
         </div>
       </header>
@@ -156,11 +157,11 @@ export default function Home() {
           <div className="mx-auto max-w-3xl text-center lg:mx-0 lg:text-left">
             <VegaSectionEyebrow>AI Sales Operating System</VegaSectionEyebrow>
             <h1 className="mt-5 text-4xl font-black tracking-tight text-[var(--vega-ink)] sm:text-6xl">
-              Tell Vega who you want to sell to.
+              Tell Ghost Director who you want to sell to.
               <span className="block">She&apos;ll build the pipeline.</span>
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-[var(--ghost-muted)] lg:mx-0">
-              Describe what you offer, where you operate, and the customers you want. Vega finds and qualifies the right
+              Describe what you offer, where you operate, and the customers you want. Ghost Director finds and qualifies the right
               prospects, decides the safest next move, automates digital follow-up, and directs people toward qualified
               conversations and booked calls.
             </p>
@@ -180,7 +181,7 @@ export default function Home() {
             <VegaSectionEyebrow>Category</VegaSectionEyebrow>
             <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">An operating system for SMB sales work.</h2>
             <p className="mt-5 leading-8 text-[var(--ghost-muted)]">
-              Vega sits between data tools, outbound agents, intent platforms, and inbound appointment setters. Her job is
+              Ghost Director sits between data tools, outbound agents, intent platforms, and inbound appointment setters. Her job is
               to connect the operating chain: discovery, qualification, safe outreach, phone follow-up, replies, booking,
               and learning.
             </p>
@@ -223,7 +224,7 @@ export default function Home() {
             <VegaSectionEyebrow>AI-Guided Campaign Setup</VegaSectionEyebrow>
             <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Start with a conversation, not a complicated form.</h2>
             <p className="mt-5 leading-8 text-[var(--ghost-muted)]">
-              Tell Vega about your business in your own words. She will research what she can, ask only the questions that
+              Tell Ghost Director about your business in your own words. She will research what she can, ask only the questions that
               matter, recommend the right target market, and build a campaign for your approval.
             </p>
             <VegaConsultationAttribution className="mt-4" />
@@ -231,24 +232,24 @@ export default function Home() {
               section="ai_consultation_preview"
               className="mt-7 inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--vega-ink)] px-5 text-sm font-black text-white transition hover:bg-[#26332c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vega-focus-ring)]"
             >
-              Start my Vega consultation
+              Start my Ghost Director consultation
               <Bot size={18} aria-hidden="true" />
             </OnboardingCta>
           </div>
 
           <VegaGlowPanel className="p-5">
             {[
-              ["Vega", "Tell me what your business does and what kind of customers you want more of.", "vega"],
+              ["Ghost Director", "Tell me what your business does and what kind of customers you want more of.", "vega"],
               ["Customer", "I run a mobile detailing company in Tyler and want dealership and fleet accounts.", "customer"],
               [
-                "Vega",
+                "Ghost Director",
                 "That is a strong recurring-revenue opportunity. I recommend beginning with dealerships, fleet operators, RV dealers, and automotive referral partners within 40 miles. Who will handle follow-up calls, your team or Ghost?",
                 "vega",
               ],
               ["Customer", "My office manager.", "customer"],
               [
-                "Vega",
-                "Vega Convert is likely the best fit. I will source and qualify the accounts, prepare outreach, monitor responses, and create prioritized phone-assist tasks for your team.",
+                "Ghost Director",
+                "Convert is likely the best fit. I will source and qualify the accounts, prepare outreach, monitor responses, and create prioritized phone-assist tasks for your team.",
                 "vega",
               ],
             ].map(([speaker, message, side]) => (
@@ -267,7 +268,7 @@ export default function Home() {
             <VegaSectionEyebrow>More than another lead list</VegaSectionEyebrow>
             <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Built for the messy middle between leads and booked calls.</h2>
             <p className="mt-5 leading-8 text-[var(--ghost-muted)]">
-              Vega does more than add names to a spreadsheet. She watches lead quality, message performance, delivery
+              Ghost Director does more than add names to a spreadsheet. She watches lead quality, message performance, delivery
               risk, replies, phone follow-up, and calendar movement so your team knows where real opportunities are coming from.
             </p>
           </div>
@@ -288,7 +289,7 @@ export default function Home() {
         <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
           <div>
             <VegaSectionEyebrow>Plans</VegaSectionEyebrow>
-            <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Choose how much of the sales process Vega handles.</h2>
+            <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Choose how much of the sales process Ghost Director handles.</h2>
             <p className="mt-5 max-w-3xl leading-8 text-[var(--ghost-muted)]">
               Plans scale based on qualified lead volume, outreach volume, territories, integrations, and the level of
               human support required. The AI onboarding experience recommends the right level after understanding your needs.
@@ -298,7 +299,7 @@ export default function Home() {
             section="plans_header"
             className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[var(--vega-ink)] px-5 text-sm font-black text-white transition hover:bg-[#26332c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vega-focus-ring)]"
           >
-            Compare Vega options
+            Compare Ghost Director options
             <MousePointerClick size={17} aria-hidden="true" />
           </OnboardingCta>
         </div>
@@ -313,6 +314,10 @@ export default function Home() {
               vegaHandles={plan.vegaHandles}
               customerHandles={plan.customerHandles}
               outcome={plan.outcome}
+              scopeDetails={(() => {
+                const scope = servicePlans[plan.code.toUpperCase() as ServicePlanCode];
+                return [`${serviceMoney(scope.setup)} one-time base setup`, `${scope.leads} researched prospects/month`, `${scope.outreach} approved email sends/month`, `${scope.calls} managed call attempts/month`, "1 campaign · 1 territory"];
+              })()}
               emphasized={plan.code === "vega_convert"}
               label={"label" in plan ? plan.label : undefined}
             >
@@ -329,11 +334,19 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8" aria-labelledby="scope-heading">
+        <h2 id="scope-heading" className="text-2xl font-bold">Know what your plan includes</h2>
+        <div className="mt-5 grid gap-5 text-base leading-7 text-[var(--ghost-muted)] md:grid-cols-2">
+          {Object.entries(serviceScope).map(([key, text]) => <div key={key}><h3 className="font-bold capitalize text-[var(--ghost-ink)]">{key}</h3><p className="mt-2">{text}</p></div>)}
+        </div>
+        <Link href="/terms" className="mt-6 inline-block font-semibold underline">Read service terms before choosing a plan</Link>
+      </section>
+
       <section id="results" className="relative border-y border-[var(--ghost-border)] bg-white">
         <SectionTracker event="results section viewed" section="results" />
         <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
           <div className="max-w-3xl">
-            <VegaSectionEyebrow>Vega in active use</VegaSectionEyebrow>
+            <VegaSectionEyebrow>Ghost Director in active use</VegaSectionEyebrow>
             <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Internal Ghost AI Solutions operating data.</h2>
             <p className="mt-5 leading-8 text-[var(--ghost-muted)]">
               These are internal operating signals from Ghost AI Solutions workflows. They are not guarantees, testimonials,
@@ -352,7 +365,7 @@ export default function Home() {
           </div>
 
           <div className="mt-8 rounded-md border border-[var(--ghost-border)] bg-[var(--ghost-paper)] p-5">
-            <h3 className="text-xl font-black text-[var(--vega-ink)]">The proof Vega is built to produce</h3>
+            <h3 className="text-xl font-black text-[var(--vega-ink)]">The proof Ghost Director is built to produce</h3>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               {publicProofMilestones.map((item) => (
                 <div key={item} className="flex gap-3 text-sm font-semibold leading-6 text-[var(--ghost-muted)]">
@@ -368,7 +381,7 @@ export default function Home() {
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
           <div>
-            <VegaSectionEyebrow>Who Vega is for</VegaSectionEyebrow>
+            <VegaSectionEyebrow>Who Ghost Director is for</VegaSectionEyebrow>
             <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Built for businesses that need a repeatable pipeline.</h2>
             <div className="mt-8 flex flex-wrap gap-2">
               {fitGroups.map((group) => (
@@ -380,7 +393,7 @@ export default function Home() {
           </div>
 
           <div className="rounded-lg border border-[var(--ghost-border)] bg-white p-6">
-            <h3 className="text-2xl font-black">Vega works best when:</h3>
+            <h3 className="text-2xl font-black">Ghost Director works best when:</h3>
             <div className="mt-5 grid gap-3">
               {vegaWorksBest.map((item) => (
                 <div key={item} className="flex gap-3 text-sm leading-6 text-[var(--ghost-muted)]">
@@ -390,7 +403,7 @@ export default function Home() {
               ))}
             </div>
             <div className="mt-6 rounded-md bg-[var(--ghost-subtle)] p-4 text-sm leading-6 text-[#3f4a43]">
-              Vega is not a guaranteed-sales product or a mass-spam system. It is a supervised customer-acquisition
+              Ghost Director is not a guaranteed-sales product or a mass-spam system. It is a supervised customer-acquisition
               platform designed to create and work qualified pipeline.
             </div>
           </div>
@@ -407,12 +420,12 @@ export default function Home() {
               </div>
               <h2 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Start with control. Scale with automation.</h2>
               <p className="mt-4 max-w-3xl leading-8 text-[#d6e1dc]">
-                Approve every step, let Vega handle selected tasks, or have Ghost manage the full campaign. You decide how
+                Approve every step, let Ghost Director handle selected tasks, or have Ghost manage the full campaign. You decide how
                 much control to keep.
               </p>
               <div className="mt-5 flex flex-wrap items-center gap-3">
-                <VegaAvatar size="sm" showStatus caption="Vega is ready" />
-                <VegaStatusBadge label="Vega is ready" status="ready" />
+                <VegaAvatar size="sm" showStatus caption="Ghost Director is ready" />
+                <VegaStatusBadge label="Ghost Director is ready" status="ready" />
                 <GhostProductAttribution className="text-[#b8cac5]" />
               </div>
             </div>
@@ -422,7 +435,7 @@ export default function Home() {
                 event="final CTA clicked"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-[var(--vega-lime)] px-6 text-sm font-black text-[var(--vega-ink)] transition hover:bg-[var(--vega-lime-300)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vega-lime)]"
               >
-                Start my Vega consultation
+                Start my Ghost Director consultation
                 <Bot size={18} aria-hidden="true" />
               </OnboardingCta>
               <OnboardingCta
@@ -430,7 +443,7 @@ export default function Home() {
                 event="final CTA clicked"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-white/20 px-6 text-sm font-black text-white transition hover:border-[var(--vega-lime)] hover:text-[var(--vega-lime)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vega-lime)]"
               >
-                Compare Vega options
+                Compare Ghost Director options
                 <ArrowRight size={18} aria-hidden="true" />
               </OnboardingCta>
             </div>
@@ -456,7 +469,7 @@ export default function Home() {
               Terms
             </Link>
             <Link href="/command" className="hover:text-[var(--vega-ink)]">
-              Sign in
+              Operator access
             </Link>
             <Link href={brand.onboardingUrl} className="hover:text-[var(--vega-ink)]">
               AI onboarding

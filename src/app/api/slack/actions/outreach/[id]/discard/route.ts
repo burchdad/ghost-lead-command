@@ -14,7 +14,7 @@ export async function GET(
   const { id } = await params;
   const result = await rejectOutreachQueueItem(id, "Discarded from Slack approval.");
   return slackActionClosePage(
-    result.ok ? "Vega rejected outreach" : "Vega reject failed",
+    result.ok ? "Ghost Director rejected outreach" : "Ghost Director reject failed",
     result.ok ? "The queue item was rejected. You can close this tab." : result.body.error || "Reject failed.",
   );
 }

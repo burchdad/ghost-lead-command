@@ -81,11 +81,11 @@ export async function runVegaCallAssistWork(input: { instruction?: string; limit
   });
 
   const summary = worklist.length
-    ? `Vega found ${worklist.length} phone-assist calls to work now. ${dueTasks.length} actionable, ${overdue} overdue, ${upcomingTasks.length} scheduled later.`
-    : "Vega found no pending phone-assist calls to work.";
+    ? `Ghost Director found ${worklist.length} phone-assist calls to work now. ${dueTasks.length} actionable, ${overdue} overdue, ${upcomingTasks.length} scheduled later.`
+    : "Ghost Director found no pending phone-assist calls to work.";
   const nextMove = worklist.length
-    ? "Stephen/VA should call the due list, record every outcome, then run Vega, watch replies."
-    : "Send or approve a small clean batch, then Vega will create phone-assist tasks after successful emails.";
+    ? "Stephen/VA should call the due list, record every outcome, then run Ghost Director, watch replies."
+    : "Send or approve a small clean batch, then Ghost Director will create phone-assist tasks after successful emails.";
   const lines = worklist.map((task) =>
     [
       `${task.rank}. ${task.companyName} - ${task.person}${task.role ? ` (${task.role})` : ""}`,
@@ -99,7 +99,7 @@ export async function runVegaCallAssistWork(input: { instruction?: string; limit
   let slack = null;
   if (input.postToSlack !== false) {
     slack = await notifySlackVegaLeadRequestResult({
-      instruction: input.instruction || "Vega, work calls",
+      instruction: input.instruction || "Ghost Director, work calls",
       status: "finished",
       summary: [summary, nextMove, ...lines].join("\n\n"),
       result: {
@@ -113,7 +113,7 @@ export async function runVegaCallAssistWork(input: { instruction?: string; limit
   }
 
   await createAutomationEvent({
-    title: "Vega call assist worklist prepared",
+    title: "Ghost Director call assist worklist prepared",
     detail: `${summary} Next: ${nextMove}`,
     status: worklist.length ? "done" : "needs_review",
     type: "human-assist",

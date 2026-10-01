@@ -19,14 +19,14 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const result = await runVegaOpsBrief({
-      instruction: url.searchParams.get("instruction") || "Scheduled Vega ops brief",
+      instruction: url.searchParams.get("instruction") || "Scheduled Ghost Director ops brief",
       execute: boolParam(url.searchParams.get("execute")),
       briefNova: boolParam(url.searchParams.get("nova")),
     });
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega ops brief failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director ops brief failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }
@@ -36,14 +36,14 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const result = await runVegaOpsBrief({
-      instruction: body.instruction ? String(body.instruction) : "Manual Vega ops brief",
+      instruction: body.instruction ? String(body.instruction) : "Manual Ghost Director ops brief",
       execute: Boolean(body.execute),
       briefNova: Boolean(body.briefNova),
     });
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega ops brief failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director ops brief failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }

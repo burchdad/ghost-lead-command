@@ -9,7 +9,7 @@ describe("client campaign update emails", () => {
       campaignName: "Commercial exterior cleaning - Tyler",
       recipientEmail: "sales@naks.example",
       generatedAt: "2026-07-30T14:00:00.000Z",
-      summary: "Vega found commercial prospects and queued phone follow-up for the sales manager.",
+      summary: "Ghost Director found commercial prospects and queued phone follow-up for the sales manager.",
       metrics: {
         leadsFound: 30,
         qualified: 18,

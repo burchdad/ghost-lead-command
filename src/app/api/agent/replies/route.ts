@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const limit = Number(url.searchParams.get("limit") || 10);
   const lookbackHours = Number(url.searchParams.get("lookbackHours") || 72);
-  const text = `Vega, work ${limit} replies from the last ${lookbackHours} hours`;
+  const text = `Ghost Director, work ${limit} replies from the last ${lookbackHours} hours`;
   const result = await runVegaReplyWork({ text });
   return NextResponse.json(result);
 }
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const text = String(body.text || "Vega, work replies");
+  const text = String(body.text || "Ghost Director, work replies");
   const result = await runVegaReplyWork({ text });
   return NextResponse.json(result);
 }

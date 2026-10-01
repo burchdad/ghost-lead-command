@@ -22,7 +22,7 @@ function lead(overrides: Partial<Lead> = {}): Lead {
     value: 7500,
     source: "google-maps",
     lastTouch: "Never",
-    nextAction: "Vega read: Signal score 68 (research). Channel: enrich. Risk: buyer role is unclear; no contact path yet.",
+    nextAction: "Ghost Director read: Signal score 68 (research). Channel: enrich. Risk: buyer role is unclear; no contact path yet.",
     tags: null,
     customFields: null,
     crmSyncStatus: "pending",
@@ -77,7 +77,7 @@ test("research cards separate ICP fit from confirmed buyer intent", () => {
     }),
     lead: lead({
       nextAction:
-        "Vega read: Signal score 68 (research). Channel: enrich. Why: ICP match is strong enough for a money-path test; buyer-intent trigger present; public web signal supports context.",
+        "Ghost Director read: Signal score 68 (research). Channel: enrich. Why: ICP match is strong enough for a money-path test; buyer-intent trigger present; public web signal supports context.",
       score: 91,
     }),
   });

@@ -793,7 +793,7 @@ const nav = [
   { id: "agents", label: "Agents", icon: Bot },
   { id: "source", label: "Source", icon: Target },
   { id: "pipeline", label: "Pipeline", icon: Layers3 },
-  { id: "waitlist", label: "Vega Waitlist", icon: Users },
+  { id: "waitlist", label: "Ghost Director Waitlist", icon: Users },
   { id: "relationships", label: "QR Relationships", icon: Radar },
   { id: "revival", label: "Revival", icon: Flame },
   { id: "outreach", label: "Outreach", icon: Send },
@@ -1957,7 +1957,7 @@ export default function Home() {
     const summary = payload.autoSendSummary;
     setSourceStatus(
       summary
-        ? `Vega ran campaign: ${summary.sent || 0} sent, ${summary.blocked || 0} blocked, ${summary.failed || 0} failed, ${summary.callAssistQueued || 0} phone assists.`
+        ? `Ghost Director ran campaign: ${summary.sent || 0} sent, ${summary.blocked || 0} blocked, ${summary.failed || 0} failed, ${summary.callAssistQueued || 0} phone assists.`
         : `Campaign found ${payload.qualifiedCount || 0} leads above threshold.`,
     );
     await refreshOpsData();
@@ -2104,7 +2104,7 @@ export default function Home() {
     setAuditBusy(true);
     setActionToast({
       phase: "loading",
-      title: "Vega audit running",
+      title: "Ghost Director audit running",
       detail: "Checking source, web helper, outreach, replies, booking, deliverability, CRM, and Mission Control lanes.",
     });
 
@@ -2118,7 +2118,7 @@ export default function Home() {
     if (!response.ok) {
       setActionToast({
         phase: "error",
-        title: "Vega audit blocked",
+        title: "Ghost Director audit blocked",
         detail: payload.detail || payload.error || "The full audit could not complete.",
       });
       setAuditBusy(false);
@@ -2128,10 +2128,10 @@ export default function Home() {
     setLeadCommandAudit(payload);
     setActionToast({
       phase: "success",
-      title: "Vega audit complete",
+      title: "Ghost Director audit complete",
       detail: payload.bottleneck || "Lead Command audit posted to the c-suite channel.",
     });
-    setOperationStatus(payload.nextMove || "Vega completed the Lead Command audit.");
+    setOperationStatus(payload.nextMove || "Ghost Director completed the Lead Command audit.");
     await refreshOpsData();
     setAuditBusy(false);
   }
@@ -2223,7 +2223,7 @@ export default function Home() {
     setSpecialistBusy(kind);
     setActionToast({
       phase: "loading",
-      title: "Vega specialist running",
+      title: "Ghost Director specialist running",
       detail: `Running ${kind} specialist lane.`,
     });
 
@@ -2238,7 +2238,7 @@ export default function Home() {
       setActionToast({
         phase: "error",
         title: "Specialist blocked",
-        detail: payload.detail || payload.error || "Vega specialist lane could not finish.",
+        detail: payload.detail || payload.error || "Ghost Director specialist lane could not finish.",
       });
       setSpecialistBusy(null);
       return;
@@ -2248,9 +2248,9 @@ export default function Home() {
     setActionToast({
       phase: "success",
       title: payload.title || "Specialist complete",
-      detail: payload.summary || "Vega specialist lane finished.",
+      detail: payload.summary || "Ghost Director specialist lane finished.",
     });
-    setOperationStatus(payload.nextMove || payload.summary || "Vega specialist lane finished.");
+    setOperationStatus(payload.nextMove || payload.summary || "Ghost Director specialist lane finished.");
     await refreshOpsData();
     await refreshLeads();
     if (["copy-chief", "cadence", "contact-path", "full-team"].includes(kind)) setActive("queue");
@@ -2265,14 +2265,14 @@ export default function Home() {
     setActionToast({
       phase: "loading",
       title: "Closing sprint running",
-      detail: autoApprove ? "Vega is running the sprint and approving a batch if available." : "Vega is running the weekly close target loop.",
+      detail: autoApprove ? "Ghost Director is running the sprint and approving a batch if available." : "Ghost Director is running the weekly close target loop.",
     });
 
     const response = await fetch("/api/agent/closing-sprint", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        instruction: autoApprove ? "Vega closing sprint approve 10" : "Vega closing sprint for 10 closes this week",
+        instruction: autoApprove ? "Ghost Director closing sprint approve 10" : "Ghost Director closing sprint for 10 closes this week",
         autoApprove,
         queueLimit: 10,
       }),
@@ -2283,7 +2283,7 @@ export default function Home() {
       setActionToast({
         phase: "error",
         title: "Closing sprint blocked",
-        detail: payload.detail || payload.error || "Vega closing sprint could not finish.",
+        detail: payload.detail || payload.error || "Ghost Director closing sprint could not finish.",
       });
       setClosingSprintBusy(false);
       return;
@@ -2293,9 +2293,9 @@ export default function Home() {
     setActionToast({
       phase: "success",
       title: "Closing sprint complete",
-      detail: payload.summary || "Vega closing sprint finished.",
+      detail: payload.summary || "Ghost Director closing sprint finished.",
     });
-    setOperationStatus(payload.nextMoves?.[0] || payload.summary || "Vega closing sprint finished.");
+    setOperationStatus(payload.nextMoves?.[0] || payload.summary || "Ghost Director closing sprint finished.");
     await refreshOpsData();
     await refreshLeads();
     if (["approvals", "follow-up-cadence", "contact-path", "outbound-volume", "fresh-sourcing"].includes(payload.bottleneck)) setActive("queue");
@@ -2309,13 +2309,13 @@ export default function Home() {
     setActionToast({
       phase: "loading",
       title: "Dominance loop running",
-      detail: "Vega is running source, signal, specialist, booking, deliverability, and closing lanes.",
+      detail: "Ghost Director is running source, signal, specialist, booking, deliverability, and closing lanes.",
     });
 
     const response = await fetch("/api/agent/dominance", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instruction: "Vega dominance loop from Mission Control" }),
+      body: JSON.stringify({ instruction: "Ghost Director dominance loop from Mission Control" }),
     });
     const payload = await response.json().catch(() => ({}));
 
@@ -2323,7 +2323,7 @@ export default function Home() {
       setActionToast({
         phase: "error",
         title: "Dominance loop blocked",
-        detail: payload.detail || payload.error || "Vega dominance loop could not finish.",
+        detail: payload.detail || payload.error || "Ghost Director dominance loop could not finish.",
       });
       setDominanceBusy(false);
       return;
@@ -2332,9 +2332,9 @@ export default function Home() {
     setActionToast({
       phase: "success",
       title: "Dominance loop complete",
-      detail: payload.bottleneck ? `Bottleneck: ${payload.bottleneck}` : payload.summary || "Vega dominance loop finished.",
+      detail: payload.bottleneck ? `Bottleneck: ${payload.bottleneck}` : payload.summary || "Ghost Director dominance loop finished.",
     });
-    setOperationStatus(payload.nextMoves?.[0] || payload.summary || "Vega dominance loop finished.");
+    setOperationStatus(payload.nextMoves?.[0] || payload.summary || "Ghost Director dominance loop finished.");
     await refreshOpsData();
     await refreshLeads();
     setActive(payload.metrics?.bookedCalls || payload.metrics?.pendingApprovals ? "queue" : "agents");
@@ -2347,13 +2347,13 @@ export default function Home() {
     setActionToast({
       phase: "loading",
       title: "Morning standup running",
-      detail: "Posting the Stephen, Nova, and Vega lead-gen standup.",
+      detail: "Posting the Stephen, Nova, and Ghost Director lead-gen standup.",
     });
 
     const response = await fetch("/api/agent/morning-standup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: "Manual Nova x Vega morning standup" }),
+      body: JSON.stringify({ message: "Manual Nova x Ghost Director morning standup" }),
     });
     const payload = await response.json().catch(() => ({}));
 
@@ -2382,15 +2382,15 @@ export default function Home() {
     setOpsLoopBusy(true);
     setActionToast({
       phase: "loading",
-      title: execute ? "Vega ops loop running" : "Vega ops brief running",
-      detail: execute ? "Vega is collecting sub-agent reports and running safe autonomy lanes." : "Vega is preparing the sub-agent command brief.",
+      title: execute ? "Ghost Director ops loop running" : "Ghost Director ops brief running",
+      detail: execute ? "Ghost Director is collecting sub-agent reports and running safe autonomy lanes." : "Ghost Director is preparing the sub-agent command brief.",
     });
 
     const response = await fetch("/api/agent/ops", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        instruction: execute ? "Manual Vega ops loop from Mission Control" : "Manual Vega ops brief from Mission Control",
+        instruction: execute ? "Manual Ghost Director ops loop from Mission Control" : "Manual Ghost Director ops brief from Mission Control",
         execute,
         briefNova: true,
       }),
@@ -2401,7 +2401,7 @@ export default function Home() {
       setActionToast({
         phase: "error",
         title: "Ops loop blocked",
-        detail: payload.detail || payload.error || "Vega ops loop could not finish.",
+        detail: payload.detail || payload.error || "Ghost Director ops loop could not finish.",
       });
       setOpsLoopBusy(false);
       return;
@@ -2410,9 +2410,9 @@ export default function Home() {
     setActionToast({
       phase: "success",
       title: execute ? "Ops loop complete" : "Ops brief posted",
-      detail: payload.summary || "Vega ops command brief posted.",
+      detail: payload.summary || "Ghost Director ops command brief posted.",
     });
-    setOperationStatus(payload.stephenAsk || payload.nextMove || payload.summary || "Vega ops loop finished.");
+    setOperationStatus(payload.stephenAsk || payload.nextMove || payload.summary || "Ghost Director ops loop finished.");
     await refreshOpsData();
     await refreshLeads();
     setOpsLoopBusy(false);
@@ -2424,13 +2424,13 @@ export default function Home() {
     setActionToast({
       phase: "loading",
       title: "Revenue watch running",
-      detail: "Vega is checking SendGrid, replies, booking tasks, and source performance.",
+      detail: "Ghost Director is checking SendGrid, replies, booking tasks, and source performance.",
     });
 
     const response = await fetch("/api/agent/watch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instruction: "Manual Vega revenue watch from Mission Control", execute: true }),
+      body: JSON.stringify({ instruction: "Manual Ghost Director revenue watch from Mission Control", execute: true }),
     });
     const payload = await response.json().catch(() => ({}));
 
@@ -2438,7 +2438,7 @@ export default function Home() {
       setActionToast({
         phase: "error",
         title: "Revenue watch blocked",
-        detail: payload.detail || payload.error || "Vega revenue watch could not finish.",
+        detail: payload.detail || payload.error || "Ghost Director revenue watch could not finish.",
       });
       setWatchBusy(false);
       return;
@@ -2447,9 +2447,9 @@ export default function Home() {
     setActionToast({
       phase: "success",
       title: "Revenue watch complete",
-      detail: payload.summary || "Vega revenue watch finished.",
+      detail: payload.summary || "Ghost Director revenue watch finished.",
     });
-    setOperationStatus(payload.nextMove || payload.summary || "Vega revenue watch finished.");
+    setOperationStatus(payload.nextMove || payload.summary || "Ghost Director revenue watch finished.");
     await refreshOpsData();
     await refreshLeads();
     setWatchBusy(false);
@@ -2613,7 +2613,7 @@ export default function Home() {
     setActionToast({
       phase: "loading",
       title: "Rewriting draft",
-      detail: "Vega is sharpening this queued outreach.",
+      detail: "Ghost Director is sharpening this queued outreach.",
     });
     const response = await fetch(`/api/outreach/queue/${encodeURIComponent(id)}/redo`, {
       method: "POST",
@@ -2692,7 +2692,7 @@ export default function Home() {
     const label = outcome.replace(/_/g, " ");
     const shouldAskForNote = !["no_answer", "suppress"].includes(outcome);
     const note = shouldAskForNote
-      ? window.prompt("Add a short call note for Vega/Stephen/VA:", "")
+      ? window.prompt("Add a short call note for Ghost Director/Stephen/VA:", "")
       : "";
     if (shouldAskForNote && note === null) return;
     if (outcome === "suppress" && !window.confirm("Suppress this contact/company from future outreach?")) return;
@@ -2701,7 +2701,7 @@ export default function Home() {
     setActionToast({
       phase: "loading",
       title: "Recording call outcome",
-      detail: `Vega is moving this task to ${label}.`,
+      detail: `Ghost Director is moving this task to ${label}.`,
     });
 
     const response = await fetch(`/api/outreach/queue/${encodeURIComponent(item.id)}/call-outcome`, {
@@ -2722,7 +2722,7 @@ export default function Home() {
       setActionToast({
         phase: "success",
         title: "Call outcome saved",
-        detail: payload.message || "Vega updated the follow-up path.",
+        detail: payload.message || "Ghost Director updated the follow-up path.",
       });
       addAutomationEvent({
         title: "Phone outcome recorded",
@@ -2735,7 +2735,7 @@ export default function Home() {
       setActionToast({
         phase: "error",
         title: "Call outcome blocked",
-        detail: payload.error || "Vega could not record that phone outcome.",
+        detail: payload.error || "Ghost Director could not record that phone outcome.",
       });
     }
 
@@ -3768,7 +3768,7 @@ export default function Home() {
                     {specialistResult ? (
                       <div className="mt-4 rounded-md border border-white/10 bg-[#101417] p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <h3 className="font-semibold">Last Vega Specialist Run</h3>
+                          <h3 className="font-semibold">Last Ghost Director Specialist Run</h3>
                           <span className={`rounded-sm border px-2 py-1 text-xs font-semibold ${agentStatusClass(specialistResult.status === "done" ? "ready" : specialistResult.status === "blocked" ? "blocked" : "needs-work")}`}>
                             {specialistResult.status}
                           </span>
@@ -3790,7 +3790,7 @@ export default function Home() {
                       <div className="mt-4 rounded-md border border-[#d8ff5f]/25 bg-[#d8ff5f]/[0.06] p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <h3 className="font-semibold text-white">Last Vega Closing Sprint</h3>
+                            <h3 className="font-semibold text-white">Last Ghost Director Closing Sprint</h3>
                             <p className="mt-1 text-sm leading-5 text-[#d6dfdc]">{closingSprintResult.summary}</p>
                           </div>
                           <span className="rounded-sm border border-[#d8ff5f]/40 bg-[#d8ff5f]/10 px-2 py-1 text-xs font-semibold text-[#d8ff5f]">
@@ -4737,7 +4737,7 @@ export default function Home() {
 
             {active === "waitlist" && (
               <div className="grid gap-6">
-                <Panel title="Vega Waitlist" icon={Users}>
+                <Panel title="Ghost Director Waitlist" icon={Users}>
                   <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                     <MetricCard title="Contestants" value={String(waitlistDashboard?.summary.total || 0)} detail="Total active" icon={Users} />
                     <MetricCard title="Founding" value={String(waitlistDashboard?.summary.founding || 0)} detail="Design partner fit" icon={Sparkles} />
@@ -4823,7 +4823,7 @@ export default function Home() {
                         ) : (
                           <tr>
                             <td colSpan={15} className="py-10 text-center text-[#9fb0a8]">
-                              No Vega waitlist contestants match this filter yet.
+                              No Ghost Director waitlist contestants match this filter yet.
                             </td>
                           </tr>
                         )}
@@ -5477,7 +5477,7 @@ export default function Home() {
                       <div>
                         <h3 className="font-semibold">Source Scorecard</h3>
                         <p className="mt-1 text-sm text-[#aebbb7]">
-                          {analytics?.sourceScorecard?.summary.recommendation || "Vega is waiting for source performance data."}
+                          {analytics?.sourceScorecard?.summary.recommendation || "Ghost Director is waiting for source performance data."}
                         </p>
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-right text-xs">

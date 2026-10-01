@@ -12,7 +12,7 @@ function clean(value: string | undefined) {
 }
 
 function leadDirectorAgentName() {
-  return clean(process.env.LEAD_DIRECTOR_AGENT_NAME) || "Vega Lead Director AI";
+  return clean(process.env.LEAD_DIRECTOR_AGENT_NAME) || "Ghost Director Lead Director AI";
 }
 
 function appBaseUrl() {
@@ -474,7 +474,7 @@ export async function notifySlackOutreachApproval(
                     type: "mrkdwn",
                     text: [
                       `*Primary action:*\n${intelligence.nextAction}`,
-                      `*Why Vega chose this lane:*\n${reasonText}`,
+                      `*Why Ghost Director chose this lane:*\n${reasonText}`,
                       manualOpener,
                       "*Email:*\nBlocked until a verified contact is found.",
                     ].filter(Boolean).join("\n\n"),
@@ -542,11 +542,11 @@ export async function notifySlackWaitlistCandidate(input: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      text: `New high-priority Vega waitlist contestant: ${input.name}`,
+      text: `New high-priority Ghost Director waitlist contestant: ${input.name}`,
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "New high-priority Vega waitlist contestant", emoji: false },
+          text: { type: "plain_text", text: "New high-priority Ghost Director waitlist contestant", emoji: false },
         },
         {
           type: "section",
@@ -568,7 +568,7 @@ export async function notifySlackWaitlistCandidate(input: {
           elements: [
             {
               type: "button",
-              text: { type: "plain_text", text: "Open Vega Waitlist", emoji: false },
+              text: { type: "plain_text", text: "Open Ghost Director Waitlist", emoji: false },
               style: "primary",
               url: waitlistUrl,
             },
@@ -596,17 +596,17 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      text: `Vega auto-send slate: ${plan.niche}`,
+      text: `Ghost Director auto-send slate: ${plan.niche}`,
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "Vega auto-send slate", emoji: false },
+          text: { type: "plain_text", text: "Ghost Director auto-send slate", emoji: false },
         },
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*${plan.niche}*\n${plan.partnerService ? `*Partner mode:* ${plan.partnerService}\n` : ""}*Provider:* ${plan.provider}\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | Vega auto-sends trust ${caps.autoSendTrustThreshold}+ until sender budget is used\n*Guardrails:* daily source ${caps.dailySourceLimit} | safe sends ${caps.dailySafeSendLimit} | executive review ${caps.executiveReviewLimit}`,
+            text: `*${plan.niche}*\n${plan.partnerService ? `*Partner mode:* ${plan.partnerService}\n` : ""}*Provider:* ${plan.provider}\n*Query:* ${plan.query}\n*Location:* ${plan.location}\n*Run:* ${plan.size} sourced | score ${plan.minScore}+ | Ghost Director auto-sends trust ${caps.autoSendTrustThreshold}+ until sender budget is used\n*Guardrails:* daily source ${caps.dailySourceLimit} | safe sends ${caps.dailySafeSendLimit} | executive review ${caps.executiveReviewLimit}`,
           },
         },
         {
@@ -618,7 +618,7 @@ export async function notifySlackAgentPlan(plan: AgentPlan) {
           elements: [
             {
               type: "mrkdwn",
-              text: "Auto-send lets Vega source, dedupe, score, clean up copy, send eligible emails, and then queue phone-assist work for Stephen/VA. Slack will still receive exceptions, manual contact paths, and blocked sender-health issues.",
+              text: "Auto-send lets Ghost Director source, dedupe, score, clean up copy, send eligible emails, and then queue phone-assist work for Stephen/VA. Slack will still receive exceptions, manual contact paths, and blocked sender-health issues.",
             },
           ],
         },
@@ -748,7 +748,7 @@ export async function notifySlackDailyDigest(input: {
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "Vega Daily Operations", emoji: false },
+          text: { type: "plain_text", text: "Ghost Director Daily Operations", emoji: false },
         },
         {
           type: "section",
@@ -801,7 +801,7 @@ export async function notifySlackDailyDigest(input: {
         },
         {
           type: "section",
-          text: { type: "mrkdwn", text: `*Vega recommendations*\n${recommendations}\n\n*Human actions*\n${humanActions}${warnings}`.slice(0, 2900) },
+          text: { type: "mrkdwn", text: `*Ghost Director recommendations*\n${recommendations}\n\n*Human actions*\n${humanActions}${warnings}`.slice(0, 2900) },
         },
         {
           type: "section",
@@ -958,11 +958,11 @@ export async function notifySlackVegaOpsBrief(input: {
     botToken: clean(process.env.SLACK_BOT_TOKEN),
     channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
     payload: {
-      text: `Vega ops brief: ${input.bottleneck}`,
+      text: `Ghost Director ops brief: ${input.bottleneck}`,
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "Vega Lead Command Ops Brief", emoji: false },
+          text: { type: "plain_text", text: "Ghost Director Lead Command Ops Brief", emoji: false },
         },
         {
           type: "section",
@@ -986,7 +986,7 @@ export async function notifySlackVegaOpsBrief(input: {
         },
         {
           type: "section",
-          text: { type: "mrkdwn", text: `*Sub-agent reports to Vega*\n${orderLines.slice(0, 2900)}` },
+          text: { type: "mrkdwn", text: `*Sub-agent reports to Ghost Director*\n${orderLines.slice(0, 2900)}` },
         },
         {
           type: "section",
@@ -1023,7 +1023,7 @@ export async function notifySlackVegaOpsBrief(input: {
 
   return {
     ...result,
-    message: result.sent ? `Vega ops brief sent to ${result.channel || channelName}.` : result.message,
+    message: result.sent ? `Ghost Director ops brief sent to ${result.channel || channelName}.` : result.message,
   };
 }
 
@@ -1083,11 +1083,11 @@ export async function notifySlackRevenueWatch(input: {
     botToken: clean(process.env.SLACK_BOT_TOKEN),
     channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
     payload: {
-      text: `Vega revenue watch: ${input.summary}`,
+      text: `Ghost Director revenue watch: ${input.summary}`,
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "Vega Reply + Booking Watch", emoji: false },
+          text: { type: "plain_text", text: "Ghost Director Reply + Booking Watch", emoji: false },
         },
         {
           type: "section",
@@ -1273,7 +1273,7 @@ export async function notifySlackBatchApprovalResult(input: {
         .join("; ")}${input.callAssistTasks.length > 5 ? ` +${input.callAssistTasks.length - 5} more` : ""}`
     : "";
   const summary = input.blocked
-    ? `Paused by Vega quality gate: ${input.blockReason || "sender health or contact quality needs review."}`
+    ? `Paused by Ghost Director quality gate: ${input.blockReason || "sender health or contact quality needs review."}`
     : input.attempted
       ? `Approved ${input.approved}/${input.attempted}. Sent ${input.sent}. Phone assists ${input.callAssistQueued || 0}. Dry-run queued ${input.dryRunQueued}. Failed ${input.failed}.`
       : `No SendGrid-ready email approvals found. Manual pending ${input.manualPending}; other pending ${input.otherPending}.`;
@@ -1285,11 +1285,11 @@ export async function notifySlackBatchApprovalResult(input: {
     botToken: clean(process.env.SLACK_BOT_TOKEN),
     channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
     payload: {
-      text: `Vega batch approval result: ${summary}`,
+      text: `Ghost Director batch approval result: ${summary}`,
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "Vega batch approval result", emoji: false },
+          text: { type: "plain_text", text: "Ghost Director batch approval result", emoji: false },
         },
         {
           type: "section",
@@ -1436,13 +1436,13 @@ export async function notifySlackVegaLeadRequestResult(input: {
     botToken: clean(process.env.SLACK_BOT_TOKEN),
     channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
     payload: {
-      text: `Vega lead request ${input.status}: ${input.summary}`,
+      text: `Ghost Director lead request ${input.status}: ${input.summary}`,
       blocks: [
         {
           type: "header",
           text: {
             type: "plain_text",
-            text: input.status === "received" ? "Vega lead request received" : "Vega lead request result",
+            text: input.status === "received" ? "Ghost Director lead request received" : "Ghost Director lead request result",
             emoji: false,
           },
         },
@@ -1483,7 +1483,7 @@ export async function notifySlackVegaLeadRequestResult(input: {
 
   return {
     ...result,
-    message: result.sent ? `Vega lead request update posted to ${result.channel || channelName}.` : result.message,
+    message: result.sent ? `Ghost Director lead request update posted to ${result.channel || channelName}.` : result.message,
   };
 }
 
@@ -1515,7 +1515,7 @@ export async function notifySlackClosingSprintResult(input: {
     : "No sprint actions have finished yet.";
   const nextMoveLines = input.nextMoves?.length
     ? input.nextMoves.slice(0, 5).map((move) => `- ${move}`).join("\n")
-    : "- Vega is preparing the next sprint move.";
+    : "- Ghost Director is preparing the next sprint move.";
 
   const result = await postSlackPayload({
     webhookUrl:
@@ -1525,13 +1525,13 @@ export async function notifySlackClosingSprintResult(input: {
     botToken: clean(process.env.SLACK_BOT_TOKEN),
     channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
     payload: {
-      text: `Vega closing sprint ${input.status}: ${input.summary}`,
+      text: `Ghost Director closing sprint ${input.status}: ${input.summary}`,
       blocks: [
         {
           type: "header",
           text: {
             type: "plain_text",
-            text: input.status === "received" ? "Vega closing sprint received" : "Vega closing sprint report",
+            text: input.status === "received" ? "Ghost Director closing sprint received" : "Ghost Director closing sprint report",
             emoji: false,
           },
         },
@@ -1600,7 +1600,7 @@ export async function notifySlackClosingSprintResult(input: {
 
   return {
     ...result,
-    message: result.sent ? `Vega closing sprint update posted to ${result.channel || channelName}.` : result.message,
+    message: result.sent ? `Ghost Director closing sprint update posted to ${result.channel || channelName}.` : result.message,
   };
 }
 
@@ -1756,7 +1756,7 @@ export async function notifySlackMorningStandup(input: {
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "Nova x Vega morning lead-gen standup", emoji: false },
+          text: { type: "plain_text", text: "Nova x Ghost Director morning lead-gen standup", emoji: false },
         },
         {
           type: "section",
@@ -1791,7 +1791,7 @@ export async function notifySlackMorningStandup(input: {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*Warmest accounts for Vega*\n${warmLeadLines || "No warm accounts found yet. Run a focused sourcing batch."}\n\n*Booking diagnosis*\n${input.bookingDiagnosis?.summary || "No diagnosis available."}\n${blockerLines}`,
+            text: `*Warmest accounts for Ghost Director*\n${warmLeadLines || "No warm accounts found yet. Run a focused sourcing batch."}\n\n*Booking diagnosis*\n${input.bookingDiagnosis?.summary || "No diagnosis available."}\n${blockerLines}`,
           },
         },
         ...(proofText
@@ -1806,7 +1806,7 @@ export async function notifySlackMorningStandup(input: {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: `*Vega execution orders for today*\n${orders}`,
+            text: `*Ghost Director execution orders for today*\n${orders}`,
           },
         },
         {
@@ -1888,11 +1888,11 @@ export async function notifySlackReplyWorkResult(input: {
     botToken: clean(process.env.SLACK_BOT_TOKEN),
     channelId: clean(process.env.SLACK_C_SUITE_CHANNEL_ID),
     payload: {
-      text: `Vega reply work result: ${input.summary}`,
+      text: `Ghost Director reply work result: ${input.summary}`,
       blocks: [
         {
           type: "header",
-          text: { type: "plain_text", text: "Vega reply-to-booking sweep", emoji: false },
+          text: { type: "plain_text", text: "Ghost Director reply-to-booking sweep", emoji: false },
         },
         {
           type: "section",
@@ -1942,7 +1942,7 @@ export async function notifySlackReplyWorkResult(input: {
 
   return {
     ...result,
-    message: result.sent ? `Vega reply work update posted to ${result.channel || channelName}.` : result.message,
+    message: result.sent ? `Ghost Director reply work update posted to ${result.channel || channelName}.` : result.message,
   };
 }
 
@@ -2062,7 +2062,7 @@ export async function notifySlackReplyAlert(input: {
               text: [
                 input.nextAction || "Lead Command updated the lead stage and next action.",
                 input.responseQueued
-                  ? "Vega queued a reviewed response draft for approval."
+                  ? "Ghost Director queued a reviewed response draft for approval."
                   : input.responseNote || "",
               ]
                 .filter(Boolean)

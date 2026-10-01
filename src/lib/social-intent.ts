@@ -68,7 +68,7 @@ export async function runSocialIntentScout(input: { limit?: number; commit?: boo
     : null;
 
   await createAutomationEvent({
-    title: commit ? "Vega Social Intent Scout imported leads" : "Vega Social Intent Scout previewed leads",
+    title: commit ? "Ghost Director Social Intent Scout imported leads" : "Ghost Director Social Intent Scout previewed leads",
     detail: `${selected.length} social/competitor plays ran. Qualified ${qualified.length}${intake ? `, imported ${intake.count}, queued ${intake.queued}` : ""}.`,
     status: qualified.length ? "done" : "blocked",
     type: "agent",

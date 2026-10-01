@@ -13,7 +13,7 @@ const pageSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "ut
 const formSource = readFileSync(new URL("../components/HomepageCommandForm.tsx", import.meta.url), "utf8");
 const publicSource = `${pageSource}\n${JSON.stringify(publicVegaPlans)}\n${JSON.stringify(publicMarketPositioning)}\n${JSON.stringify(publicProofMilestones)}`;
 
-test("public homepage has four shared Vega product plans with pricing orientation", () => {
+test("public homepage has four shared Ghost Director product plans with pricing orientation", () => {
   assert.equal(publicVegaPlans.length, 4);
   assert.deepEqual(
     publicVegaPlans.map((plan) => plan.code),
@@ -36,16 +36,16 @@ test("homepage examples populate the editable command input before onboarding", 
 });
 
 test("public homepage uses customer-facing copy and hides internal operator names", () => {
-  assert.match(pageSource, /Tell Vega who you want to sell to/);
+  assert.match(pageSource, /Tell Ghost Director who you want to sell to/);
   assert.match(pageSource, /Start with a conversation, not a complicated form/);
   assert.match(pageSource, /AI Sales Operating System/);
   assert.match(pageSource, /An operating system for SMB sales work/);
-  assert.match(publicSource, /Vega Managed/);
+  assert.match(publicSource, /Managed/);
   assert.match(pageSource, /Internal Ghost AI Solutions operating data/);
   assert.doesNotMatch(pageSource, /\bStephen\b|\bNova\b|\bVA\b/);
 });
 
-test("public homepage frames Vega as an operating system instead of commodity lead volume", () => {
+test("public homepage frames Ghost Director as an operating system instead of commodity lead volume", () => {
   assert.equal(brand.productDescriptor, "AI Sales Operating System");
   assert.equal(publicMarketPositioning.length, 3);
   assert.match(publicSource, /Not just a lead list/);
@@ -60,7 +60,7 @@ test("homepage navigation and CTAs route into onboarding without live sourcing",
   assert.match(pageSource, /id="solutions"/);
   assert.match(pageSource, /id="plans"/);
   assert.match(pageSource, /id="results"/);
-  assert.match(pageSource, /Start my Vega consultation/);
+  assert.match(pageSource, /Start my Ghost Director consultation/);
   assert.match(formSource, /brand\.onboardingUrl/);
   assert.equal(brand.onboardingUrl, "/onboarding/ai");
   assert.doesNotMatch(pageSource, /api\/source|api\/outreach\/send|api\/agent\/run/);

@@ -113,9 +113,9 @@ async function interpretWithOpenAI(text: string): Promise<VegaExecutiveRequest |
       model: clean(process.env.VEGA_EXECUTIVE_MODEL) || clean(process.env.OPENAI_MODEL) || "gpt-4.1-mini",
       max_output_tokens: 220,
       input: [
-        "You interpret natural-language requests for Vega, an AI sales director.",
+        "You interpret natural-language requests for Ghost Director, an AI sales director.",
         "Choose exactly one read-only intent: pipeline_status, rank_leads, compare_leads, explain_lead, sales_memory, team_work, unsupported_action.",
-        "Use unsupported_action for any request that would write, assign, send, approve, suppress, delete, or change records. Existing deterministic Vega commands handle those actions separately.",
+        "Use unsupported_action for any request that would write, assign, send, approve, suppress, delete, or change records. Existing deterministic Ghost Director commands handle those actions separately.",
         "Return only JSON with keys intent, limit, companyNames. limit must be 1-10 and companyNames must be an array.",
         `Request: ${text}`,
       ].join("\n"),
@@ -231,7 +231,7 @@ export async function runVegaExecutive(input: { text: string }): Promise<VegaExe
 
   if (request.intent === "rank_leads") {
     const ranked = snapshot.ranked.slice(0, request.limit);
-    return { intent: request.intent, grounded: true, model: interpreted.model, summary: ranked.length ? `Vega ranked the top ${ranked.length} active accounts from live Lead Command data.` : "No active accounts are available to rank.", detail: rankedDetail(ranked) || "No ranked leads.", };
+    return { intent: request.intent, grounded: true, model: interpreted.model, summary: ranked.length ? `Ghost Director ranked the top ${ranked.length} active accounts from live Lead Command data.` : "No active accounts are available to rank.", detail: rankedDetail(ranked) || "No ranked leads.", };
   }
   if (request.intent === "compare_leads") {
     const compared = snapshot.ranked.slice(0, Math.max(2, Math.min(request.limit, 5)));
@@ -241,20 +241,20 @@ export async function runVegaExecutive(input: { text: string }): Promise<VegaExe
   if (request.intent === "explain_lead") {
     const requestedName = request.companyNames[0]?.toLowerCase();
     const lead = requestedName ? snapshot.ranked.find((item) => item.companyName.toLowerCase().includes(requestedName)) : snapshot.ranked[0];
-    return { intent: request.intent, grounded: true, model: interpreted.model, summary: lead ? `${lead.companyName} is in ${lead.stage} with a Vega rank of ${lead.rankScore}.` : "I could not match that company to an active lead.", detail: lead ? `Fit score ${lead.score}; source ${lead.source}; evidence: ${lead.reason}. Current next action: ${lead.nextAction || "review account"}.` : "Name the company exactly as it appears in Lead Command so Vega can explain it." };
+    return { intent: request.intent, grounded: true, model: interpreted.model, summary: lead ? `${lead.companyName} is in ${lead.stage} with a Ghost Director rank of ${lead.rankScore}.` : "I could not match that company to an active lead.", detail: lead ? `Fit score ${lead.score}; source ${lead.source}; evidence: ${lead.reason}. Current next action: ${lead.nextAction || "review account"}.` : "Name the company exactly as it appears in Lead Command so Ghost Director can explain it." };
   }
   if (request.intent === "sales_memory") {
     const bestSource = topLearningRow(snapshot.learning.sources);
     const bestNiche = topLearningRow(snapshot.learning.niches);
     const bestSignal = topLearningRow(snapshot.learning.signals);
-    return { intent: request.intent, grounded: true, model: interpreted.model, summary: `Vega Sales Memory has ${snapshot.learning.summary.leads} leads and ${snapshot.learning.summary.replies} replies in its current learning window.`, detail: [`Best source: ${bestSource ? `${bestSource.key} — ${bestSource.replyRate}% reply rate across ${bestSource.leads} leads` : "not enough proof"}.`, `Best niche: ${bestNiche ? `${bestNiche.key} — ${bestNiche.replyRate}% reply rate` : "not enough proof"}.`, `Strongest signal: ${bestSignal?.key || "not enough proof"}.`, ...snapshot.learning.recommendations.slice(0, 3)].join("\n") };
+    return { intent: request.intent, grounded: true, model: interpreted.model, summary: `Ghost Director Sales Memory has ${snapshot.learning.summary.leads} leads and ${snapshot.learning.summary.replies} replies in its current learning window.`, detail: [`Best source: ${bestSource ? `${bestSource.key} — ${bestSource.replyRate}% reply rate across ${bestSource.leads} leads` : "not enough proof"}.`, `Best niche: ${bestNiche ? `${bestNiche.key} — ${bestNiche.replyRate}% reply rate` : "not enough proof"}.`, `Strongest signal: ${bestSignal?.key || "not enough proof"}.`, ...snapshot.learning.recommendations.slice(0, 3)].join("\n") };
   }
   if (request.intent === "team_work") {
     const nextCalls = snapshot.bookings.filter((task) => !["done", "booked", "completed", "suppressed"].includes(task.status.toLowerCase())).slice(0, request.limit);
     return { intent: request.intent, grounded: true, model: interpreted.model, summary: `${dueCalls} call or booking tasks are due now; ${pending} outreach items remain pending.`, detail: nextCalls.length ? nextCalls.map((task, index) => `${index + 1}. ${task.meetingTitle} — ${task.status}${task.ownerEmail ? ` — owner ${task.ownerEmail}` : ""}.`).join("\n") : "No open call or booking tasks were found." };
   }
   if (request.intent === "unsupported_action") {
-    return { intent: request.intent, grounded: true, model: interpreted.model, summary: "I understood the requested change, but the executive reasoning layer cannot bypass Vega's execution policy.", detail: "Use Vega's existing sourcing, approval, call-work, or outreach command for writes. This boundary keeps GPT from sending, assigning, suppressing, or changing records without the deterministic policy engine." };
+    return { intent: request.intent, grounded: true, model: interpreted.model, summary: "I understood the requested change, but the executive reasoning layer cannot bypass Ghost Director's execution policy.", detail: "Use Ghost Director's existing sourcing, approval, call-work, or outreach command for writes. This boundary keeps GPT from sending, assigning, suppressing, or changing records without the deterministic policy engine." };
   }
 
   const stages = [...activeStages.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([stage, count]) => `${stage}: ${count}`).join("; ");

@@ -366,7 +366,7 @@ function defaultNextAction(lead: SourceLead) {
     `AI agent sourced ${lead.companyName}, scored ${Math.max(lead.score, scoreboard.total)}, and queued a first-touch opener for ${lead.name}.`,
     `Buyer fit: ${lead.buyerFit}.`,
     signals ? `Signal: ${signals}.` : "",
-    `Vega read: ${signalScoreboardSummary(scoreboard)} Next: ${scoreboard.nextMove}`,
+    `Ghost Director read: ${signalScoreboardSummary(scoreboard)} Next: ${scoreboard.nextMove}`,
   ].filter(Boolean).join(" ");
 }
 
@@ -380,7 +380,7 @@ function manualContactBody(sourceLead: SourceLead) {
     phone ? `Call path: ${phone}` : "",
     website ? `Website/contact form: ${website}` : "",
     signals ? `Why this lead: ${signals}` : "",
-    `Vega read: ${signalScoreboardSummary(scoreboard)}`,
+    `Ghost Director read: ${signalScoreboardSummary(scoreboard)}`,
     "Operator move: find a direct email, call the business, or use the website contact form before adding this lead to email outreach.",
   ].filter(Boolean).join("\n");
 }
@@ -388,7 +388,7 @@ function manualContactBody(sourceLead: SourceLead) {
 function partnerServiceNextAction(sourceLead: SourceLead, partnerService: string) {
   const signals = sourceLead.signalSummary || sourceLead.intentSignals?.slice(0, 3).join("; ");
   return [
-    `Vega sourced ${sourceLead.companyName} as a buyer/referral account for a ${partnerService}.`,
+    `Ghost Director sourced ${sourceLead.companyName} as a buyer/referral account for a ${partnerService}.`,
     "Likely path: ask who handles vendor relationships, fleet/customer vehicle cleanup, or recurring detailing needs.",
     signals ? `Signal: ${signals}.` : "",
     "Next: send a short partner-service opener, then create a phone assist if delivered.",
@@ -532,7 +532,7 @@ async function importSourceLead(
   const campaignName = clean(input.campaignName);
   const partnerService = clean(input.partnerService);
   const campaignTags = [
-    "Vega",
+    "Ghost Director",
     "Lead Command",
     campaignName ? `Campaign: ${campaignName}` : "",
     partnerService ? "Partner Lead Gen" : "",
@@ -732,7 +732,7 @@ async function runLocalManualFallback(input: {
       const copy = partnerService
         ? partnerServiceOutreachCopy(sourceLead, partnerService)
         : improveGeneratedOutreach(parseGeneratedOutreach(generated.text, imported.lead.companyName), sourceLead);
-      const copyReason = "reason" in copy ? copy.reason : "Offer copy improved by Vega.";
+      const copyReason = "reason" in copy ? copy.reason : "Offer copy improved by Ghost Director.";
 
       const queueResult = await createOrRefreshFirstTouchQueueItem({
         workspaceId: input.workspaceId,
@@ -741,7 +741,7 @@ async function runLocalManualFallback(input: {
         provider: "sendgrid",
         subject: copy.subject,
         body: copy.body,
-        reason: sanitizeInternalReason(`Queued by Vega during local fallback because a public website email was discovered. ${copyReason} ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))} Generated via ${generated.provider}.`) || "Prepared for operator approval.",
+        reason: sanitizeInternalReason(`Queued by Ghost Director during local fallback because a public website email was discovered. ${copyReason} ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))} Generated via ${generated.provider}.`) || "Prepared for operator approval.",
       });
       if (queueResult.skipped) {
         skip(`email-${queueResult.reason}`);
@@ -787,7 +787,7 @@ async function runLocalManualFallback(input: {
       provider: "phone-website",
       subject: `Manual contact path for ${imported.lead.companyName}`,
       body: manualContactBody(sourceLead),
-      reason: sanitizeInternalReason(`Queued by Vega as a local-service call-first fallback while sender capacity or trust policy blocked automatic email. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`) || "Manual contact research required.",
+      reason: sanitizeInternalReason(`Queued by Ghost Director as a local-service call-first fallback while sender capacity or trust policy blocked automatic email. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`) || "Manual contact research required.",
     });
     if (queueResult.skipped) {
       skip(`manual-${queueResult.reason}`);
@@ -814,7 +814,7 @@ async function runLocalManualFallback(input: {
 
   await createAutomationEvent({
     title: "AI operator local manual fallback finished",
-    detail: `Sender or trust guardrails blocked routine auto-send, so Vega ran local fallback. Found ${diagnostics.rawFound}, auto-send attempted ${emailQueued.length}, queued ${manualQueued.length} manual tasks.`,
+    detail: `Sender or trust guardrails blocked routine auto-send, so Ghost Director ran local fallback. Found ${diagnostics.rawFound}, auto-send attempted ${emailQueued.length}, queued ${manualQueued.length} manual tasks.`,
     status: emailQueued.length || manualQueued.length ? "done" : "blocked",
     type: "agent",
     payload: {
@@ -894,8 +894,8 @@ async function runLocalManualFallback(input: {
       callAssistTasks,
     },
     message: emailQueued.length || manualQueued.length
-      ? `Sender or trust guardrails routed Vega to local fallback: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued, ${manualQueued.length} call-first/manual tasks, ${callAssistTasks.length} phone assists queued.`
-      : sourceResult.message || "Sender or trust guardrails were active and Vega did not find local manual contact paths to queue.",
+      ? `Sender or trust guardrails routed Ghost Director to local fallback: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued, ${manualQueued.length} call-first/manual tasks, ${callAssistTasks.length} phone assists queued.`
+      : sourceResult.message || "Sender or trust guardrails were active and Ghost Director did not find local manual contact paths to queue.",
   };
 }
 
@@ -928,7 +928,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     if (canRunLocalManualFallback(provider, policy)) {
       await createAutomationEvent({
         title: "AI operator switching to local manual fallback",
-        detail: `${policy.blockedReasons.join(" ")} Vega will still source Google Maps leads and create manual contact tasks.`,
+        detail: `${policy.blockedReasons.join(" ")} Ghost Director will still source Google Maps leads and create manual contact tasks.`,
         status: "running",
         type: "agent",
         payload: { provider, policy },
@@ -1092,7 +1092,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     const copy = partnerService
       ? partnerServiceOutreachCopy(sourceLead, partnerService)
       : improveGeneratedOutreach(parseGeneratedOutreach(generated.text, imported.lead.companyName), sourceLead);
-    const copyReason = "reason" in copy ? copy.reason : "Offer copy improved by Vega.";
+    const copyReason = "reason" in copy ? copy.reason : "Offer copy improved by Ghost Director.";
     const queueResult = await createOrRefreshFirstTouchQueueItem({
       workspaceId: workspace.id,
       leadId: imported.lead.id,
@@ -1207,7 +1207,7 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
       provider: "phone-website",
       subject: `Manual contact path for ${imported.lead.companyName}`,
       body: manualContactBody(sourceLead),
-      reason: sanitizeInternalReason(`Queued by Vega because this lead has phone/website context but no public email yet. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`) || "Manual contact research required.",
+      reason: sanitizeInternalReason(`Queued by Ghost Director because this lead has phone/website context but no public email yet. ${signalScoreboardSummary(buildSignalScoreboard(sourceLead))}`) || "Manual contact research required.",
     });
     if (queueResult.skipped) {
       skip(`manual-${queueResult.reason}`);
@@ -1330,13 +1330,13 @@ export async function runLeadCommandAgent(input: AgentRunInput = {}) {
     message:
       queued.length + executiveQueued.length + manualQueued.length > 0
         ? autoSend
-          ? `Vega Decision Engine attempted ${approvalResults.length} safe sends: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued, ${executiveQueued.length} executive review, ${manualQueued.length} call-first/manual tasks, ${callAssistTasks.length} phone assists queued.`
+          ? `Ghost Director Decision Engine attempted ${approvalResults.length} safe sends: ${sentCompanies.length} sent, ${blockedCompanies.length} blocked, ${failedCompanies.length} failed, ${dryRunCompanies.length} dry-run queued, ${executiveQueued.length} executive review, ${manualQueued.length} call-first/manual tasks, ${callAssistTasks.length} phone assists queued.`
           : manualQueued.length
-            ? `Vega queued ${queued.length} email drafts, ${executiveQueued.length} executive reviews, and ${manualQueued.length} manual contact tasks.`
-            : `Vega queued ${executiveQueued.length ? `${executiveQueued.length} executive reviews` : `${queued.length} email drafts`}.`
+            ? `Ghost Director queued ${queued.length} email drafts, ${executiveQueued.length} executive reviews, and ${manualQueued.length} manual contact tasks.`
+            : `Ghost Director queued ${executiveQueued.length ? `${executiveQueued.length} executive reviews` : `${queued.length} email drafts`}.`
         : sourceResult.message ||
           (decisionDiagnostics.executiveReview > 0
-            ? `Vega found ${decisionDiagnostics.executiveReview} executive-review leads, but none fit today's review capacity.`
+            ? `Ghost Director found ${decisionDiagnostics.executiveReview} executive-review leads, but none fit today's review capacity.`
             : "AI operator did not find new qualified leads to queue."),
   };
 }

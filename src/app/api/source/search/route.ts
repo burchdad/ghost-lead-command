@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const workspace = callReady && typeof body.workspaceSlug === "string"
     ? await getPrisma().workspace.findUnique({ where: { slug: body.workspaceSlug } }) : null;
   if (callReady && !workspace) {
-    return NextResponse.json({ error: "A mapped Vega workspace is required for call-ready sourcing and suppression checks." }, { status: 422 });
+    return NextResponse.json({ error: "A mapped Ghost Director workspace is required for call-ready sourcing and suppression checks." }, { status: 422 });
   }
   const size = Number(body.size ?? 25);
   if (!Number.isInteger(size) || size < 1 || size > 100) {

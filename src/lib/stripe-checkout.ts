@@ -1,3 +1,4 @@
+import { servicePlanName } from "@/config/service-plans";
 import Stripe from "stripe";
 
 type CheckoutAmounts = {
@@ -14,7 +15,7 @@ type CheckoutContext = CheckoutAmounts & {
 
 function stripeClient() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) throw new Error("Secure checkout is not configured yet. Please ask Vega for help.");
+  if (!secretKey) throw new Error("Secure checkout is not configured yet. Please ask Ghost Director for help.");
   return new Stripe(secretKey);
 }
 
@@ -26,10 +27,7 @@ function publicAppUrl() {
 }
 
 function planName(productCode: string) {
-  return productCode
-    .replace(/^VEGA_/, "Vega ")
-    .toLowerCase()
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return `Ghost Lead Command ${servicePlanName(productCode)}`;
 }
 
 export function buildStripeCheckoutLineItems(input: CheckoutAmounts & { productCode: string }): Stripe.Checkout.SessionCreateParams.LineItem[] {

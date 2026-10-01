@@ -119,15 +119,15 @@ function taskBody(row: LinkedInEngagementRow, score: number) {
       numberValue(row.postImpressions) ? `Post performance: ${numberValue(row.postImpressions)} impressions, ${numberValue(row.postClicks)} clicks, ${numberValue(row.postReactions)} reactions, ${numberValue(row.postComments)} comments, ${numberValue(row.postShares)} shares.` : "",
       accountUrl ? `Profile/account: ${accountUrl}` : "",
       clean(row.sourceUrl || row.postUrl) ? `Source: ${row.sourceUrl || row.postUrl}` : "",
-      clean(row.notes) ? `Echo/Vega note: ${row.notes}` : "",
+      clean(row.notes) ? `Echo/Ghost Director note: ${row.notes}` : "",
       "",
       "Connection note / InMail opener:",
       `${first}, noticed you engaged around ${post}. I am mapping teams where warm social signals can turn into real booked conversations instead of getting lost after the post. Worth connecting?`,
       "",
       "Follow-up after accepted:",
-      `${first}, quick context: Vega tracks post engagement, enriches the right accounts, and routes the best ones into email, phone, or booking follow-up. If ${company} is trying to turn attention into appointments, I can show the workflow I would run.`,
+      `${first}, quick context: Ghost Director tracks post engagement, enriches the right accounts, and routes the best ones into email, phone, or booking follow-up. If ${company} is trying to turn attention into appointments, I can show the workflow I would run.`,
       "",
-      "Operator move: send manually through Sales Navigator, LinkedIn DM, or InMail. Record any reply in Lead Command so Vega can classify, follow up, and book.",
+      "Operator move: send manually through Sales Navigator, LinkedIn DM, or InMail. Record any reply in Lead Command so Ghost Director can classify, follow up, and book.",
     ].filter(Boolean).join("\n"),
     { channel: "manual" },
   );
@@ -151,7 +151,7 @@ async function ensurePostWatch(row: LinkedInEngagementRow) {
     },
     update: {
       watchReason: sanitizeInternalReason(
-        `Echo-to-Vega content signal watch refreshed. Impressions ${numberValue(row.postImpressions)}, clicks ${numberValue(row.postClicks)}, comments ${numberValue(row.postComments)}, shares ${numberValue(row.postShares)}.`,
+        `Echo-to-Ghost Director content signal watch refreshed. Impressions ${numberValue(row.postImpressions)}, clicks ${numberValue(row.postClicks)}, comments ${numberValue(row.postComments)}, shares ${numberValue(row.postShares)}.`,
       ) || "LinkedIn content signal watch refreshed.",
       active: true,
     },
@@ -160,7 +160,7 @@ async function ensurePostWatch(row: LinkedInEngagementRow) {
       platform: "linkedin",
       postUrl,
       watchReason: sanitizeInternalReason(
-        `Echo owns publishing. Vega tracks this LinkedIn post after publication as a warm lead source. Impressions ${numberValue(row.postImpressions)}, clicks ${numberValue(row.postClicks)}, comments ${numberValue(row.postComments)}, shares ${numberValue(row.postShares)}.`,
+        `Echo owns publishing. Ghost Director tracks this LinkedIn post after publication as a warm lead source. Impressions ${numberValue(row.postImpressions)}, clicks ${numberValue(row.postClicks)}, comments ${numberValue(row.postComments)}, shares ${numberValue(row.postShares)}.`,
       ) || "Track LinkedIn post engagement as a warm lead source.",
       createdBy: "vega-content-signal-agent",
     },
@@ -335,7 +335,7 @@ export async function runLinkedInContentSignalAgent(input: { limit?: number; que
         body: taskBody(row, score),
         status: "pending",
         scheduledFor: new Date(),
-        reason: sanitizeInternalReason("Vega queued this because Echo-published LinkedIn content created a warm post-engagement signal."),
+        reason: sanitizeInternalReason("Ghost Director queued this because Echo-published LinkedIn content created a warm post-engagement signal."),
       },
     });
     queued += 1;
@@ -343,7 +343,7 @@ export async function runLinkedInContentSignalAgent(input: { limit?: number; que
   }
 
   await createAutomationEvent({
-    title: "Vega LinkedIn Content Signal Agent sweep",
+    title: "Ghost Director LinkedIn Content Signal Agent sweep",
     detail: `Reviewed ${reviewed} LinkedIn engagements, matched ${matched}, queued ${queued} manual LinkedIn tasks.`,
     status: matched ? "done" : reviewed ? "needs_review" : "blocked",
     type: "linkedin",
@@ -358,9 +358,9 @@ export async function runLinkedInContentSignalAgent(input: { limit?: number; que
     alreadyQueued,
     top,
     message: queued
-      ? `Queued ${queued} Echo-to-Vega LinkedIn content-signal tasks from post engagement.`
+      ? `Queued ${queued} Echo-to-Ghost Director LinkedIn content-signal tasks from post engagement.`
       : matched
-        ? `Matched ${matched} Echo-to-Vega LinkedIn content signals; ${alreadyQueued} already had tasks.`
+        ? `Matched ${matched} Echo-to-Ghost Director LinkedIn content signals; ${alreadyQueued} already had tasks.`
         : "No Echo LinkedIn post/impression engagement signals are ready yet.",
   };
 }

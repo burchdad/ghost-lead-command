@@ -166,11 +166,11 @@ export async function getWarmLeadPriorityReport(input: { limit?: number; createE
 
   const summary = ranked.length
     ? `Top warm account: ${ranked[0].companyName} (${ranked[0].score}). Next: ${ranked[0].nextMove}`
-    : "No warm leads found yet. Vega should source, approve, and monitor a small qualified batch.";
+    : "No warm leads found yet. Ghost Director should source, approve, and monitor a small qualified batch.";
 
   if (input.createEvent !== false) {
     await createAutomationEvent({
-      title: "Vega warm lead priority report",
+      title: "Ghost Director warm lead priority report",
       detail: summary,
       status: ranked.length ? "done" : "needs_review",
       type: "agent",
@@ -240,11 +240,11 @@ export async function getBookingDiagnosisReport(input: { createEvent?: boolean }
     sent24 < 10 && pendingApprovals === 0 ? "Not enough fresh send volume; run a focused source sprint." : "",
   ].filter(Boolean);
   const nextMoves = [
-    bookingReady ? "Vega, push bookings" : "",
-    sendgridReady ? `Vega, approve ${Math.min(10, sendgridReady)}` : "",
-    manualTasks ? "Vega, work contact paths" : "",
-    failedPending || failedEvents24 ? "Vega, protect deliverability" : "",
-    !sendgridReady && !bookingReady ? "Vega, need 20 new qualified leads score 75" : "",
+    bookingReady ? "Ghost Director, push bookings" : "",
+    sendgridReady ? `Ghost Director, approve ${Math.min(10, sendgridReady)}` : "",
+    manualTasks ? "Ghost Director, work contact paths" : "",
+    failedPending || failedEvents24 ? "Ghost Director, protect deliverability" : "",
+    !sendgridReady && !bookingReady ? "Ghost Director, need 20 new qualified leads score 75" : "",
   ].filter(Boolean);
   const summary = blockers.length
     ? `Booking is blocked by: ${blockers[0]}`
@@ -252,7 +252,7 @@ export async function getBookingDiagnosisReport(input: { createEvent?: boolean }
 
   if (input.createEvent !== false) {
     await createAutomationEvent({
-      title: "Vega booking diagnosis",
+      title: "Ghost Director booking diagnosis",
       detail: `${summary} Next: ${nextMoves[0] || "work warm leads"}`,
       status: blockers.length ? "needs_review" : "done",
       type: "agent",

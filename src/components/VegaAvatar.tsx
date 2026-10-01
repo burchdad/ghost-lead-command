@@ -17,7 +17,7 @@ const sizes = {
 };
 
 export default function VegaAvatar({
-  caption = "Vega is online",
+  caption = "Ghost Director is online",
   className = "",
   size = "md",
   showStatus = true,

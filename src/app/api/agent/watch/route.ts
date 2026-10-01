@@ -19,12 +19,12 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     return NextResponse.json(await runVegaRevenueWatch({
-      instruction: url.searchParams.get("instruction") || "Scheduled Vega revenue watch",
+      instruction: url.searchParams.get("instruction") || "Scheduled Ghost Director revenue watch",
       execute: url.searchParams.has("execute") ? boolParam(url.searchParams.get("execute")) : true,
     }));
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega revenue watch failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director revenue watch failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }
@@ -34,12 +34,12 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     return NextResponse.json(await runVegaRevenueWatch({
-      instruction: body.instruction ? String(body.instruction) : "Manual Vega revenue watch",
+      instruction: body.instruction ? String(body.instruction) : "Manual Ghost Director revenue watch",
       execute: Boolean(body.execute),
     }));
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega revenue watch failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director revenue watch failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }

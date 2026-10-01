@@ -75,7 +75,7 @@ function contactPathBody(input: {
     `Target contact: ${input.contactName}.`,
     ...paths,
     input.nextAction ? `Context: ${input.nextAction}` : "",
-    "Vega move: verify a direct email, use the website form, or call the business before moving this lead into email outreach.",
+    "Ghost Director move: verify a direct email, use the website form, or call the business before moving this lead into email outreach.",
   ].filter(Boolean).join("\n");
 }
 
@@ -119,7 +119,7 @@ export async function runContactPathAgent(input: { limit?: number; itemId?: stri
       missingPath += 1;
       await prisma.outreachQueueItem.update({
         where: { id: item.id },
-        data: { reason: "Vega contact-path blocked: no phone, website, or email is available yet." },
+        data: { reason: "Ghost Director contact-path blocked: no phone, website, or email is available yet." },
       });
       continue;
     }
@@ -137,14 +137,14 @@ export async function runContactPathAgent(input: { limit?: number; itemId?: stri
           phone: lead.contact?.phone,
           nextAction: lead.nextAction,
         }),
-        reason: "Vega Contact Path Agent refreshed this manual task for operator action.",
+        reason: "Ghost Director Contact Path Agent refreshed this manual task for operator action.",
       },
     });
     refreshed += 1;
   }
 
   await createAutomationEvent({
-    title: "Vega Contact Path Agent sweep",
+    title: "Ghost Director Contact Path Agent sweep",
     detail: `Reviewed ${manualItems.length} manual contact tasks. Refreshed ${refreshed}, suppressed ${suppressed}, blocked ${missingPath}.`,
     status: refreshed ? "done" : manualItems.length ? "needs_review" : "blocked",
     type: "agent",
@@ -160,7 +160,7 @@ export async function runContactPathAgent(input: { limit?: number; itemId?: stri
       : "No manual contact-path tasks are waiting.",
     metrics: { reviewed: manualItems.length, refreshed, suppressed, missingPath },
     nextMove: refreshed
-      ? "Stephen or Vega should work refreshed manual paths, then add verified emails before email outreach."
+      ? "Stephen or Ghost Director should work refreshed manual paths, then add verified emails before email outreach."
       : "Run more Google Maps/PDL sourcing or loosen manual-path intake only if volume is needed.",
   };
 }
@@ -222,7 +222,7 @@ export async function runBookingConciergeAgent(input: { limit?: number } = {}): 
   }
 
   await createAutomationEvent({
-    title: "Vega Booking Concierge sweep",
+    title: "Ghost Director Booking Concierge sweep",
     detail: `Pushed ${handoff.reviewed} ready booking tasks. Queued ${handoff.queued}, already pending ${handoff.alreadyPending}, scheduled ${handoff.scheduled}, blocked ${handoff.blocked}. Reviewed ${replies.length} hot/booked replies. Booking ready ${ready}, blocked ${blocked}.`,
     status: handoff.queued || handoff.scheduled || handoff.alreadyPending || ready ? "done" : replies.length || handoff.reviewed ? "needs_review" : "blocked",
     type: "booking",
@@ -251,7 +251,7 @@ export async function runBookingConciergeAgent(input: { limit?: number } = {}): 
       ? "Finish meeting-link/calendar config so booked replies stop getting stuck."
       : handoff.queued
         ? "Approve/send the queued booking handoff emails, then watch replies for confirmed times."
-        : "Use Vega, work replies after every send batch; booked replies should now move cleanly.",
+        : "Use Ghost Director, work replies after every send batch; booked replies should now move cleanly.",
   };
 }
 
@@ -306,7 +306,7 @@ export async function runDeliverabilityGovernor(input: { limit?: number } = {}):
       data: {
         status: "rejected",
         rejectedAt: new Date(),
-        reason: `Vega Deliverability Governor rejected suppressed contact: ${suppression.reason}`,
+        reason: `Ghost Director Deliverability Governor rejected suppressed contact: ${suppression.reason}`,
       },
     });
     pendingRejected += 1;
@@ -314,7 +314,7 @@ export async function runDeliverabilityGovernor(input: { limit?: number } = {}):
 
   const noisyDomains = [...failedDomains.entries()].filter(([, count]) => count >= 2).map(([domain]) => domain);
   await createAutomationEvent({
-    title: "Vega Deliverability Governor sweep",
+    title: "Ghost Director Deliverability Governor sweep",
     detail: `Reviewed ${failedItems.length} failed sends. Added/confirmed ${suppressionsAdded} suppressions and rejected ${pendingRejected} risky pending emails.`,
     status: failedItems.length || pendingRejected ? "done" : "needs_review",
     type: "sendgrid",
@@ -374,7 +374,7 @@ export async function runCopyChiefAgent(input: { limit?: number } = {}): Promise
         data: {
           subject: sanitizeSubject(copy.subject),
           body: sanitizeCustomerMessage(copy.body, { channel: "email" }),
-          reason: sanitizeInternalReason(`Vega Copy Chief reviewed and improved this draft. ${copy.reason}`),
+          reason: sanitizeInternalReason(`Ghost Director Copy Chief reviewed and improved this draft. ${copy.reason}`),
         },
       });
     } else {
@@ -382,7 +382,7 @@ export async function runCopyChiefAgent(input: { limit?: number } = {}): Promise
       await prisma.outreachQueueItem.update({
         where: { id: item.id },
         data: {
-          reason: sanitizeInternalReason(`Vega Copy Chief approved this draft. ${copy.reason}`),
+          reason: sanitizeInternalReason(`Ghost Director Copy Chief approved this draft. ${copy.reason}`),
         },
       });
     }
@@ -390,7 +390,7 @@ export async function runCopyChiefAgent(input: { limit?: number } = {}): Promise
 
   const score = reviewed ? Math.round(averageScore / reviewed) : 0;
   await createAutomationEvent({
-    title: "Vega Copy Chief sweep",
+    title: "Ghost Director Copy Chief sweep",
     detail: `Reviewed ${reviewed} pending email drafts. Rewrote ${rewritten}; approved ${approved}; average score ${score}.`,
     status: reviewed ? "done" : "blocked",
     type: "agent",
@@ -414,7 +414,7 @@ export async function runCadenceOrchestrator(input: { limit?: number } = {}): Pr
   const capacity = await getOperatorQueueCapacity(workspace.id);
   const result = await runDueSequenceSteps({ limit: input.limit || 8 });
   await createAutomationEvent({
-    title: "Vega Cadence Orchestrator sweep",
+    title: "Ghost Director Cadence Orchestrator sweep",
     detail: `Queued ${result.queued} due follow-up steps, skipped ${result.skipped}. Capacity ${capacity.capacity}.`,
     status: result.queued ? "done" : result.blocked ? "blocked" : "needs_review",
     type: "sequence",
@@ -429,7 +429,7 @@ export async function runCadenceOrchestrator(input: { limit?: number } = {}): Pr
     metrics: { queued: result.queued, skipped: result.skipped, senderCapacity: capacity.capacity, executiveReview: capacity.usage.executiveReviewPending },
     nextMove: result.blocked
       ? capacity.blockedReasons.join(" ") || "Cadence is blocked by sender capacity."
-      : "Let Vega send safe follow-ups and reserve review time for exception accounts.",
+      : "Let Ghost Director send safe follow-ups and reserve review time for exception accounts.",
   };
 }
 
@@ -476,7 +476,7 @@ export async function runLinkedInTaskAgent(input: { limit?: number } = {}): Prom
       skipped: result.skipped,
     },
     nextMove: result.queued
-      ? "Work the LinkedIn task cards manually from the Queue board, then record replies for Vega."
+      ? "Work the LinkedIn task cards manually from the Queue board, then record replies for Ghost Director."
       : "Paste more Sales Navigator rows or run the intent feed to surface social-fit accounts.",
   };
 }
@@ -485,7 +485,7 @@ export async function runLinkedInContentAgent(input: { limit?: number } = {}): P
   const result = await runLinkedInContentSignalAgent({ limit: input.limit || 10, queue: true });
   return {
     kind: "linkedin-content",
-    title: "Echo-to-Vega Content Signal Agent",
+    title: "Echo-to-Ghost Director Content Signal Agent",
     status: result.queued || result.matched ? "done" : result.reviewed ? "needs_review" : "blocked",
     summary: result.message,
     metrics: {
@@ -495,8 +495,8 @@ export async function runLinkedInContentAgent(input: { limit?: number } = {}): P
       alreadyQueued: result.alreadyQueued,
     },
     nextMove: result.queued
-      ? "Work the LinkedIn content-signal tasks manually, then record any replies so Vega can classify and book."
-      : "Have Echo hand Vega post reactors, commenters, impressions, or click rows so Vega can rank content-sourced prospects.",
+      ? "Work the LinkedIn content-signal tasks manually, then record any replies so Ghost Director can classify and book."
+      : "Have Echo hand Ghost Director post reactors, commenters, impressions, or click rows so Ghost Director can rank content-sourced prospects.",
   };
 }
 
@@ -550,12 +550,12 @@ export async function runWaitlistReviewAgent(input: { limit?: number } = {}): Pr
   const nextMove = highPriority
     ? "Personally review the top founding design partner candidates before any product-update nurture."
     : contestants.length
-      ? "Review private beta candidates and keep lower-score contestants in Vega product update nurture."
-      : "No Vega waitlist contestants are ready for review yet.";
+      ? "Review private beta candidates and keep lower-score contestants in Ghost Director product update nurture."
+      : "No Ghost Director waitlist contestants are ready for review yet.";
 
   await createAutomationEvent({
-    title: "Vega Waitlist Specialist review",
-    detail: contestants.length ? `Reviewed ${contestants.length} waitlist contestants. Top: ${top.join("; ")}` : "No active Vega waitlist contestants found.",
+    title: "Ghost Director Waitlist Specialist review",
+    detail: contestants.length ? `Reviewed ${contestants.length} waitlist contestants. Top: ${top.join("; ")}` : "No active Ghost Director waitlist contestants found.",
     status: contestants.length ? "done" : "blocked",
     type: "agent",
     payload: { reviewed: contestants.length, highPriority, flaggedIncomplete, suspicious, top },
@@ -566,8 +566,8 @@ export async function runWaitlistReviewAgent(input: { limit?: number } = {}): Pr
     title: "Waitlist Specialist",
     status: contestants.length ? "done" : "blocked",
     summary: contestants.length
-      ? `Reviewed ${contestants.length} Vega waitlist contestants. High priority ${highPriority}; incomplete high-value records ${flaggedIncomplete}; suspicious ${suspicious}.`
-      : "No Vega waitlist contestants are waiting yet.",
+      ? `Reviewed ${contestants.length} Ghost Director waitlist contestants. High priority ${highPriority}; incomplete high-value records ${flaggedIncomplete}; suspicious ${suspicious}.`
+      : "No Ghost Director waitlist contestants are waiting yet.",
     metrics: { reviewed: contestants.length, highPriority, flaggedIncomplete, suspicious, top: top.join(" | ") || "none" },
     nextMove,
   };
@@ -673,7 +673,7 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
   ].join(" ");
 
   await createAutomationEvent({
-    title: "Vega specialist team sweep",
+    title: "Ghost Director specialist team sweep",
     detail: summary,
     status,
     type: "agent",
@@ -682,7 +682,7 @@ export async function runVegaSpecialistTeam(input: { limit?: number } = {}) {
 
   return {
     kind: "full-team" as const,
-    title: "Vega Specialist Team",
+    title: "Ghost Director Specialist Team",
     status,
     summary,
     metrics: {

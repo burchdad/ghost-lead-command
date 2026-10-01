@@ -14,7 +14,7 @@ type AgentAudit = {
   name: string;
   status: AgentAuditStatus;
   detail: string;
-  owner: "Vega" | "Nova" | "Stephen" | "System";
+  owner: "Ghost Director" | "Nova" | "Stephen" | "System";
 };
 
 function status(ok: boolean, limited = false): AgentAuditStatus {
@@ -62,10 +62,10 @@ export async function runLeadCommandAudit(input: { postToSlack?: boolean } = {})
 
   const agents: AgentAudit[] = [
     {
-      name: missionControl.sourceAgent || "Vega Lead Director AI",
+      name: missionControl.sourceAgent || "Ghost Director Lead Director AI",
       status: status(sourceOnline && outreach.sendgridConfigured, reviewJam || noReplies),
       detail: reviewJam ? `${pending} executive-review items need a human decision.` : "Can coordinate source, trust scoring, safe sends, call-first work, and escalation lanes.",
-      owner: "Vega",
+      owner: "Ghost Director",
     },
     {
       name: "Web Helper Agent",
@@ -73,13 +73,13 @@ export async function runLeadCommandAudit(input: { postToSlack?: boolean } = {})
       detail: sourcing.ghostLeadAgentConfigured
         ? "Can use Ghost Lead Intelligence and web context."
         : "Google Maps/SerpAPI can discover websites; Ghost Lead Agent web helper endpoint is not connected.",
-      owner: "Vega",
+      owner: "Ghost Director",
     },
     {
       name: "Source Agents",
       status: status(sourceOnline),
       detail: `Google Maps ${sourcing.googleMapsConfigured ? "online" : "off"}, PDL ${sourcing.pdlConfigured ? "online" : "off"}, Ghost Lead Agent ${sourcing.ghostLeadAgentConfigured ? "online" : "off"}.`,
-      owner: "Vega",
+      owner: "Ghost Director",
     },
     {
       name: "Outreach Agent",
@@ -131,14 +131,14 @@ export async function runLeadCommandAudit(input: { postToSlack?: boolean } = {})
             ? "Sends exist but replies are not coming back yet; improve targeting/copy and verify inbound handling."
             : "System is operational; continue controlled sourcing, trust scoring, and sender-governed outreach.";
   const nextMove = reviewJam
-    ? `Stephen should decide the next ${Math.min(caps.executiveReviewLimit, pending)} executive-review items from Slack, while Vega continues safe sends and call-first work.`
+    ? `Stephen should decide the next ${Math.min(caps.executiveReviewLimit, pending)} executive-review items from Slack, while Ghost Director continues safe sends and call-first work.`
     : sentOrQueued === 0
-      ? "Vega should run a Google Maps-first director sprint and queue contactable leads."
-      : "Vega should brief Nova daily, monitor replies, and escalate only executive exceptions or booking-ready responses.";
+      ? "Ghost Director should run a Google Maps-first director sprint and queue contactable leads."
+      : "Ghost Director should brief Nova daily, monitor replies, and escalate only executive exceptions or booking-ready responses.";
   const executiveSummary =
     reviewJam
       ? "Lead generation is moving, but the executive-review lane needs decisions on exception accounts."
-      : "Lead Command is ready for supervised lead-gen operations with Vega coordinating and Nova receiving executive updates.";
+      : "Lead Command is ready for supervised lead-gen operations with Ghost Director coordinating and Nova receiving executive updates.";
 
   const audit = {
     ok: agents.every((agent) => agent.status !== "blocked") && !reviewJam,

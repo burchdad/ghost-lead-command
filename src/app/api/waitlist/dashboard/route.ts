@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     return NextResponse.json(await getWaitlistDashboard());
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega waitlist unavailable", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director waitlist unavailable", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 503 },
     );
   }

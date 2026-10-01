@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega specialist run failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director specialist run failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega specialist run failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director specialist run failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }

@@ -19,17 +19,17 @@ const docsSource = [
 ].join("\n");
 const publicSource = [pageSource, onboardingSource, vegaComponentSource, rootLayoutSource, onboardingPageSource, docsSource].join("\n");
 
-test("brand config separates company, product, and Vega director roles", () => {
+test("brand config separates company, product, and Ghost Director director roles", () => {
   assert.equal(brand.companyName, "Ghost AI Solutions");
   assert.equal(brand.productName, "Ghost Lead Command");
-  assert.equal(brand.aiDirectorName, "Vega");
+  assert.equal(brand.aiDirectorName, "Ghost Director");
   assert.equal(brand.aiDirectorTitle, "AI Sales Director");
   assert.notEqual(brand.companyName, brand.aiDirectorName);
-  assert.match(brand.legalAttributionText, /Vega is the AI Sales Director within Ghost Lead Command/);
+  assert.match(brand.legalAttributionText, /Ghost Director is the AI Sales Director within Ghost Lead Command/);
 });
 
 test("public metadata is generated from centralized brand language", () => {
-  assert.equal(publicMetadata.title, "Ghost Lead Command | AI Sales Operating System Directed by Vega");
+  assert.equal(publicMetadata.title, "Ghost Lead Command | AI Sales Operating System Directed by Ghost Director");
   assert.match(publicMetadata.description, /AI Sales Operating System by Ghost AI Solutions/);
   assert.match(rootLayoutSource, /publicMetadata/);
   assert.match(onboardingPageSource, /brand\.aiDirectorName/);
@@ -38,14 +38,14 @@ test("public metadata is generated from centralized brand language", () => {
 test("public surfaces include Ghost AI attribution and avoid trademark claims", () => {
   assert.match(publicSource, /A product of Ghost AI Solutions/);
   assert.match(publicSource, /Ghost Lead Command is a product of Ghost AI Solutions/);
-  assert.doesNotMatch(publicSource, /Vega, Inc|Vega Corporation|Vega LLC|Trademark|Registered|[™®]/);
+  assert.doesNotMatch(publicSource, /Ghost Director, Inc|Ghost Director Corporation|Ghost Director LLC|Trademark|Registered|[™®]/);
 });
 
-test("Vega components power the homepage and onboarding identity", () => {
+test("Ghost Director components power the homepage and onboarding identity", () => {
   assert.match(pageSource, /VegaDirectorPanel/);
   assert.match(pageSource, /VegaPlanCard/);
   assert.match(pageSource, /VegaMessageBubble/);
-  assert.match(onboardingSource, /Conversation with Vega/);
+  assert.match(onboardingSource, /Conversation with Ghost Director/);
   assert.match(onboardingSource, /VegaMeetingStage/);
   assert.match(onboardingSource, /AI Sales Director/);
   assert.match(vegaComponentSource, /vegaAssets\.neutral/);
@@ -59,9 +59,9 @@ test("commercial onboarding is a customer conversation with contextual proposal 
   assert.match(onboardingSource, /Continue to secure checkout/);
   assert.match(onboardingSource, /ProposalPreview/);
   assert.match(onboardingSource, /lg:grid-cols-\[minmax\(380px,0\.9fr\)_minmax\(0,1\.3fr\)\]/);
-  assert.match(onboardingSource, /Hi, I’m Vega, your AI sales director/);
-  assert.doesNotMatch(onboardingSource, /Talk naturally\. Vega will remember the details you share/);
-  assert.doesNotMatch(onboardingSource, /Vega is an AI assistant from Ghost AI Solutions/);
+  assert.match(onboardingSource, /Hi, I’m Ghost Director, your AI sales director/);
+  assert.doesNotMatch(onboardingSource, /Talk naturally\. Ghost Director will remember the details you share/);
+  assert.doesNotMatch(onboardingSource, /Ghost Director is an AI assistant from Ghost AI Solutions/);
   assert.doesNotMatch(onboardingSource, /billingConfirmation|VEGA_CONCIERGE|REVIEWING_PROPOSAL|READY_FOR_DRY_RUN/);
 });
 
@@ -84,5 +84,5 @@ test("public homepage hides internal operator names and keeps future rename conf
   assert.doesNotMatch(pageSource, /\bStephen\b|\bNova\b|\bVA\b/);
   assert.match(pageSource, /brand\.productName/);
   assert.match(pageSource, /brand\.legalAttributionText/);
-  assert.doesNotMatch(pageSource, /Vega Lead Command/);
+  assert.doesNotMatch(pageSource, /Ghost Director Lead Command/);
 });

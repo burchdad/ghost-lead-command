@@ -63,10 +63,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: `Unsupported onboarding action: ${action}` }, { status: 400 });
   } catch (error) {
-    console.error("Vega commercial onboarding request failed", error);
+    console.error("Ghost Director commercial onboarding request failed", error);
     return NextResponse.json(
       {
-        error: "Vega is having trouble saving this part of the conversation. Your message is still here, so please try again in a moment.",
+        error: "Ghost Director is having trouble saving this part of the conversation. Your message is still here, so please try again in a moment.",
         code: "ONBOARDING_UNAVAILABLE",
       },
       { status: 500 },

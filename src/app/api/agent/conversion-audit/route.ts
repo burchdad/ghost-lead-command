@@ -8,7 +8,7 @@ export async function GET(request: Request) {
     return NextResponse.json(await runVegaConversionAudit({ days }));
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega conversion audit failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director conversion audit failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 503 },
     );
   }
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     return NextResponse.json(await runVegaConversionAudit({ days: body.days }));
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega conversion audit failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director conversion audit failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 503 },
     );
   }

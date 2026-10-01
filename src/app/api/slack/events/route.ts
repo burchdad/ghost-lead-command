@@ -108,24 +108,24 @@ function slackAutomationTitle(input: {
   isProductionProofInstruction: boolean;
   specialistKind: string | null;
 }) {
-  if (input.isLeadInstruction) return "Vega Slack lead request received";
-  if (input.isReplyInstruction) return "Vega Slack reply work received";
-  if (input.isConversionAuditInstruction) return "Vega Slack conversion audit received";
-  if (input.isAuditInstruction) return "Vega Slack audit request received";
-  if (input.isDigestInstruction) return "Vega Slack digest request received";
-  if (input.isNovaInstruction) return "Vega Slack Nova brief request received";
-  if (input.isMorningStandupInstruction) return "Vega Slack morning standup received";
-  if (input.isApprovalInstruction) return "Vega Slack batch approval received";
-  if (input.isClosingInstruction) return "Vega Slack closing sprint received";
-  if (input.isDominanceInstruction) return "Vega Slack dominance loop received";
-  if (input.isOpsInstruction) return "Vega Slack ops brief received";
-  if (input.isRevenueWatchInstruction) return "Vega Slack revenue watch received";
-  if (input.isCallAssistInstruction) return "Vega Slack call-assist request received";
-  if (input.isWarmLeadInstruction) return "Vega Slack warm-lead request received";
-  if (input.isBookingDiagnosisInstruction) return "Vega Slack booking diagnosis received";
-  if (input.isProductionProofInstruction) return "Vega Slack production proof request received";
-  if (input.specialistKind) return "Vega Slack specialist request received";
-  return "Vega Slack message ignored";
+  if (input.isLeadInstruction) return "Ghost Director Slack lead request received";
+  if (input.isReplyInstruction) return "Ghost Director Slack reply work received";
+  if (input.isConversionAuditInstruction) return "Ghost Director Slack conversion audit received";
+  if (input.isAuditInstruction) return "Ghost Director Slack audit request received";
+  if (input.isDigestInstruction) return "Ghost Director Slack digest request received";
+  if (input.isNovaInstruction) return "Ghost Director Slack Nova brief request received";
+  if (input.isMorningStandupInstruction) return "Ghost Director Slack morning standup received";
+  if (input.isApprovalInstruction) return "Ghost Director Slack batch approval received";
+  if (input.isClosingInstruction) return "Ghost Director Slack closing sprint received";
+  if (input.isDominanceInstruction) return "Ghost Director Slack dominance loop received";
+  if (input.isOpsInstruction) return "Ghost Director Slack ops brief received";
+  if (input.isRevenueWatchInstruction) return "Ghost Director Slack revenue watch received";
+  if (input.isCallAssistInstruction) return "Ghost Director Slack call-assist request received";
+  if (input.isWarmLeadInstruction) return "Ghost Director Slack warm-lead request received";
+  if (input.isBookingDiagnosisInstruction) return "Ghost Director Slack booking diagnosis received";
+  if (input.isProductionProofInstruction) return "Ghost Director Slack production proof request received";
+  if (input.specialistKind) return "Ghost Director Slack specialist request received";
+  return "Ghost Director Slack message ignored";
 }
 
 export async function POST(request: Request) {
@@ -177,7 +177,7 @@ export async function POST(request: Request) {
       channel: event.channel,
       eventId: payload.event_id,
     });
-    return NextResponse.json({ ok: true, ignored: true, reason: "not addressed to Vega or Nova" });
+    return NextResponse.json({ ok: true, ignored: true, reason: "not addressed to Ghost Director or Nova" });
   }
 
   if (novaAddressed) {
@@ -299,7 +299,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega Executive is reading the request against live pipeline and conversion data now.",
+      summary: "Ghost Director Executive is reading the request against live pipeline and conversion data now.",
     });
     after(async () => {
       try {
@@ -314,7 +314,7 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega Executive failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director Executive failure.",
         });
       }
     });
@@ -325,7 +325,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is running the seven-day production proof and learning report now.",
+      summary: "Ghost Director is running the seven-day production proof and learning report now.",
     });
 
     after(async () => {
@@ -335,7 +335,7 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega production proof failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director production proof failure.",
         });
       }
     });
@@ -347,7 +347,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is preparing the Nova x Vega morning standup now.",
+      summary: "Ghost Director is preparing the Nova x Ghost Director morning standup now.",
     });
 
     after(async () => {
@@ -369,7 +369,7 @@ export async function POST(request: Request) {
     await notifySlackClosingSprintResult({
       instruction,
       status: "received",
-      summary: "Vega is running the weekly closing sprint now.",
+      summary: "Ghost Director is running the weekly closing sprint now.",
     });
 
     after(async () => {
@@ -388,7 +388,7 @@ export async function POST(request: Request) {
         await notifySlackClosingSprintResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega closing sprint failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director closing sprint failure.",
         });
       }
     });
@@ -400,7 +400,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is running the dominance loop across source, signal, specialists, booking, and deliverability now.",
+      summary: "Ghost Director is running the dominance loop across source, signal, specialists, booking, and deliverability now.",
     });
 
     after(async () => {
@@ -425,7 +425,7 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega dominance loop failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director dominance loop failure.",
         });
       }
     });
@@ -438,7 +438,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: execute ? "Vega is running the ops loop now." : "Vega is preparing the sub-agent ops brief now.",
+      summary: execute ? "Ghost Director is running the ops loop now." : "Ghost Director is preparing the sub-agent ops brief now.",
     });
 
     after(async () => {
@@ -448,7 +448,7 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega ops brief failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director ops brief failure.",
         });
       }
     });
@@ -460,7 +460,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is watching reply, booking, SendGrid, and source performance signals now.",
+      summary: "Ghost Director is watching reply, booking, SendGrid, and source performance signals now.",
     });
 
     after(async () => {
@@ -470,7 +470,7 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega revenue watch failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director revenue watch failure.",
         });
       }
     });
@@ -482,7 +482,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is ranking the warmest accounts now.",
+      summary: "Ghost Director is ranking the warmest accounts now.",
     });
 
     after(async () => {
@@ -512,7 +512,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is diagnosing the booking bottleneck now.",
+      summary: "Ghost Director is diagnosing the booking bottleneck now.",
     });
 
     after(async () => {
@@ -543,7 +543,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: `Vega is running the ${specialistKind} specialist lane now.`,
+      summary: `Ghost Director is running the ${specialistKind} specialist lane now.`,
     });
 
     after(async () => {
@@ -565,7 +565,7 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega specialist failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director specialist failure.",
         });
       }
     });
@@ -577,7 +577,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is approving the next SendGrid-ready outreach batch now.",
+      summary: "Ghost Director is approving the next SendGrid-ready outreach batch now.",
     });
 
     after(async () => {
@@ -588,7 +588,7 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega approval failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director approval failure.",
         });
       }
     });
@@ -600,7 +600,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is building the Stephen/VA call-assist worklist now.",
+      summary: "Ghost Director is building the Stephen/VA call-assist worklist now.",
     });
 
     after(async () => {
@@ -610,7 +610,7 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega call-assist failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director call-assist failure.",
         });
       }
     });
@@ -622,7 +622,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is auditing conversion quality, reply capture, sender health, and booking leakage now.",
+      summary: "Ghost Director is auditing conversion quality, reply capture, sender health, and booking leakage now.",
     });
 
     after(async () => {
@@ -654,7 +654,7 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega conversion audit failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director conversion audit failure.",
         });
       }
     });
@@ -666,7 +666,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is running the Lead Command audit now.",
+      summary: "Ghost Director is running the Lead Command audit now.",
     });
 
     after(async () => {
@@ -676,7 +676,7 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega audit failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director audit failure.",
         });
       }
     });
@@ -688,7 +688,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is posting the current Lead Command digest now.",
+      summary: "Ghost Director is posting the current Lead Command digest now.",
     });
 
     after(async () => {
@@ -698,7 +698,7 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega digest failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director digest failure.",
         });
       }
     });
@@ -710,13 +710,13 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is briefing Nova from Lead Command now.",
+      summary: "Ghost Director is briefing Nova from Lead Command now.",
     });
 
     after(async () => {
       try {
         await briefNovaCeoAgent({
-          message: instruction || "Slack requested a Vega Lead Command briefing for Nova.",
+          message: instruction || "Slack requested a Ghost Director Lead Command briefing for Nova.",
         });
       } catch (error) {
         await notifySlackVegaLeadRequestResult({
@@ -734,7 +734,7 @@ export async function POST(request: Request) {
     await notifySlackVegaLeadRequestResult({
       instruction,
       status: "received",
-      summary: "Vega is working recent replies and booking handoffs now.",
+      summary: "Ghost Director is working recent replies and booking handoffs now.",
     });
 
     after(async () => {
@@ -744,11 +744,11 @@ export async function POST(request: Request) {
         await notifySlackVegaLeadRequestResult({
           instruction,
           status: "failed",
-          summary: error instanceof Error ? error.message : "Unknown Vega reply-work failure.",
+          summary: error instanceof Error ? error.message : "Unknown Ghost Director reply-work failure.",
         });
         await createAutomationEvent({
-          title: "Vega Slack reply instruction failed",
-          detail: error instanceof Error ? error.message : "Unknown Vega reply-work failure.",
+          title: "Ghost Director Slack reply instruction failed",
+          detail: error instanceof Error ? error.message : "Unknown Ghost Director reply-work failure.",
           status: "blocked",
           type: "slack",
           payload: { eventId: payload.event_id, instruction },
@@ -762,7 +762,7 @@ export async function POST(request: Request) {
   await notifySlackVegaLeadRequestResult({
     instruction,
     status: "received",
-    summary: "Vega is sourcing this request now.",
+    summary: "Ghost Director is sourcing this request now.",
   });
 
   after(async () => {
@@ -793,11 +793,11 @@ export async function POST(request: Request) {
       await notifySlackVegaLeadRequestResult({
         instruction,
         status: "failed",
-        summary: error instanceof Error ? error.message : "Unknown Vega sourcing failure.",
+        summary: error instanceof Error ? error.message : "Unknown Ghost Director sourcing failure.",
       });
       await createAutomationEvent({
-        title: "Vega Slack message instruction failed",
-        detail: error instanceof Error ? error.message : "Unknown Vega sourcing failure.",
+        title: "Ghost Director Slack message instruction failed",
+        detail: error instanceof Error ? error.message : "Unknown Ghost Director sourcing failure.",
         status: "blocked",
         type: "slack",
         payload: { eventId: payload.event_id, instruction },

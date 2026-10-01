@@ -104,7 +104,7 @@ export async function approveOutreachQueueItem(
     await prisma.outreachQueueItem.update({
       where: { id },
       data: {
-        reason: `Vega conversion quality gate paused this send: ${quality.reasons.join(" ")}`,
+        reason: `Ghost Director conversion quality gate paused this send: ${quality.reasons.join(" ")}`,
       },
     });
     return {
@@ -234,7 +234,7 @@ export async function approvePendingOutreachBatch(input: { limit?: number } = {}
       approved: 0,
       failed: 0,
       blocked: true,
-      blockReason: `Outside Vega auto-send window. Auto-send runs weekdays ${numberFromEnv("VEGA_AUTO_SEND_START_HOUR", 8)}:00-${numberFromEnv("VEGA_AUTO_SEND_END_HOUR", 17)}:00 local send time.`,
+      blockReason: `Outside Ghost Director auto-send window. Auto-send runs weekdays ${numberFromEnv("VEGA_AUTO_SEND_START_HOUR", 8)}:00-${numberFromEnv("VEGA_AUTO_SEND_END_HOUR", 17)}:00 local send time.`,
       health,
       emailReadyBefore: emailReady,
       manualPending,

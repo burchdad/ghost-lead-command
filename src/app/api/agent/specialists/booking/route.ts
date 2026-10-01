@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega booking specialist failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director booking specialist failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }

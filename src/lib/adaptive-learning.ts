@@ -50,7 +50,7 @@ export async function runAdaptiveLearningLoop(input: { activate?: boolean; limit
   }
 
   await createAutomationEvent({
-    title: activate ? "Vega learning loop tuned source plays" : "Vega learning loop readout",
+    title: activate ? "Ghost Director learning loop tuned source plays" : "Ghost Director learning loop readout",
     detail: activate
       ? `Recommended ${recommendedPlayIds.length} plays, created ${created.length}, refreshed ${refreshed.length}. Closeness ${learning.summary.gojiBerryCloseness}.`
       : `Recommended ${recommendedPlayIds.length} plays without activation. Closeness ${learning.summary.gojiBerryCloseness}.`,

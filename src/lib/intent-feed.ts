@@ -193,7 +193,7 @@ export async function runIntentFeedScout(input: { limit?: number; enrich?: boole
   const feed = await getIntentFeed(input);
   const top = feed.items.slice(0, 8);
   await createAutomationEvent({
-    title: "Vega intent signal feed refreshed",
+    title: "Ghost Director intent signal feed refreshed",
     detail: `${feed.items.length} intent-ranked leads ready. Top signal: ${top[0]?.companyName || "none"}.`,
     status: feed.items.length ? "done" : "blocked",
     type: "agent",

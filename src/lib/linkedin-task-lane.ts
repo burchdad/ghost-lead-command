@@ -59,7 +59,7 @@ function buildLinkedInTaskBody(lead: {
       "DM after accepted or InMail:",
       `${name}, quick idea. I help teams spot warm buyer signals, enrich the contact, send the right first touch, and route replies into booked calls. Worth me showing the workflow I would run for ${lead.companyName}?`,
       "",
-      "Operator move: send the connection note, Sales Navigator profile message, or InMail manually. Record replies in Lead Command so Vega can classify and book.",
+      "Operator move: send the connection note, Sales Navigator profile message, or InMail manually. Record replies in Lead Command so Ghost Director can classify and book.",
     ].join("\n"),
     { channel: "manual" },
   );
@@ -115,7 +115,7 @@ export async function runLinkedInTaskLane(input: { limit?: number } = {}) {
         body: buildLinkedInTaskBody(lead),
         status: "pending",
         scheduledFor: new Date(),
-        reason: sanitizeInternalReason("Vega LinkedIn Task Agent queued a manual Sales Navigator touch."),
+        reason: sanitizeInternalReason("Ghost Director LinkedIn Task Agent queued a manual Sales Navigator touch."),
       },
     });
     await prisma.lead.update({
@@ -129,7 +129,7 @@ export async function runLinkedInTaskLane(input: { limit?: number } = {}) {
   }
 
   await createAutomationEvent({
-    title: "Vega LinkedIn Task Agent sweep",
+    title: "Ghost Director LinkedIn Task Agent sweep",
     detail: `Reviewed ${reviewed} LinkedIn-fit leads and queued ${queued} manual Sales Navigator tasks.`,
     status: queued ? "done" : reviewed ? "needs_review" : "blocked",
     type: "agent",

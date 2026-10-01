@@ -10,7 +10,7 @@ type SubmitState = "idle" | "submitting" | "success" | "error";
 const benefits = [
   "Priority beta access",
   "Founding-member pricing opportunities",
-  "Direct influence over Vega's roadmap",
+  "Direct influence over Ghost Director's roadmap",
   "Complimentary lead-generation assessment",
   "Potential access to an extended pilot",
 ];
@@ -47,7 +47,7 @@ export default function WaitlistPage() {
 
   const submitLabel = useMemo(() => {
     if (state === "submitting") return "Submitting";
-    return "Enter the Vega Early Access Contest";
+    return "Enter the Ghost Director Early Access Contest";
   }, [state]);
 
   function toggleTool(tool: string) {
@@ -102,7 +102,7 @@ export default function WaitlistPage() {
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       setState("error");
-      setError(body.error || "Vega could not accept the submission. Please try again.");
+      setError(body.error || "Ghost Director could not accept the submission. Please try again.");
       await track("waitlist submission failed", { status: response.status });
       return;
     }
@@ -127,7 +127,7 @@ export default function WaitlistPage() {
             <div>
               <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-[#c4b5fd]">
                 <Sparkles size={17} />
-                Vega
+                Ghost Director
               </Link>
               <div className="mt-10 grid max-w-2xl gap-8 sm:grid-cols-[1fr_auto] sm:items-end">
                 <div>
@@ -135,8 +135,8 @@ export default function WaitlistPage() {
                   Private early access
                 </p>
                 <h1 className="text-[0] font-semibold leading-[1.05] tracking-normal text-white">
-                  Meet Vega — Your AI Lead Command Team
-                  <span className="block text-4xl sm:text-6xl">Meet Vega, your AI Lead Command Team</span>
+                  Meet Ghost Director — Your AI Lead Command Team
+                  <span className="block text-4xl sm:text-6xl">Meet Ghost Director, your AI Lead Command Team</span>
                 </h1>
                 <p className="mt-6 max-w-xl text-base leading-7 text-[#d8d4e8] sm:text-lg">
                   Join the private waitlist for early access to an AI sales operating system that discovers prospects, identifies buying signals, creates personalized outreach, manages follow-ups, and helps turn replies into revenue.
@@ -162,9 +162,9 @@ export default function WaitlistPage() {
                 <div className="grid min-h-[560px] place-items-center text-center">
                   <div className="max-w-md">
                     <VegaAvatar size="md" caption="You are in" className="mx-auto" />
-                    <h2 className="mt-6 text-3xl font-semibold">You&apos;re on the Vega waitlist.</h2>
+                    <h2 className="mt-6 text-3xl font-semibold">You&apos;re on the Ghost Director waitlist.</h2>
                     <p className="mt-4 leading-7 text-[#d8d4e8]">
-                      Your information has been received. Vega will review early-access contestants and prioritize businesses that can actively test the platform and provide meaningful feedback.
+                      Your information has been received. Ghost Director will review early-access contestants and prioritize businesses that can actively test the platform and provide meaningful feedback.
                     </p>
                     <p className="mt-4 text-sm text-[#aaa2c7]">
                       Watch your inbox for product updates, beta invitations, and founding-member opportunities.
@@ -173,7 +173,7 @@ export default function WaitlistPage() {
                       href="/"
                       className="mt-8 inline-flex items-center gap-2 rounded-md bg-white px-5 py-3 text-sm font-semibold text-[#100d18] transition hover:bg-[#ddd6fe]"
                     >
-                      Return to Vega
+                      Return to Ghost Director
                       <ArrowRight size={16} />
                     </Link>
                   </div>
@@ -183,7 +183,7 @@ export default function WaitlistPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h2 className="text-2xl font-semibold">Early access intake</h2>
-                      <p className="mt-1 text-sm text-[#aaa2c7]">Tell Vega where your lead engine needs leverage.</p>
+                      <p className="mt-1 text-sm text-[#aaa2c7]">Tell Ghost Director where your lead engine needs leverage.</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <VegaAvatar size="sm" showStatus={false} className="hidden sm:inline-flex" />
@@ -245,7 +245,7 @@ export default function WaitlistPage() {
                   </div>
 
                   <label className="grid gap-2 text-sm text-[#d8d4e8]">
-                    Notes or anything else they want Vega to know
+                    Notes or anything else they want Ghost Director to know
                     <textarea
                       name="additionalNotes"
                       rows={3}
@@ -256,7 +256,7 @@ export default function WaitlistPage() {
                   <label className="flex gap-3 rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm leading-6 text-[#d8d4e8]">
                     <input name="consent" type="checkbox" required className="mt-1 size-4 accent-[#8b5cf6]" />
                     <span>
-                      By joining, you agree to receive Vega early-access and product communications. You can unsubscribe at any time. <Link href="/privacy" className="text-[#c4b5fd] underline">Privacy notice</Link>.
+                      By joining, you agree to receive Ghost Director early-access and product communications. You can unsubscribe at any time. <Link href="/privacy" className="text-[#c4b5fd] underline">Privacy notice</Link>.
                     </span>
                   </label>
 

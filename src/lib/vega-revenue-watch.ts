@@ -73,8 +73,8 @@ export async function runVegaRevenueWatch(input: { instruction?: string; execute
 
   const topSources = scorecard.rows.slice(0, 5);
   const summary = escalations.length
-    ? `Vega revenue watch found ${escalations.length} escalation${escalations.length === 1 ? "" : "s"}.`
-    : "Vega revenue watch found no urgent conversion escalations.";
+    ? `Ghost Director revenue watch found ${escalations.length} escalation${escalations.length === 1 ? "" : "s"}.`
+    : "Ghost Director revenue watch found no urgent conversion escalations.";
   const nextMove = escalations[0] || scorecard.summary.recommendation;
   const slack = await notifySlackRevenueWatch({
     summary,
@@ -91,7 +91,7 @@ export async function runVegaRevenueWatch(input: { instruction?: string; execute
   });
 
   await createAutomationEvent({
-    title: "Vega revenue watch completed",
+    title: "Ghost Director revenue watch completed",
     detail: `${summary} Next: ${nextMove}`,
     status: escalations.length || executed.some((item) => item.status === "done") ? "done" : "needs_review",
     type: "agent",

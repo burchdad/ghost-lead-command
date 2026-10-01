@@ -17,7 +17,7 @@ export type VegaCapabilityRegistryEntry = {
 export const VEGA_CAPABILITY_REGISTRY: VegaCapabilityRegistryEntry[] = [
   {
     group: "VEGA_DISCOVER",
-    label: "Vega Discover",
+    label: "Ghost Director Discover",
     purpose: "Find companies, contacts, buyers, referral partners, and local-market opportunities.",
     agents: ["Source Agents", "Business Discovery Agent"],
     services: ["sourcing", "agent", "linkedin-sales-nav"],
@@ -28,7 +28,7 @@ export const VEGA_CAPABILITY_REGISTRY: VegaCapabilityRegistryEntry[] = [
   },
   {
     group: "VEGA_SIGNAL",
-    label: "Vega Signal",
+    label: "Ghost Director Signal",
     purpose: "Detect and explain intent, engagement, social, local, CRM, and web signals.",
     agents: ["Intent Signal Agent", "Web Helper Agent", "Signal Feed Agent"],
     services: ["intent-engine", "intent-feed", "social-intent", "signal-plays"],
@@ -39,7 +39,7 @@ export const VEGA_CAPABILITY_REGISTRY: VegaCapabilityRegistryEntry[] = [
   },
   {
     group: "VEGA_REACH",
-    label: "Vega Reach",
+    label: "Reach",
     purpose: "Create and execute permitted outbound outreach with approval, suppression, and sender health.",
     agents: ["Outreach Agent", "Deliverability Governor"],
     services: ["outreach", "approval", "conversion-quality", "next-best-channel"],
@@ -50,7 +50,7 @@ export const VEGA_CAPABILITY_REGISTRY: VegaCapabilityRegistryEntry[] = [
   },
   {
     group: "VEGA_ENGAGE",
-    label: "Vega Engage",
+    label: "Ghost Director Engage",
     purpose: "Handle inbound inquiries and active conversations with qualification and human takeover.",
     agents: ["Reply Agent", "Inbound Concierge"],
     services: ["replies", "conversation-qualification"],
@@ -61,7 +61,7 @@ export const VEGA_CAPABILITY_REGISTRY: VegaCapabilityRegistryEntry[] = [
   },
   {
     group: "VEGA_CONVERT",
-    label: "Vega Convert",
+    label: "Convert",
     purpose: "Coordinate phone follow-up, callbacks, booking handoffs, meetings, proposals, and CRM notes.",
     agents: ["Booking Concierge Agent", "Call Assist Agent", "GhostCRM Revenue Agent"],
     services: ["phone-assist", "vega-call-assist-work", "warm-leads", "ghostcrm"],
@@ -72,7 +72,7 @@ export const VEGA_CAPABILITY_REGISTRY: VegaCapabilityRegistryEntry[] = [
   },
   {
     group: "VEGA_INTELLIGENCE",
-    label: "Vega Intelligence",
+    label: "Ghost Director Intelligence",
     purpose: "Measure results, rank sources, recommend controlled experiments, and improve strategy with approval.",
     agents: ["Production Proof Agent", "Learning Agent", "Source Quality Agent"],
     services: ["production-proof", "source-quality-v2", "experiment-engine", "conversion-learning"],

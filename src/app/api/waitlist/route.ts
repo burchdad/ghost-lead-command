@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       emailStatus: result.emailStatus,
     });
   } catch (error) {
-    console.error("Vega waitlist submission failed", error instanceof Error ? error.message : error);
+    console.error("Ghost Director waitlist submission failed", error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: "We could not save your waitlist request right now. Please try again shortly." },
       { status: 503 },

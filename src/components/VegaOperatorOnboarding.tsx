@@ -125,10 +125,10 @@ export default function VegaOperatorOnboarding() {
         body: JSON.stringify({ workspaceId: data?.workspace.id, ...payload }),
       });
       const next = await response.json();
-      if (!response.ok) throw new Error(next.detail || next.error || "Vega readiness action failed.");
+      if (!response.ok) throw new Error(next.detail || next.error || "Ghost Director readiness action failed.");
       setData(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Vega readiness action failed.");
+      setError(err instanceof Error ? err.message : "Ghost Director readiness action failed.");
     } finally {
       setBusy("");
     }
@@ -189,7 +189,7 @@ export default function VegaOperatorOnboarding() {
         <div className="mx-auto flex max-w-[1500px] flex-col gap-4 px-5 py-5 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase text-[#75d5c5]"><Bot size={16} /> Internal control plane</div>
-            <h1 className="mt-1 text-2xl font-semibold">Vega Operational Onboarding</h1>
+            <h1 className="mt-1 text-2xl font-semibold">Ghost Director Operational Onboarding</h1>
             <p className="mt-1 text-sm text-[#9db4b1]">Verify the sales system, lock deterministic policy, and calibrate lead judgment before autonomy.</p>
           </div>
           <div className="flex items-center gap-3">
@@ -219,7 +219,7 @@ export default function VegaOperatorOnboarding() {
           </section>
 
           <section className="rounded-md border border-[#244044] bg-[#0d171a]">
-            <SectionTitle icon={Target} title="Authoritative sales profile" detail="These approved facts ground every Vega agent. LLM output cannot change them." />
+            <SectionTitle icon={Target} title="Authoritative sales profile" detail="These approved facts ground every Ghost Director agent. LLM output cannot change them." />
             <div className="grid gap-4 border-t border-[#244044] p-5 md:grid-cols-2 lg:grid-cols-4">
               <Field name="businessName" label="Business" defaultValue={text(sales.businessName)} placeholder="Ghost AI Solutions" />
               <Field name="senderName" label="Approved sender" defaultValue={text(sales.senderName)} placeholder="Stephen Burch" />
@@ -238,7 +238,7 @@ export default function VegaOperatorOnboarding() {
 
           <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
             <section className="rounded-md border border-[#244044] bg-[#0d171a]">
-              <SectionTitle icon={Users} title="Responsibilities and autonomy" detail="Operators own the policy. Vega executes inside it." />
+              <SectionTitle icon={Users} title="Responsibilities and autonomy" detail="Operators own the policy. Ghost Director executes inside it." />
               <div className="grid gap-4 border-t border-[#244044] p-5 md:grid-cols-2">
                 <Field name="salesOwner" label="Sales owner" defaultValue={text(team.salesOwner)} placeholder="Stephen" />
                 <Field name="callOwner" label="Call follow-up owner" defaultValue={text(team.callOwner)} placeholder="Stephen or VA" />
@@ -252,7 +252,7 @@ export default function VegaOperatorOnboarding() {
             </section>
 
             <section className="rounded-md border border-[#244044] bg-[#0d171a]">
-              <SectionTitle icon={Database} title="Provider and integration health" detail="Live status is evaluated from the same services Vega uses." />
+              <SectionTitle icon={Database} title="Provider and integration health" detail="Live status is evaluated from the same services Ghost Director uses." />
               <div className="grid gap-px border-t border-[#244044] bg-[#244044] sm:grid-cols-2">
                 <Health label="Lead sources" ok={Boolean(readiness?.integrationSnapshot?.sourceConfigured)} detail={enabledProviders(readiness?.integrationSnapshot?.providers)} />
                 <Health label="SendGrid" ok={Boolean(readiness?.integrationSnapshot?.sendgridConfigured)} detail="Controlled delivery" />
@@ -273,7 +273,7 @@ export default function VegaOperatorOnboarding() {
           <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="flex items-center gap-2 font-semibold"><MailCheck size={18} className="text-[#75d5c5]" /> Controlled lead calibration</div>
-              <p className="mt-1 text-sm text-[#9db4b1]">Dry run only. Reviewing these leads creates persistent evidence for Vega Sales Memory; nothing is sent.</p>
+              <p className="mt-1 text-sm text-[#9db4b1]">Dry run only. Reviewing these leads creates persistent evidence for Ghost Director Sales Memory; nothing is sent.</p>
             </div>
             <button type="button" disabled={Boolean(busy)} onClick={() => void action({ action: "start-calibration", target: readiness?.calibrationTarget || 10 }, "calibrate")} className="inline-flex h-10 items-center gap-2 rounded-md border border-[#75d5c5] px-4 text-sm font-semibold text-[#9ff1e4] disabled:opacity-50">
               {busy === "calibrate" ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />} Load dry-run leads

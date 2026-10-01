@@ -11,9 +11,9 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const text = String(body.text || "").trim();
-    if (!text) return NextResponse.json({ error: "A Vega executive request is required." }, { status: 400 });
+    if (!text) return NextResponse.json({ error: "A Ghost Director executive request is required." }, { status: 400 });
     return NextResponse.json(await runVegaExecutive({ text }));
   } catch (error) {
-    return NextResponse.json({ error: "Vega Executive failed", detail: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
+    return NextResponse.json({ error: "Ghost Director Executive failed", detail: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
   }
 }

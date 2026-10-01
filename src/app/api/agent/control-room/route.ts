@@ -153,8 +153,8 @@ export async function GET() {
     const agents = [
       agentCard({
         id: "morning-standup",
-        name: "Nova x Vega Morning Standup",
-        role: "Post the daily C-suite scoreboard, Nova directive, Vega execution orders, and Stephen's one required action.",
+        name: "Nova x Ghost Director Morning Standup",
+        role: "Post the daily C-suite scoreboard, Nova directive, Ghost Director execution orders, and Stephen's one required action.",
         status: missionControl.configured ? "ready" : "needs-work",
         health: missionControl.configured ? "C-suite standup route ready" : "Slack C-suite route needs configuration",
         detail:
@@ -172,12 +172,12 @@ export async function GET() {
       }),
       agentCard({
         id: "dominance-loop",
-        name: "Vega Dominance Loop",
+        name: "Ghost Director Dominance Loop",
         role: "Run source, signal, specialists, booking, deliverability, and close-this-week logic in one controlled command pass.",
         status: sourceConfigured && canSend ? "ready" : sourceConfigured ? "needs-work" : "blocked",
         health: recentDominanceEvent ? "Full revenue loop has run" : "Ready for command",
         detail:
-          "Use this when Stephen or Nova says Vega should push past GojiBerry: it ranks intent, sources new accounts, tunes copy/cadence, protects deliverability, pushes bookings, and reports the bottleneck.",
+          "Use this when Stephen or Nova says Ghost Director should push past GojiBerry: it ranks intent, sources new accounts, tunes copy/cadence, protects deliverability, pushes bookings, and reports the bottleneck.",
         lastEvent: recentDominanceEvent,
         actionLabel: "Run dominance loop",
         actionView: "agents",
@@ -194,12 +194,12 @@ export async function GET() {
       }),
       agentCard({
         id: "ops-loop",
-        name: "Vega Ops Commander",
+        name: "Ghost Director Ops Commander",
         role: "Collect sub-agent reports, choose the bottleneck, brief Nova/Stephen, and run safe autonomy lanes.",
         status: missionControl.configured ? "ready" : "needs-work",
         health: recentOpsEvent ? "Sub-agent command loop active" : "Ready for ops loop",
         detail:
-          "Posts the chain-of-command brief into Slack: what every sub-agent reports to Vega, what Vega orders next, what Nova should reinforce, and what Stephen must unblock.",
+          "Posts the chain-of-command brief into Slack: what every sub-agent reports to Ghost Director, what Ghost Director orders next, what Nova should reinforce, and what Stephen must unblock.",
         lastEvent: recentOpsEvent,
         nextRun: "Weekdays 12:00 PM CT via Vercel Cron",
         actionLabel: "Run ops loop",
@@ -210,11 +210,11 @@ export async function GET() {
           "hot replies": hotReplies,
           "failed sends": failed,
         },
-        blockers: missionControl.configured ? [] : ["Configure Slack C-suite or Mission Control bridge so Vega can brief Nova."],
+        blockers: missionControl.configured ? [] : ["Configure Slack C-suite or Mission Control bridge so Ghost Director can brief Nova."],
       }),
       agentCard({
         id: "closing-sprint",
-        name: "Vega Closing Sprint Commander",
+        name: "Ghost Director Closing Sprint Commander",
         role: "Own the week-level target: source, approve, follow up, book calls, and escalate what blocks 10 closes.",
         status: wonDeals >= weeklyCloseTarget || bookedCalls >= weeklyCloseTarget ? "ready" : sourceConfigured ? "running" : "blocked",
         health:
@@ -266,7 +266,7 @@ export async function GET() {
         status: leads.length ? "ready" : sourceConfigured ? "needs-work" : "blocked",
         health: perplexity.configured ? "Perplexity web intel enabled" : "Local signal ranking enabled",
         detail: perplexity.configured
-          ? "Uses local lead signals plus Perplexity-backed public company context to tell Vega which accounts deserve attention next."
+          ? "Uses local lead signals plus Perplexity-backed public company context to tell Ghost Director which accounts deserve attention next."
           : "Ranks current lead signals now; add PERPLEXITY_API_KEY to enrich with public web/company intelligence.",
         lastEvent: recentIntentEvent,
         actionLabel: "Refresh signals",
@@ -285,7 +285,7 @@ export async function GET() {
         status: leads.length || queue.length ? "ready" : sourceConfigured ? "needs-work" : "blocked",
         health: activeLearningCampaigns ? "Recommended plays active" : "Ready to tune source plays",
         detail:
-          "This is Vega's self-tuning layer: it studies what actually converts, updates recommended campaigns, and narrows the GojiBerry gap by outcome.",
+          "This is Ghost Director's self-tuning layer: it studies what actually converts, updates recommended campaigns, and narrows the GojiBerry gap by outcome.",
         lastEvent: recentLearningEvent,
         actionLabel: "Run learning loop",
         actionView: "agents",
@@ -295,7 +295,7 @@ export async function GET() {
           "failed sends": failed,
           "warm signals": warmSignalLeads,
         },
-        blockers: leads.length || queue.length ? [] : ["Run at least one sourcing/send cycle so Vega has outcomes to learn from."],
+        blockers: leads.length || queue.length ? [] : ["Run at least one sourcing/send cycle so Ghost Director has outcomes to learn from."],
       }),
       agentCard({
         id: "conversion-audit",
@@ -309,7 +309,7 @@ export async function GET() {
               ? "Sender health caution"
               : "Sender health stop",
         detail:
-          "Use this before scaling sends. It tells Vega where conversion is leaking: contact quality, generic inboxes, risky sends, missing replies, booking handoffs, or source fit.",
+          "Use this before scaling sends. It tells Ghost Director where conversion is leaking: contact quality, generic inboxes, risky sends, missing replies, booking handoffs, or source fit.",
         lastEvent: recentConversionAuditEvent,
         actionLabel: "Run conversion audit",
         actionView: "analytics",
@@ -326,12 +326,12 @@ export async function GET() {
       }),
       agentCard({
         id: "production-proof",
-        name: "Vega Production Proof Agent",
+        name: "Ghost Director Production Proof Agent",
         role: "Prove the seven-day campaign loop by tracking delivery, replies, calls, conversations, meetings, source quality, and campaign attribution.",
         status: senderHealth.mode === "stop" ? "needs-work" : leads.length || queue.length ? "ready" : "needs-work",
         health: recentProductionProofEvent ? "Proof loop reporting active" : "Ready to prove campaign movement",
         detail:
-          "This is Vega's board-level report: what worked yesterday, what is eligible today, what humans must call, which sources deserve more volume, and which campaigns need approval before strategy changes.",
+          "This is Ghost Director's board-level report: what worked yesterday, what is eligible today, what humans must call, which sources deserve more volume, and which campaigns need approval before strategy changes.",
         lastEvent: recentProductionProofEvent,
         nextRun: "Mondays 9:00 AM CT plus every weekday standup",
         actionLabel: "Run proof loop",
@@ -407,7 +407,7 @@ export async function GET() {
         status: linkedinConfigured || sourceStatus.pdlConfigured || sourceStatus.apolloConfigured || linkedinLeads.length ? "ready" : "needs-work",
         health: linkedinTasks ? "LinkedIn tasks waiting" : "Ready for Sales Nav paste or intent-ranked leads",
         detail:
-          "Creates compliant manual LinkedIn task cards from Sales Navigator paste data and warm social signals, then keeps replies flowing back into Vega.",
+          "Creates compliant manual LinkedIn task cards from Sales Navigator paste data and warm social signals, then keeps replies flowing back into Ghost Director.",
         lastEvent: recentLinkedInTaskEvent,
         actionLabel: "Queue LinkedIn",
         actionView: "queue",
@@ -628,7 +628,7 @@ export async function GET() {
     const directorBlockers = [
       ...(sourceConfigured ? [] : ["No sourcing provider is configured."]),
       ...(executiveReviewFull ? ["Executive review lane is full."] : []),
-      ...(canSend ? [] : ["Live SendGrid sending is not fully enabled; Vega can still prepare executive-review and call-first tasks."]),
+      ...(canSend ? [] : ["Live SendGrid sending is not fully enabled; Ghost Director can still prepare executive-review and call-first tasks."]),
       ...(canBook ? [] : ["Booking link or calendar automation is incomplete."]),
     ];
 
@@ -643,7 +643,7 @@ export async function GET() {
             : "Needs source or executive-review lane attention",
         nextMove:
           pending > 0
-            ? "Clear executive-review exceptions while Vega keeps safe sends and call-first work moving."
+            ? "Clear executive-review exceptions while Ghost Director keeps safe sends and call-first work moving."
             : "Run a director sprint against Google Maps first, then broaden with PDL or Sales Nav enrichment.",
         lastEvent: summarizeEvent(recentDirectorEvent || recentAgentEvent || null),
         blockers: directorBlockers,

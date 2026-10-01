@@ -196,7 +196,7 @@ function operatorPolicy(overrides: Partial<OperatorRunPolicy> = {}): OperatorRun
   };
 }
 
-test("Vega keeps sourcing actionable call-first leads while sender governor is stopped", () => {
+test("Ghost Director keeps sourcing actionable call-first leads while sender governor is stopped", () => {
   const decision = evaluateVegaLeadDecision(
     {
       id: "lead-1",
@@ -222,7 +222,7 @@ test("Vega keeps sourcing actionable call-first leads while sender governor is s
   assert.ok(decision.reasons.includes("sender health stop"));
 });
 
-test("Vega holds email-only leads for review instead of suppressing them during sender stop", () => {
+test("Ghost Director holds email-only leads for review instead of suppressing them during sender stop", () => {
   const decision = evaluateVegaLeadDecision(
     {
       id: "lead-2",

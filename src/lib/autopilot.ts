@@ -158,7 +158,7 @@ function parsePartnerService(text: string, niche?: string) {
 
 export function campaignNameFor(input: { niche: string; location: string; partnerService?: string; source?: AgentPlan["source"] }) {
   const owner = input.partnerService ? "Partner Lead Gen" : "Ghost AI";
-  const source = input.source === "daily" ? "Daily Slate" : "Vega Command";
+  const source = input.source === "daily" ? "Daily Slate" : "Ghost Director Command";
   return `${owner} - ${input.niche} - ${input.location || "United States"} - ${source}`;
 }
 
@@ -277,8 +277,8 @@ export function createAgentPlan(input: {
     rationale: explicitNiche
       ? [
           `Operator requested ${niche}, so the agent will stay inside that market.`,
-          partnerService ? `Partner mode: Vega will source buyer/referral accounts for a ${partnerService}, not sell Ghost AI to this niche.` : "",
-          `Vega will use ${provider === "facebook-business" ? "public Facebook business Page discovery corroborated with Google Maps" : provider === "google-maps" ? "Google Maps/web contact discovery" : provider === "ghost-lead-agent" ? "Ghost Lead Intelligence" : provider === "apollo" ? "Apollo people/company search" : "People Data Labs"} for this run.`,
+          partnerService ? `Partner mode: Ghost Director will source buyer/referral accounts for a ${partnerService}, not sell Ghost AI to this niche.` : "",
+          `Ghost Director will use ${provider === "facebook-business" ? "public Facebook business Page discovery corroborated with Google Maps" : provider === "google-maps" ? "Google Maps/web contact discovery" : provider === "ghost-lead-agent" ? "Ghost Lead Intelligence" : provider === "apollo" ? "Apollo people/company search" : "People Data Labs"} for this run.`,
           locations?.length ? `Route market expanded into ${locations.length} nearby searches.` : "",
           "The run will source fresh contacts, dedupe, score, clean up email copy, and auto-send eligible email outreach.",
           "Slack remains the control surface for exceptions, phone-assist work, rewrites, discard, and suppression decisions.",
@@ -456,7 +456,7 @@ export async function sendDailyDigest() {
   ]);
   await createAutomationEvent({
     title: "Daily ops digest",
-    detail: `Posted Vega digest: ${digest.leadsSourced} new leads in 24h, ${digest.proof.emailPipeline.sendableNow} sendable, ${digest.proof.today.callsDue} calls due. Client emails ${clientEmailUpdates.length}.`,
+    detail: `Posted Ghost Director digest: ${digest.leadsSourced} new leads in 24h, ${digest.proof.emailPipeline.sendableNow} sendable, ${digest.proof.today.callsDue} calls due. Client emails ${clientEmailUpdates.length}.`,
     status: slack.sent || clientEmailUpdates.some((item) => item.status !== "failed") ? "done" : "blocked",
     type: "agent",
     payload: { digest, slack, clientEmailUpdates },
@@ -493,7 +493,7 @@ async function sendConfiguredClientDailyDigests(digest: ClientDailyDigestInput) 
         notableLeads: digest.proof.humanActions.slice(0, 5).map((action) => ({
           companyName: action.replace(/^Call\s+/i, "").replace(/\.$/, ""),
           nextAction: action,
-          reason: "Vega marked this as a current human action.",
+          reason: "Ghost Director marked this as a current human action.",
         })),
       }),
     ),

@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     const slack = await notifySlackVegaLeadRequestResult({
       instruction: `Daily auto-send slate: ${plan.niche}`,
       status: "finished",
-      summary: `Vega ran today's auto-send slate. ${result.message}`,
+      summary: `Ghost Director ran today's auto-send slate. ${result.message}`,
       plan: {
         niche: plan.niche,
         provider: plan.provider,
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     const slack = await notifySlackVegaLeadRequestResult({
       instruction: `Daily auto-send slate: ${plan.niche}`,
       status: "finished",
-      summary: `Vega ran today's auto-send slate. ${result.message}`,
+      summary: `Ghost Director ran today's auto-send slate. ${result.message}`,
       plan: {
         niche: plan.niche,
         provider: plan.provider,

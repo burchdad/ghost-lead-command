@@ -75,7 +75,7 @@ async function recordOutreachSlackAction(input: {
 
 async function handleOutreachAction(actionName: string, itemId: string | undefined, payload: SlackInteractionPayload) {
   if (!itemId) {
-    return slackEphemeral("Vega could not find the queue item for that Slack button.");
+    return slackEphemeral("Ghost Director could not find the queue item for that Slack button.");
   }
 
   if (actionName === "outreach_approve") {
@@ -88,7 +88,7 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
         : `Approved outreach item. Delivery: ${delivery?.dryRun ? "dry-run queued" : delivery?.status || "sent"}.`
       : `Approval failed: ${result.body.error || "Unknown approval failure."}`;
     await recordOutreachSlackAction({ action: "approve", itemId, ok: result.ok, summary, payload });
-    return slackEphemeral(result.ok ? `Vega approved it. ${summary}` : summary);
+    return slackEphemeral(result.ok ? `Ghost Director approved it. ${summary}` : summary);
   }
 
   if (actionName === "outreach_call_task") {
@@ -98,10 +98,10 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
       include: { lead: true },
     });
     if (!item) {
-      return slackEphemeral("Vega could not find that queue item.");
+      return slackEphemeral("Ghost Director could not find that queue item.");
     }
     if (item.status !== "pending") {
-      return slackEphemeral(`Vega cannot create the call task because this item is already ${item.status}.`);
+      return slackEphemeral(`Ghost Director cannot create the call task because this item is already ${item.status}.`);
     }
     const updated = await prisma.outreachQueueItem.update({
       where: { id: item.id },
@@ -125,7 +125,7 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
         },
       });
     }
-    const summary = `Vega created a call/contact-form task for ${updated.lead?.companyName || "that lead"}. No SendGrid email was sent.`;
+    const summary = `Ghost Director created a call/contact-form task for ${updated.lead?.companyName || "that lead"}. No SendGrid email was sent.`;
     await recordOutreachSlackAction({ action: "call_task", itemId, ok: true, summary, payload });
     await postSlackInteractionFollowup(payload.response_url, `VEGA CALL TASK CREATED\n\n${summary}`, { inChannel: true });
     return slackEphemeral(summary);
@@ -138,10 +138,10 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
       include: { lead: true },
     });
     if (!item) {
-      return slackEphemeral("Vega could not find that queue item.");
+      return slackEphemeral("Ghost Director could not find that queue item.");
     }
     if (item.status !== "pending") {
-      return slackEphemeral(`Vega cannot start research because this item is already ${item.status}.`);
+      return slackEphemeral(`Ghost Director cannot start research because this item is already ${item.status}.`);
     }
 
     const researchInstruction =
@@ -166,12 +166,12 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
       await prisma.lead.update({
         where: { id: updated.lead.id },
         data: {
-          nextAction: "Vega research lane: identify verified decision-maker and contact path before drafting outreach.",
+          nextAction: "Ghost Director research lane: identify verified decision-maker and contact path before drafting outreach.",
         },
       });
     }
     await createAutomationEvent({
-      title: "Vega contact research requested",
+      title: "Ghost Director contact research requested",
       detail: `Research lane started for ${updated.lead?.companyName || "lead"}.`,
       status: "running",
       type: "agent",
@@ -183,14 +183,14 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
         channelId: payload.channel?.id,
       },
     });
-    const startSummary = `Vega moved ${updated.lead?.companyName || "that lead"} into contact research. Contact Path Agent is running now. No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
+    const startSummary = `Ghost Director moved ${updated.lead?.companyName || "that lead"} into contact research. Contact Path Agent is running now. No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
     await recordOutreachSlackAction({ action: "research_started", itemId, ok: true, summary: startSummary, payload });
     await postSlackInteractionFollowup(payload.response_url, `VEGA CONTACT RESEARCH STARTED\n\n${startSummary}`, { inChannel: true });
 
     after(async () => {
       try {
         const researchResult = await runContactPathAgent({ itemId: updated.id, limit: 1 });
-        const summary = `Vega completed contact research for ${updated.lead?.companyName || "that lead"}. ${researchResult.summary} No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
+        const summary = `Ghost Director completed contact research for ${updated.lead?.companyName || "that lead"}. ${researchResult.summary} No email draft or SendGrid send will be created until contact confidence is rebuilt.`;
         await recordOutreachSlackAction({ action: "research_finished", itemId, ok: researchResult.status === "done", summary, payload });
         await postSlackInteractionFollowup(
           payload.response_url,
@@ -198,7 +198,7 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
           { inChannel: true },
         );
       } catch (error) {
-        const summary = `Vega contact research failed for ${updated.lead?.companyName || "that lead"}: ${error instanceof Error ? error.message : "Unknown error."}`;
+        const summary = `Ghost Director contact research failed for ${updated.lead?.companyName || "that lead"}: ${error instanceof Error ? error.message : "Unknown error."}`;
         await recordOutreachSlackAction({ action: "research_failed", itemId, ok: false, summary, payload });
         await postSlackInteractionFollowup(payload.response_url, `VEGA CONTACT RESEARCH FAILED\n\n${summary}`, { inChannel: true });
       }
@@ -213,7 +213,7 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
       await notifySlackOutreachApproval(result.body.item);
     }
     const summary = result.ok
-      ? "Vega rewrote the draft and posted a fresh approval card."
+      ? "Ghost Director rewrote the draft and posted a fresh approval card."
       : `Redo failed: ${result.body.error || "Unknown rewrite failure."}`;
     await recordOutreachSlackAction({ action: "redo", itemId, ok: result.ok, summary, payload });
     return slackEphemeral(summary);
@@ -221,7 +221,7 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
 
   if (actionName === "outreach_discard") {
     const result = await rejectOutreachQueueItem(itemId, "Discarded from Slack approval.");
-    const summary = result.ok ? "Vega rejected that item and removed it from the approval queue." : `Reject failed: ${result.body.error}`;
+    const summary = result.ok ? "Ghost Director rejected that item and removed it from the approval queue." : `Reject failed: ${result.body.error}`;
     await recordOutreachSlackAction({ action: "discard", itemId, ok: result.ok, summary, payload });
     return slackEphemeral(summary);
   }
@@ -229,34 +229,34 @@ async function handleOutreachAction(actionName: string, itemId: string | undefin
   if (actionName === "outreach_suppress") {
     const result = await suppressOutreachQueueItem(itemId);
     const summary = result.ok
-      ? `Vega suppressed that lead/company and rejected the queue item. Records added: ${result.body.suppressed}.`
+      ? `Ghost Director suppressed that lead/company and rejected the queue item. Records added: ${result.body.suppressed}.`
       : `Suppress failed: ${result.body.error}`;
     await recordOutreachSlackAction({ action: "suppress", itemId, ok: result.ok, summary, payload });
     return slackEphemeral(summary);
   }
 
-  return slackEphemeral("Vega received the Slack action, but this button is not mapped yet.");
+  return slackEphemeral("Ghost Director received the Slack action, but this button is not mapped yet.");
 }
 
 async function handlePlanAction(actionName: string, plan: AgentPlan | undefined, payload: SlackInteractionPayload) {
   if (actionName === "plan_deny") {
     await createAutomationEvent({
-      title: "Vega plan declined",
-      detail: "Stephen asked Vega for a different Lead Command plan from Slack.",
+      title: "Ghost Director plan declined",
+      detail: "Stephen asked Ghost Director for a different Lead Command plan from Slack.",
       status: "needs_review",
       type: "slack",
       payload: { userId: payload.user?.id, channelId: payload.channel?.id, plan },
     });
-    return slackEphemeral("Got it. Vega will wait for a different plan or a direct sourcing command.");
+    return slackEphemeral("Got it. Ghost Director will wait for a different plan or a direct sourcing command.");
   }
 
   if (actionName !== "plan_approve" || !plan) {
-    return slackEphemeral("Vega could not read the plan from that button.");
+    return slackEphemeral("Ghost Director could not read the plan from that button.");
   }
 
   await createAutomationEvent({
-    title: "Vega plan auto-send approved",
-    detail: `${plan.niche} plan approved from Slack. Vega will source, clean copy, auto-send eligible emails, and report back.`,
+    title: "Ghost Director plan auto-send approved",
+    detail: `${plan.niche} plan approved from Slack. Ghost Director will source, clean copy, auto-send eligible emails, and report back.`,
     status: "running",
     type: "slack",
     payload: { userId: payload.user?.id, channelId: payload.channel?.id, plan },
@@ -304,7 +304,7 @@ async function handlePlanAction(actionName: string, plan: AgentPlan | undefined,
   });
 
   await createAutomationEvent({
-    title: "Vega plan auto-send finished",
+    title: "Ghost Director plan auto-send finished",
     detail: `Sent ${result.autoSendSummary?.sent || 0}; blocked ${result.autoSendSummary?.blocked || 0}; failed ${result.autoSendSummary?.failed || 0}; manual ${result.autoSendSummary?.manualCompanies.length || 0}; phone assists ${callAssists.length}.`,
     status: result.autoSendSummary?.sent ? "done" : "needs_review",
     type: "slack",
@@ -312,7 +312,7 @@ async function handlePlanAction(actionName: string, plan: AgentPlan | undefined,
   });
 
   return slackEphemeral(
-    `Vega ran the plan end-to-end. Sent ${result.autoSendSummary?.sent || 0}, phone assists ${callAssists.length}, blocked ${result.autoSendSummary?.blocked || 0}, failed ${result.autoSendSummary?.failed || 0}.`,
+    `Ghost Director ran the plan end-to-end. Sent ${result.autoSendSummary?.sent || 0}, phone assists ${callAssists.length}, blocked ${result.autoSendSummary?.blocked || 0}, failed ${result.autoSendSummary?.failed || 0}.`,
   );
 }
 
@@ -341,16 +341,16 @@ export async function POST(request: Request) {
   }
 
   if (actionName !== "vega_batch_approve") {
-    return slackEphemeral("Vega received the Slack action, but this button is not mapped yet.");
+    return slackEphemeral("Ghost Director received the Slack action, but this button is not mapped yet.");
   }
 
   const result = await approvePendingOutreachBatch({ limit: value.limit });
   await notifySlackBatchApprovalResult(result);
   const blocked = "blocked" in result && result.blocked;
   await createAutomationEvent({
-    title: "Vega Slack batch approval",
+    title: "Ghost Director Slack batch approval",
     detail: blocked
-      ? `Vega paused Slack batch approval. ${"blockReason" in result ? result.blockReason : "Sender health or quality gate blocked the batch."}`
+      ? `Ghost Director paused Slack batch approval. ${"blockReason" in result ? result.blockReason : "Sender health or quality gate blocked the batch."}`
       : `Stephen approved ${result.approved} outreach items from Slack. Sent ${result.sent}; dry-run ${result.dryRunQueued}; failed ${result.failed}.`,
     status: blocked || result.failed ? "needs_review" : "done",
     type: "slack",
@@ -371,10 +371,10 @@ export async function POST(request: Request) {
 
   return slackEphemeral(
     blocked
-      ? `Vega paused batch approval: ${"blockReason" in result ? result.blockReason : "conversion quality gate blocked it."}`
+      ? `Ghost Director paused batch approval: ${"blockReason" in result ? result.blockReason : "conversion quality gate blocked it."}`
       :
     result.attempted
-      ? `Vega approved ${result.approved}/${result.attempted} outreach items. Failed: ${result.failed}. No browser detour needed.`
-      : "Vega found no pending email outreach items ready for batch approval.",
+      ? `Ghost Director approved ${result.approved}/${result.attempted} outreach items. Failed: ${result.failed}. No browser detour needed.`
+      : "Ghost Director found no pending email outreach items ready for batch approval.",
   );
 }

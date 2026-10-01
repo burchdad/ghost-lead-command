@@ -51,7 +51,7 @@ export async function runVegaOpsBrief(input: { instruction?: string; execute?: b
 
   const orders: AgentOrder[] = [
     {
-      agent: "Vega Lead Director",
+      agent: "Ghost Director Lead Director",
       status: "online",
       report: `Bottleneck is ${bottleneck}; booked ${metrics.bookedCalls}/${metrics.targetBooked}; won ${metrics.wonDeals}/${metrics.targetCloses}.`,
       order: nextMoves[0] || "Keep the lead-to-booking loop moving.",
@@ -132,19 +132,19 @@ export async function runVegaOpsBrief(input: { instruction?: string; execute?: b
   }
 
   const summary = input.execute
-    ? `Vega ops loop executed ${executed.length} safe sub-agent lanes. Bottleneck: ${bottleneck}.`
-    : `Vega ops brief prepared. Bottleneck: ${bottleneck}.`;
+    ? `Ghost Director ops loop executed ${executed.length} safe sub-agent lanes. Bottleneck: ${bottleneck}.`
+    : `Ghost Director ops brief prepared. Bottleneck: ${bottleneck}.`;
   const stephenAsk = hasSendgridReady
     ? `Approve the next ${Math.min(10, Math.max(1, metrics.sendgridReady))} SendGrid-ready items.`
     : metrics.manualTasks
-      ? "Work the first manual contact-path task so Vega can turn it into outreach."
-      : "Let Vega run learning/social intent, then approve the next reviewed batch.";
+      ? "Work the first manual contact-path task so Ghost Director can turn it into outreach."
+      : "Let Ghost Director run learning/social intent, then approve the next reviewed batch.";
   const novaDirective =
     bottleneck === "booking-handoff"
       ? "Nova should make booking conversion the executive priority until hot replies move to calendar."
       : bottleneck === "approvals"
         ? "Nova should hold Stephen accountable to approve reviewed outreach before adding more top-of-funnel volume."
-        : "Nova should keep Vega focused on the current bottleneck and ask for measurable movement by the next ops check.";
+        : "Nova should keep Ghost Director focused on the current bottleneck and ask for measurable movement by the next ops check.";
 
   const slack = await notifySlackVegaOpsBrief({
     summary,
@@ -159,11 +159,11 @@ export async function runVegaOpsBrief(input: { instruction?: string; execute?: b
   });
 
   const nova = input.briefNova
-    ? await briefNovaCeoAgent({ message: `Vega ops brief: ${summary} Next: ${nextMoves[0] || "continue ops loop"}` })
+    ? await briefNovaCeoAgent({ message: `Ghost Director ops brief: ${summary} Next: ${nextMoves[0] || "continue ops loop"}` })
     : null;
 
   await createAutomationEvent({
-    title: input.execute ? "Vega ops loop ran sub-agent command brief" : "Vega ops brief prepared",
+    title: input.execute ? "Ghost Director ops loop ran sub-agent command brief" : "Ghost Director ops brief prepared",
     detail: `${summary} Stephen ask: ${stephenAsk}`,
     status: slack.sent || !slack.configured ? "done" : "blocked",
     type: "agent",

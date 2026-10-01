@@ -16,7 +16,7 @@ export type VegaAssetSlot =
   | "favicon"
   | "appIcon";
 
-// TODO: Replace fallback slots when approved Vega state artwork is exported.
+// TODO: Replace fallback slots when approved Ghost Director state artwork is exported.
 const approvedVegaArtwork = "/vega-avatar.png";
 
 export const vegaAssets: Record<VegaAssetSlot, string> = {

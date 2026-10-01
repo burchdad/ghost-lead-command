@@ -31,7 +31,7 @@ function fact(key: CommercialFact["key"], value: string, confirmed = true): Comm
   };
 }
 
-describe("Vega Launch Team fact engine", () => {
+describe("Ghost Director Launch Team fact engine", () => {
   it("selects the highest-impact missing fact without repeating known facts", () => {
     const facts = [
       fact("businessIdentity", "Bright Mobile Detail"),
@@ -83,7 +83,7 @@ describe("Vega Launch Team fact engine", () => {
     assert.equal(phoneOwner?.value, "client sales manager");
   });
 
-  it("treats a short confirmation as approval of Vega's pending inferred fact", () => {
+  it("treats a short confirmation as approval of Ghost Director's pending inferred fact", () => {
     const initial = inferFactsFromMessage(
       "Naks Exterior Services wants commercial window cleaning and exterior cleaning contracts around Tyler, Texas. Send daily lead updates and call tasks to sales@naks.com. The sales manager will handle phone follow-up.",
     );
@@ -162,7 +162,7 @@ describe("Vega Launch Team fact engine", () => {
       targetCustomer: "property managers and commercial building owners",
       territory: "Tyler and nearby cities",
       desiredOutcome: "booked appointments",
-      outreachResponsibility: "Vega should auto-send inside guardrails",
+      outreachResponsibility: "Ghost Director should auto-send inside guardrails",
       phoneFollowUpResponsibility: "my sales manager",
       salesUpdateRecipientEmail: "sales@naks.com",
     };
@@ -175,7 +175,7 @@ describe("Vega Launch Team fact engine", () => {
       if (next.reason === "inferred-fact-confirmation") {
         const before = next.key;
         facts = inferFactsFromMessage("that is correct", facts);
-        assert.notEqual(selectNextMissingFact(facts)?.key, before, `Vega repeated confirmation for ${before}`);
+        assert.notEqual(selectNextMissingFact(facts)?.key, before, `Ghost Director repeated confirmation for ${before}`);
         continue;
       }
       visited.push(next.key);
@@ -183,7 +183,7 @@ describe("Vega Launch Team fact engine", () => {
       assert.ok(answer, `Missing regression answer for ${next.key}`);
       const before = next.key;
       facts = inferFactsFromMessage(answer, facts);
-      assert.notEqual(selectNextMissingFact(facts)?.key, before, `Vega repeated ${before}`);
+      assert.notEqual(selectNextMissingFact(facts)?.key, before, `Ghost Director repeated ${before}`);
     }
 
     assert.equal(selectNextMissingFact(facts), null);
@@ -242,7 +242,7 @@ describe("Vega Launch Team fact engine", () => {
   });
 });
 
-describe("Vega Concierge conversation", () => {
+describe("Ghost Director Concierge conversation", () => {
   const completeFacts = [
     fact("businessIdentity", "Bright Mobile Detail"),
     fact("serviceOrProduct", "mobile detailing"),
@@ -264,7 +264,7 @@ describe("Vega Concierge conversation", () => {
       recommendation,
       nextQuestion,
       quote: calculatePricing(buildPricingInput(recommendation.productCode, facts)),
-      history: [{ role: "assistant", content: "I would steer this toward Vega Scout because source quality is still being validated." }],
+      history: [{ role: "assistant", content: "I would steer this toward Scout because source quality is still being validated." }],
     });
 
     assert.doesNotMatch(fallback, /steer this toward|source quality is still being validated/i);
@@ -287,7 +287,7 @@ describe("Vega Concierge conversation", () => {
     assert.doesNotMatch(fallback, /What outcome|Who will call|What email/i);
   });
 
-  it("recognizes natural approval only when Vega was discussing a proposal or quote", () => {
+  it("recognizes natural approval only when Ghost Director was discussing a proposal or quote", () => {
     assert.equal(wantsProposalPrepared("let's do it", "I have enough to prepare a proposal."), true);
     assert.equal(wantsProposalPrepared("go ahead", "Your quote and scope are ready to review."), true);
     assert.equal(wantsProposalPrepared("let's do it", "Who are the best customers to win first?"), false);
@@ -301,7 +301,7 @@ describe("Vega Concierge conversation", () => {
       recommendation,
       nextQuestion: null,
       quote: calculatePricing(buildPricingInput(recommendation.productCode, completeFacts)),
-      history: [{ role: "assistant", content: "I have enough to prepare a proposal. The current fit is Vega Scout." }],
+      history: [{ role: "assistant", content: "I have enough to prepare a proposal. The current fit is Scout." }],
       proposalPrepared: true,
     });
 
@@ -310,11 +310,11 @@ describe("Vega Concierge conversation", () => {
   });
 });
 
-describe("Vega Launch Team product and pricing", () => {
+describe("Ghost Director Launch Team product and pricing", () => {
   it("recommends Reach for customer-assisted auto-send campaigns", () => {
     const facts = [
       fact("desiredLeadVolume", "60"),
-      fact("automationPreference", "auto-send inside Vega safety guardrails"),
+      fact("automationPreference", "auto-send inside Ghost Director safety guardrails"),
       fact("phoneFollowUpResponsibility", "customer team or VA"),
     ];
 
@@ -353,7 +353,7 @@ describe("Vega Launch Team product and pricing", () => {
   });
 });
 
-describe("Vega Launch Team launch QA", () => {
+describe("Ghost Director Launch Team launch QA", () => {
   it("blocks launch when required facts, payment, sender, or scheduling are missing", () => {
     const qa = buildLaunchQa({
       facts: [fact("businessIdentity", "Bright Mobile Detail"), fact("serviceOrProduct", "mobile detailing")],

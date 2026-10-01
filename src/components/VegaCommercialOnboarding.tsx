@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import { servicePlanName } from "@/config/service-plans";
 import { ArrowRight, Check, FileText, Loader2, MessageCircle, Send, Volume2, VolumeX } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { vegaAssets } from "@/config/vega-assets";
@@ -18,18 +20,18 @@ type Proposal = {
   recurringScope?: string[];
   limitations?: string[];
   termsReference?: string;
-  billingSummary?: { setupFeeCents?: number; recurringAmountCents?: number };
+  billingSummary?: { setupFeeCents?: number; recurringAmountCents?: number; includedAllowances?: Record<string, number> };
 };
 type SessionPayload = { id: string; status: string; messages: Message[]; commercialProposals: Proposal[] };
 
 const initialMessage: Message = {
   id: "initial-vega-prompt",
   role: "assistant",
-  content: "Hi, I’m Vega, your AI sales director. Tell me what your business does and the kind of customers you would like more of. I’ll help shape a practical plan with you.",
+  content: "Hi, I’m Ghost Director, your AI sales director. Tell me what your business does and the kind of customers you would like more of. I’ll help shape a practical plan with you.",
   visibleToCustomer: true,
 };
 const sessionStorageKey = "vega-commercial-onboarding-session";
-const conversationRecoveryMessage = "Vega is having trouble saving this part of the conversation. Your message is still here, so please try again in a moment.";
+const conversationRecoveryMessage = "Ghost Director is having trouble saving this part of the conversation. Your message is still here, so please try again in a moment.";
 
 export default function VegaCommercialOnboarding() {
   const [session, setSession] = useState<SessionPayload | null>(null);
@@ -121,7 +123,7 @@ export default function VegaCommercialOnboarding() {
     event.preventDefault();
     const content = message.trim();
     if (busy) return;
-    if (!content) return setError("Type a message so Vega knows how to help.");
+    if (!content) return setError("Type a message so Ghost Director knows how to help.");
     setMessage("");
     setPendingMessage(content);
     void runAction({ action: session ? "message" : "start", message: content });
@@ -147,6 +149,9 @@ export default function VegaCommercialOnboarding() {
 
   return (
     <main className="relative min-h-screen bg-[#071013] text-[#f7fbf8]">
+      <div className="mx-auto flex max-w-7xl flex-wrap gap-4 px-4 py-3 pr-20 text-sm text-[#c9d7d4]">
+        <Link href="/">Back to Ghost Lead Command</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Service terms</Link><a href="mailto:support@ghostai.solutions">Human support</a>
+      </div>
       <button
         type="button"
         onClick={() => {
@@ -154,8 +159,8 @@ export default function VegaCommercialOnboarding() {
           if (voiceEnabled && "speechSynthesis" in window) window.speechSynthesis.cancel();
         }}
         className="fixed right-4 top-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#0c191c]/90 text-[#c9d7d4] shadow-[0_8px_30px_rgba(0,0,0,0.3)] ring-1 ring-[#2b4549] backdrop-blur hover:bg-[#102428] sm:right-6 sm:top-6"
-        aria-label={voiceEnabled ? "Turn Vega voice off" : "Turn Vega voice on"}
-        title={voiceEnabled ? "Turn Vega voice off" : "Hear Vega speak"}
+        aria-label={voiceEnabled ? "Turn Ghost Director voice off" : "Turn Ghost Director voice on"}
+        title={voiceEnabled ? "Turn Ghost Director voice off" : "Hear Ghost Director speak"}
       >
         {voiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
       </button>
@@ -164,8 +169,8 @@ export default function VegaCommercialOnboarding() {
         <VegaMeetingStage busy={busy} speaking={speaking} />
         <section className="flex min-h-[620px] min-w-0 flex-col overflow-hidden lg:h-[calc(100vh-3rem)] lg:min-h-[680px]">
           <div className="px-1 pb-4 pt-2 sm:px-3">
-            <p className="text-base font-semibold">Conversation with Vega</p>
-            <p className="mt-1 text-sm text-[#8fa5a2]">Talk naturally. Vega will remember the details and guide the next step.</p>
+            <p className="text-base font-semibold">Conversation with Ghost Director</p>
+            <p className="mt-1 text-sm text-[#8fa5a2]">Tell us about your business. Your messages are saved to help prepare a plan; AI output needs review. Voice is optional.</p>
           </div>
           <div ref={messagesRef} className="flex-1 space-y-4 overflow-y-auto px-1 py-2 sm:px-3">
             {notice ? <div className="rounded-md border border-[#55c9b8]/40 bg-[#0d2a27] p-3 text-sm text-[#c9f3ec]">{notice}</div> : null}
@@ -188,7 +193,7 @@ export default function VegaCommercialOnboarding() {
             {busy && pendingMessage ? (
               <div className="flex items-center gap-3">
                 <Image src={vegaAssets.thinking} alt="" width={32} height={32} className="h-8 w-8 rounded-full object-cover" />
-                <div className="inline-flex items-center gap-2 rounded-lg border border-[#dcd5f7] bg-[#f5f2ff] px-4 py-3 text-sm text-[#171321]" role="status"><Loader2 className="animate-spin" size={16} /><span>Vega is thinking...</span></div>
+                <div className="inline-flex items-center gap-2 rounded-lg border border-[#dcd5f7] bg-[#f5f2ff] px-4 py-3 text-sm text-[#171321]" role="status"><Loader2 className="animate-spin" size={16} /><span>Ghost Director is thinking...</span></div>
               </div>
             ) : null}
             <div ref={endRef} />
@@ -202,8 +207,8 @@ export default function VegaCommercialOnboarding() {
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
                 onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
-                placeholder="Message Vega..."
-                aria-label="Message Vega"
+                placeholder="Message Ghost Director..."
+                aria-label="Message Ghost Director"
                 className="min-h-14 max-h-40 flex-1 resize-none rounded-lg border border-[#2b4549] bg-[#071013] px-4 py-3 text-sm text-[#f7fbf8] outline-none focus:border-[#8c74ff] focus:ring-2 focus:ring-[#8c74ff]/25"
               />
               <button type="submit" disabled={busy || !message.trim()} className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-[#7c5cff] text-white hover:bg-[#6848e8] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Send message" title="Send message">
@@ -229,7 +234,7 @@ function VegaMeetingStage({ busy, speaking }: { busy: boolean; speaking: boolean
         <div className="vega-meeting-avatar absolute inset-x-0 bottom-0 top-8 flex items-end justify-center lg:top-10">
           <Image
             src={busy ? vegaAssets.thinking : vegaAssets.portrait}
-            alt="Vega, AI Sales Director"
+            alt="Ghost Director, AI Sales Director"
             fill
             priority
             sizes="(max-width: 1023px) 100vw, 520px"
@@ -271,7 +276,10 @@ function ProposalPreview({ proposal, children }: { proposal: Proposal; children:
       <p className="text-xs font-semibold uppercase text-[#5d5770]">Your recommended plan</p>
       <h3 className="mt-1 text-lg font-semibold">{humanizeProductCode(proposal.productCode)}</h3>
       <div className="mt-4 grid grid-cols-2 gap-2"><ProposalMetric label="One-time setup" value={money(setupFee)} /><ProposalMetric label="Ongoing" value={`${money(recurringAmount)}/mo`} /></div>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2"><ProposalList title="Getting started" items={proposal.setupScope} /><ProposalList title="What Vega handles" items={proposal.vegaResponsibilities} /><ProposalList title="Ongoing support" items={proposal.recurringScope} /><ProposalList title="What your team handles" items={proposal.customerResponsibilities} /></div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2"><ProposalList title="Getting started" items={proposal.setupScope} /><ProposalList title="What Ghost Director handles" items={proposal.vegaResponsibilities} /><ProposalList title="Ongoing support" items={proposal.recurringScope} /><ProposalList title="What your team handles" items={proposal.customerResponsibilities} /></div>
+      {proposal.billingSummary?.includedAllowances ? <ProposalList title="Monthly activity allowances" items={Object.entries(proposal.billingSummary.includedAllowances).map(([key, value]) => `${humanize(key)}: ${value}`)} /> : null}
+      <ProposalList title="Scope and limits" items={proposal.limitations} />
+      <p className="mt-4 text-sm"><Link href="/terms" className="underline">Read service terms</Link> · <Link href="/privacy" className="underline">Privacy notice</Link></p>
       {proposal.termsReference ? <p className="mt-4 border-t border-[#171321]/10 pt-3 text-xs leading-5 text-[#625d70]">{proposal.termsReference}</p> : null}
       {children}
     </section>
@@ -295,11 +303,11 @@ function initialPrompt() {
 function initialCheckoutNotice() {
   if (typeof window === "undefined") return "";
   const checkout = new URLSearchParams(window.location.search).get("checkout");
-  if (checkout === "success") return "Payment received. Vega is confirming your workspace and launch details now.";
+  if (checkout === "success") return "Payment received. Ghost Director is confirming your workspace and launch details now.";
   if (checkout === "canceled") return "Checkout was closed. Your plan is still here whenever you are ready.";
   return "";
 }
 
-function humanizeProductCode(value: string) { return humanize(value.replace(/^VEGA_/, "Vega ")); }
+function humanizeProductCode(value: string) { return servicePlanName(value); }
 function humanize(value: string) { const normalized = value.replace(/[_-]+/g, " ").trim(); return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase() : value; }
 function money(cents: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100); }

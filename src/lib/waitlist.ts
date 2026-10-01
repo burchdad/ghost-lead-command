@@ -187,7 +187,7 @@ function mergeCustomFields(existing: Prisma.JsonValue | null | undefined, next: 
 }
 
 function buildTags(input: WaitlistInput, segment: QualificationSegment) {
-  const tags = ["Vega Waitlist Contestant", "Early Access", "Vega", segment];
+  const tags = ["Ghost Director Waitlist Contestant", "Early Access", "Ghost Director", segment];
   if (isActiveBetaInterest(input.betaInterest)) tags.push("Active Beta Interest");
   if (highLeadVolume(input.monthlyLeadVolume)) tags.push("High Lead Volume");
   if (/\bagency\b/i.test(`${input.role} ${input.companyName}`)) tags.push("Agency");
@@ -212,7 +212,7 @@ function qualificationReason(input: WaitlistInput, score: number, segment: Quali
 function buildCustomFields(input: WaitlistInput, score: number, segment: QualificationSegment, originalJoinedAt: Date) {
   const now = new Date();
   return {
-    waitlistProduct: "Vega",
+    waitlistProduct: "Ghost Director",
     waitlistStatus: "active",
     signupSource: input.attribution.utmContent === "vega_vs_gojiberry" ? "comparison-infographic-qr" : "public-waitlist",
     signupPage: input.attribution.signupPage || "",
@@ -241,7 +241,7 @@ function buildCustomFields(input: WaitlistInput, score: number, segment: Qualifi
 
 function interactionBody(input: WaitlistInput, segment: QualificationSegment, score: number) {
   return [
-    "Vega waitlist signup received.",
+    "Ghost Director waitlist signup received.",
     "",
     `Name: ${input.firstName} ${input.lastName}`,
     `Company: ${input.companyName}`,
@@ -256,19 +256,19 @@ function interactionBody(input: WaitlistInput, segment: QualificationSegment, sc
     `Segment: ${segment}`,
     `Score: ${score}`,
     input.attribution.utmContent === "vega_vs_gojiberry"
-      ? "Source: Vega vs GojiBerry comparison infographic"
-      : `Source: ${input.attribution.source || "Vega waitlist"}`,
+      ? "Source: Ghost Director vs GojiBerry comparison infographic"
+      : `Source: ${input.attribution.source || "Ghost Director waitlist"}`,
   ].filter(Boolean).join("\n");
 }
 
 function leadTitle(input: WaitlistInput) {
-  return `Vega Waitlist - ${input.companyName || `${input.firstName} ${input.lastName}`}`;
+  return `Ghost Director Waitlist - ${input.companyName || `${input.firstName} ${input.lastName}`}`;
 }
 
 function nextActionForPriority(priority: string) {
   if (priority === "high") return "Personally review for founding design partner outreach.";
   if (priority === "medium") return "Review for private beta invitation.";
-  return "Keep in Vega product update nurture.";
+  return "Keep in Ghost Director product update nurture.";
 }
 
 function shouldUpdate(existing: string | null | undefined, next: string | undefined) {
@@ -297,15 +297,15 @@ export function attributionFromRequest(request: Request) {
 async function sendConfirmationEmail(input: WaitlistInput) {
   return sendEmail({
     to: input.email,
-    subject: "You're on the Vega early-access waitlist",
+    subject: "You're on the Ghost Director early-access waitlist",
     text: [
       `Hi ${input.firstName},`,
       "",
-      "Thanks for joining the Vega early-access waitlist.",
-      "Vega will review early-access contestants and prioritize businesses that can actively test the platform and provide meaningful feedback.",
+      "Thanks for joining the Ghost Director early-access waitlist.",
+      "Ghost Director will review early-access contestants and prioritize businesses that can actively test the platform and provide meaningful feedback.",
       "Selected contestants may receive beta or founding design-partner invitations, but access, pricing, and pilot availability are not guaranteed.",
       "",
-      "Public Vega page: https://leadgen.ghostai.solutions/",
+      "Public Ghost Director page: https://leadgen.ghostai.solutions/",
       "",
       "You can unsubscribe or update communication preferences using the unsubscribe path included in future product emails.",
     ].join("\n"),
@@ -351,10 +351,10 @@ export async function submitWaitlist(input: WaitlistInput) {
         data: {
           workspaceId: workspace.id,
           name: input.companyName,
-          niche: "Vega Waitlist",
+          niche: "Ghost Director Waitlist",
           website: input.companyWebsite || null,
           domain: domain || null,
-          crmSource: "Vega Waitlist",
+          crmSource: "Ghost Director Waitlist",
         },
       });
     } else {
@@ -363,7 +363,7 @@ export async function submitWaitlist(input: WaitlistInput) {
         data: {
           website: shouldUpdate(company.website, input.companyWebsite) ? input.companyWebsite : company.website,
           domain: company.domain || domain || null,
-          crmSource: company.crmSource || "Vega Waitlist",
+          crmSource: company.crmSource || "Ghost Director Waitlist",
         },
       });
     }
@@ -384,7 +384,7 @@ export async function submitWaitlist(input: WaitlistInput) {
           phone: input.phone || null,
           role: input.role,
           title: input.role,
-          source: "Vega Waitlist",
+          source: "Ghost Director Waitlist",
         },
       });
     } else {
@@ -398,7 +398,7 @@ export async function submitWaitlist(input: WaitlistInput) {
           phone: shouldUpdate(contact.phone, input.phone) ? input.phone : contact.phone,
           role: shouldUpdate(contact.role, input.role) ? input.role : contact.role,
           title: shouldUpdate(contact.title, input.role) ? input.role : contact.title,
-          source: contact.source || "Vega Waitlist",
+          source: contact.source || "Ghost Director Waitlist",
         },
       });
     }
@@ -423,7 +423,7 @@ export async function submitWaitlist(input: WaitlistInput) {
       title: leadTitle(input),
       description: input.biggestChallenge,
       companyName: company.name,
-      niche: "Vega Waitlist",
+      niche: "Ghost Director Waitlist",
       stage: "waitlist",
       priority,
       score,

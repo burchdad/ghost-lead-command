@@ -234,6 +234,7 @@ export function VegaPlanCard({
   vegaHandles,
   customerHandles,
   outcome,
+  scopeDetails,
   emphasized = false,
   label,
   children,
@@ -244,6 +245,7 @@ export function VegaPlanCard({
   vegaHandles: string;
   customerHandles: string;
   outcome: string;
+  scopeDetails?: string[];
   emphasized?: boolean;
   label?: string;
   children?: ReactNode;
@@ -267,6 +269,7 @@ export function VegaPlanCard({
           <span className={name.includes("Managed") ? "font-bold text-white" : "font-bold text-[var(--vega-ink)]"}>Customer role:</span> {customerHandles}
         </p>
         <p className="mt-3 text-sm font-bold leading-6">{outcome}</p>
+        {scopeDetails ? <ul className="mt-4 space-y-2 border-t border-current/15 pt-4 text-sm">{scopeDetails.map(detail => <li key={detail}>{detail}</li>)}</ul> : null}
         {children}
       </div>
     </div>
@@ -325,7 +328,7 @@ export function VegaDirectorPanel() {
 
       <div className="mt-4 rounded-md bg-[var(--vega-lime-100)] p-4 text-[var(--vega-ink)]">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--vega-teal)]">Your next step</p>
-        <p className="mt-2 text-lg font-black">Tell Vega what you sell and she&apos;ll design the first campaign with you.</p>
+        <p className="mt-2 text-lg font-black">Tell Ghost Director what you sell and she&apos;ll design the first campaign with you.</p>
       </div>
     </div>
   );

@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   try {
     return NextResponse.json(await evaluateOperationalReadiness(selector(new URL(request.url))));
   } catch (error) {
-    return NextResponse.json({ error: "Unable to evaluate Vega readiness", detail: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
+    return NextResponse.json({ error: "Unable to evaluate Ghost Director readiness", detail: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
   }
 }
 
@@ -51,12 +51,12 @@ export async function POST(request: Request) {
         itemId: String(body.itemId || ""),
         verdict,
         notes: String(body.notes || ""),
-        reviewedBy: String(body.reviewedBy || "Vega operator"),
+        reviewedBy: String(body.reviewedBy || "Ghost Director operator"),
       }));
     }
     if (action === "evaluate") return NextResponse.json(await evaluateOperationalReadiness(target));
     return NextResponse.json({ error: `Unsupported operator onboarding action: ${action}` }, { status: 400 });
   } catch (error) {
-    return NextResponse.json({ error: "Vega operational onboarding failed", detail: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
+    return NextResponse.json({ error: "Ghost Director operational onboarding failed", detail: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
   }
 }

@@ -85,7 +85,7 @@ export function buildClientCampaignDigestEmail(input: ClientCampaignDigestInput)
     text: [
       `Hi${input.recipientName ? ` ${input.recipientName}` : ""},`,
       "",
-      `Vega lead update for ${input.clientName}${input.campaignName ? ` (${input.campaignName})` : ""}.`,
+      `Ghost Director lead update for ${input.clientName}${input.campaignName ? ` (${input.campaignName})` : ""}.`,
       `Generated: ${generatedAt.toLocaleString("en-US", { timeZone: "America/Chicago" })} CT`,
       "",
       "Summary",
@@ -100,10 +100,10 @@ export function buildClientCampaignDigestEmail(input: ClientCampaignDigestInput)
       "Notable leads",
       leads,
       "",
-      "Reply to this email with corrections, call outcomes, or booking notes and Vega can fold them into the next lead brief.",
+      "Reply to this email with corrections, call outcomes, or booking notes and Ghost Director can fold them into the next lead brief.",
       "",
       "Best,",
-      "Vega",
+      "Ghost Director",
       "Ghost Lead Command",
     ].join("\n"),
   };

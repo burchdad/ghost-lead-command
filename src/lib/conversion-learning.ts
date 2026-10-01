@@ -248,14 +248,14 @@ export async function computeConversionLearning(): Promise<ConversionLearning> {
       : "Reply rate is viable; increase queue cap only on the top-performing source/signal pair.",
     calibrationMemory.length
       ? `Operator calibration memory contains ${calibrationMemory.length} reviewed leads: ${calibrationGood} good and ${calibrationRejected} rejected-fit examples.`
-      : "Complete Vega operational calibration so operator fit judgments become Sales Memory evidence.",
+      : "Complete Ghost Director operational calibration so operator fit judgments become Sales Memory evidence.",
   ];
 
   const nextActions = [
     recommendedPlayIds.length ? `Activate or refresh these source plays: ${recommendedPlayIds.join(", ")}.` : "",
-    socialSignalCoverage < 25 ? "Run Vega social intent scout to add LinkedIn/competitor-style trigger evidence." : "",
-    failed || senderHealth.mode !== "clear" ? "Run Vega protect deliverability before increasing send volume." : "",
-    replies.length ? "Run Vega work replies and push bookings after each send batch." : "Approve a small reviewed batch, then watch SendGrid events before adding more volume.",
+    socialSignalCoverage < 25 ? "Run Ghost Director social intent scout to add LinkedIn/competitor-style trigger evidence." : "",
+    failed || senderHealth.mode !== "clear" ? "Run Ghost Director protect deliverability before increasing send volume." : "",
+    replies.length ? "Run Ghost Director work replies and push bookings after each send batch." : "Approve a small reviewed batch, then watch SendGrid events before adding more volume.",
   ].filter(Boolean);
 
   return {

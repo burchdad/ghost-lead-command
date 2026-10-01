@@ -459,7 +459,7 @@ export async function runReplyConversionSweep(input: { limit?: number; lookbackH
   const missingContact = results.filter((result) => result.responseReason === "Missing contact email.").length;
 
   await createAutomationEvent({
-    title: "Vega reply conversion sweep",
+    title: "Ghost Director reply conversion sweep",
     detail: `Reviewed ${results.length} recent engaged replies. Queued ${queued} response drafts. Booking ready ${bookingReady}.`,
     status: queued || bookingReady ? "done" : "needs_review",
     type: "reply",
@@ -485,9 +485,9 @@ export async function runReplyConversionSweep(input: { limit?: number; lookbackH
     bookingBlocked,
     results,
     message: queued
-      ? `Vega queued ${queued} reply response draft${queued === 1 ? "" : "s"} for approval.`
+      ? `Ghost Director queued ${queued} reply response draft${queued === 1 ? "" : "s"} for approval.`
       : results.length
-        ? "Vega found engaged replies, but no new response drafts needed."
-        : "Vega found no recent engaged replies to work.",
+        ? "Ghost Director found engaged replies, but no new response drafts needed."
+        : "Ghost Director found no recent engaged replies to work.",
   };
 }

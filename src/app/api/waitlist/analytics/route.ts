@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   }
 
   await createAutomationEvent({
-    title: "Vega waitlist web event",
+    title: "Ghost Director waitlist web event",
     detail: event,
     status: "received",
     type: "waitlist-analytics",

@@ -90,7 +90,7 @@ export function HomepageCommandForm({
       >
         <VegaCommandInput className={compact ? "flex w-full shadow-none" : "flex flex-col gap-3 p-2 sm:flex-row"}>
           <label className="sr-only" htmlFor={compact ? "nav-prompt" : "hero-prompt"}>
-            Tell Vega what you sell and who you want to reach
+            Tell Ghost Director what you sell and who you want to reach
           </label>
           <input
             id={compact ? "nav-prompt" : "hero-prompt"}
@@ -105,7 +105,7 @@ export function HomepageCommandForm({
                 ? "h-10 min-w-0 flex-1 rounded-l-md bg-white px-4 text-sm outline-none transition focus:ring-2 focus:ring-[var(--vega-focus-ring)]/20"
                 : "min-h-14 min-w-0 flex-1 rounded-md px-4 text-base outline-none focus:ring-2 focus:ring-[var(--vega-focus-ring)]/30"
             }
-            placeholder={compact ? "Enter your lead task, market, or customer type" : "Tell Vega what you sell and who you want to reach..."}
+            placeholder={compact ? "Enter your lead task, market, or customer type" : "Tell Ghost Director what you sell and who you want to reach..."}
           />
           <button
             className={
@@ -114,7 +114,7 @@ export function HomepageCommandForm({
                 : "inline-flex min-h-14 items-center justify-center gap-2 rounded-md bg-[var(--vega-purple)] px-6 text-base font-black text-white transition hover:bg-[var(--vega-purple-600)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vega-focus-ring)]"
             }
             type="submit"
-            aria-label={compact ? "Start Vega consultation" : undefined}
+            aria-label={compact ? "Start Ghost Director consultation" : undefined}
           >
             {compact ? (
               <Search size={18} aria-hidden="true" />

@@ -130,14 +130,14 @@ export async function runVegaConversionAudit(input: { days?: number; createEvent
     .slice(0, 8);
 
   const gaps: Array<{ severity: Severity; issue: string; action: string }> = [];
-  if (health.mode === "stop") addGap(gaps, "critical", `Sender health is in stop mode at ${health.bounceRate}% risky events.`, "Run Vega, protect deliverability; suppress bad domains; pause batch approval until below hard stop.");
+  if (health.mode === "stop") addGap(gaps, "critical", `Sender health is in stop mode at ${health.bounceRate}% risky events.`, "Run Ghost Director, protect deliverability; suppress bad domains; pause batch approval until below hard stop.");
   else if (health.mode === "caution") addGap(gaps, "high", `Sender health is caution at ${health.bounceRate}% risky events.`, "Send only named-business, high-score contacts until bounce rate is under target.");
   if (sent >= 10 && replies.length === 0) addGap(gaps, "high", "Delivered volume is not producing replies.", "Narrow to one vertical/city pain, rewrite first touch, and run a 10-lead controlled copy test.");
   if (genericPending > namedBusinessPending) addGap(gaps, "high", "Generic inboxes outnumber named buyer inboxes in pending email.", "Use contact-path and enrichment before auto-send; reserve email auto-send for named decision-maker inboxes.");
   if (invalidPending) addGap(gaps, "critical", `${invalidPending} pending emails are invalid or missing.`, "Reject or convert these into manual contact-path tasks before approving batches.");
-  if (manual > Math.max(3, namedBusinessPending)) addGap(gaps, "medium", "Manual contact-path tasks are piling up.", "Have Vega work contact paths, find named emails, or assign phone/form follow-up.");
-  if (hotReplies && !confirmedOpportunities) addGap(gaps, "high", "Hot replies exist without confirmed opportunities.", "Run Vega, work replies so opportunities and booking handoffs are created.");
-  if (bookingReady && !bookingScheduled) addGap(gaps, "high", "Booking tasks are ready but not scheduled.", "Run Vega, push bookings and confirm calendar movement before counting booked calls.");
+  if (manual > Math.max(3, namedBusinessPending)) addGap(gaps, "medium", "Manual contact-path tasks are piling up.", "Have Ghost Director work contact paths, find named emails, or assign phone/form follow-up.");
+  if (hotReplies && !confirmedOpportunities) addGap(gaps, "high", "Hot replies exist without confirmed opportunities.", "Run Ghost Director, work replies so opportunities and booking handoffs are created.");
+  if (bookingReady && !bookingScheduled) addGap(gaps, "high", "Booking tasks are ready but not scheduled.", "Run Ghost Director, push bookings and confirm calendar movement before counting booked calls.");
   if (bookingBlocked) addGap(gaps, "medium", `${bookingBlocked} booking tasks are blocked.`, "Fix calendar/meeting link data or send manual booking handoff.");
   if (clicked && hotReplies === 0) addGap(gaps, "medium", "Clicks exist but have not converted into replies.", "Queue click follow-up with a direct diagnosis question and no pitch.");
   if (decisionMakerPending < Math.ceil(emailPending.length * 0.6) && emailPending.length >= 5) {
@@ -145,12 +145,12 @@ export async function runVegaConversionAudit(input: { days?: number; createEvent
   }
 
   const nextMoves = [
-    health.mode !== "clear" ? "Vega, protect deliverability" : "",
-    bookingReady ? "Vega, push bookings" : "",
-    hotReplies ? "Vega, work replies" : "",
-    genericPending || manual ? "Vega, work contact paths" : "",
-    namedBusinessPending ? `Vega, approve ${Math.min(10, namedBusinessPending)}` : "",
-    !namedBusinessPending && !bookingReady ? "Vega, need 20 named decision-maker leads score 80" : "",
+    health.mode !== "clear" ? "Ghost Director, protect deliverability" : "",
+    bookingReady ? "Ghost Director, push bookings" : "",
+    hotReplies ? "Ghost Director, work replies" : "",
+    genericPending || manual ? "Ghost Director, work contact paths" : "",
+    namedBusinessPending ? `Ghost Director, approve ${Math.min(10, namedBusinessPending)}` : "",
+    !namedBusinessPending && !bookingReady ? "Ghost Director, need 20 named decision-maker leads score 80" : "",
   ].filter(Boolean);
 
   const summary = gaps.length
@@ -193,7 +193,7 @@ export async function runVegaConversionAudit(input: { days?: number; createEvent
 
   if (input.createEvent !== false) {
     await createAutomationEvent({
-      title: "Vega Conversion Audit",
+      title: "Ghost Director Conversion Audit",
       detail: `${summary} Next: ${nextMoves[0] || "controlled send/watch loop"}`.slice(0, 900),
       status: result.ok ? "done" : "needs_review",
       type: "agent",

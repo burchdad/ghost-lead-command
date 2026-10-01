@@ -63,7 +63,7 @@ export async function POST(
         contactName: item.lead?.name,
         phone: null,
         email: null,
-        nextAction: item.lead?.nextAction || "Review and call if Vega marked this as phone-assist ready.",
+        nextAction: item.lead?.nextAction || "Review and call if Ghost Director marked this as phone-assist ready.",
         reason: item.reason,
       })),
     });
@@ -134,8 +134,8 @@ async function sendClientRunUpdates(input: {
         recipientName: config.recipientName,
         summary:
           input.emailsSent > 0
-            ? `Vega completed this sourcing run and sent ${input.emailsSent} eligible emails. Phone follow-up should happen while the email is fresh.`
-            : `Vega completed this sourcing run. Email sending was held or no contacts passed the current send policy, so the sales action is call/research-first.`,
+            ? `Ghost Director completed this sourcing run and sent ${input.emailsSent} eligible emails. Phone follow-up should happen while the email is fresh.`
+            : `Ghost Director completed this sourcing run. Email sending was held or no contacts passed the current send policy, so the sales action is call/research-first.`,
         metrics: {
           leadsFound: input.leadsFound,
           qualified: input.qualified,
@@ -149,9 +149,9 @@ async function sendClientRunUpdates(input: {
         },
         humanActions: [
           input.callTasksDue
-            ? `Work the ${input.callTasksDue} phone-assist tasks Vega created from this run.`
+            ? `Work the ${input.callTasksDue} phone-assist tasks Ghost Director created from this run.`
             : "Review the top leads and call/research the ones without a verified email path.",
-          "Record every call outcome so Vega can learn which sources create reachable commercial prospects.",
+          "Record every call outcome so Ghost Director can learn which sources create reachable commercial prospects.",
         ],
         notableLeads: input.notableLeads,
       }),

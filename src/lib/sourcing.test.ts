@@ -47,7 +47,7 @@ test("Google Maps returns a real next offset and keeps phone sourcing independen
   }
 });
 
-test("Apollo source search normalizes people into Vega source leads", async () => {
+test("Apollo source search normalizes people into Ghost Director source leads", async () => {
   const originalApiKey = process.env.APOLLO_API_KEY;
   const originalEnrichLimit = process.env.APOLLO_ENRICH_LIMIT;
   const originalFetch = global.fetch;

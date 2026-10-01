@@ -19,13 +19,13 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const result = await runVegaDominanceLoop({
-      instruction: url.searchParams.get("instruction") || "Vega dominance loop",
+      instruction: url.searchParams.get("instruction") || "Ghost Director dominance loop",
       autoApprove: boolParam(url.searchParams.get("autoApprove")),
     });
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega dominance loop failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director dominance loop failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }
@@ -35,13 +35,13 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const result = await runVegaDominanceLoop({
-      instruction: body.instruction ? String(body.instruction) : "Vega dominance loop",
+      instruction: body.instruction ? String(body.instruction) : "Ghost Director dominance loop",
       autoApprove: typeof body.autoApprove === "boolean" ? body.autoApprove : undefined,
     });
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega dominance loop failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director dominance loop failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }

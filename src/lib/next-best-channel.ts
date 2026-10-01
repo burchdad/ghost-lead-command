@@ -106,7 +106,7 @@ export function selectNextBestChannel(input: ChannelDecisionInput): ChannelDecis
     reasons.push("Sender governor is STOP, so first-touch email is prohibited while calls remain actionable.");
   } else if (emailAllowed && input.senderState !== "STOP" && intent.totalIntentScore >= 25 && !input.cooldownActive) {
     primary = "APPROVAL_EMAIL";
-    reasons.push("Email is available, but Vega needs human approval or stronger proof before automatic send.");
+    reasons.push("Email is available, but Ghost Director needs human approval or stronger proof before automatic send.");
   } else if (callAllowed && intent.totalIntentScore >= 20) {
     primary = "CALL_FIRST";
     reasons.push("Phone path is stronger than email or sender policy is holding first-touch email.");

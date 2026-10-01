@@ -82,7 +82,7 @@ async function queueClickIntentFollowUp(input: {
       subject: sanitizeSubject(`Worth a quick look for ${input.lead.companyName}?`),
       body,
       status: "pending",
-      reason: "Vega click intent follow-up prepared after SendGrid click.",
+      reason: "Ghost Director click intent follow-up prepared after SendGrid click.",
     },
   });
 
@@ -91,13 +91,13 @@ async function queueClickIntentFollowUp(input: {
     data: {
       stage: ["Call Booked", "Proposal Sent", "Won"].includes(input.lead.stage) ? input.lead.stage : "Potential Client",
       lastTouch: "SendGrid click",
-      nextAction: "Clicked outbound email. Vega queued a warm click-intent follow-up for approval.",
+      nextAction: "Clicked outbound email. Ghost Director queued a warm click-intent follow-up for approval.",
     },
   });
 
   await createAutomationEvent({
     leadId: input.lead.id,
-    title: "Vega click intent follow-up queued",
+    title: "Ghost Director click intent follow-up queued",
     detail: `${input.lead.companyName} clicked an outbound email. A warm follow-up is waiting for approval.`,
     status: "done",
     type: "sendgrid",

@@ -24,13 +24,13 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     return NextResponse.json(await runVegaCallAssistWork({
-      instruction: url.searchParams.get("instruction") || "Scheduled Vega call assist worklist",
+      instruction: url.searchParams.get("instruction") || "Scheduled Ghost Director call assist worklist",
       limit: limitParam(url.searchParams.get("limit")),
       postToSlack: url.searchParams.has("postToSlack") ? boolParam(url.searchParams.get("postToSlack")) : true,
     }));
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega call assist worklist failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director call assist worklist failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }
@@ -40,13 +40,13 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     return NextResponse.json(await runVegaCallAssistWork({
-      instruction: body.instruction ? String(body.instruction) : "Manual Vega call assist worklist",
+      instruction: body.instruction ? String(body.instruction) : "Manual Ghost Director call assist worklist",
       limit: limitParam(body.limit ? String(body.limit) : null),
       postToSlack: body.postToSlack === undefined ? true : Boolean(body.postToSlack),
     }));
   } catch (error) {
     return NextResponse.json(
-      { error: "Vega call assist worklist failed", detail: error instanceof Error ? error.message : "Unknown error" },
+      { error: "Ghost Director call assist worklist failed", detail: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 },
     );
   }

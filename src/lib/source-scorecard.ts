@@ -162,7 +162,7 @@ export async function getSourceScorecard() {
     ? top.verdict === "scale"
       ? `Scale ${top.source}: ${top.replyRate}% reply rate, ${top.failRate}% fail rate.`
       : `Keep ${top.source} under observation; strongest current source is not fully proven yet.`
-    : "Run a controlled source batch so Vega can build source attribution.";
+    : "Run a controlled source batch so Ghost Director can build source attribution.";
 
   return {
     rows: scorecard,

@@ -159,7 +159,7 @@ test("reconciliation warns if STOP governor would allow first-touch sends", () =
   assert.match(warnings.join("\n"), /sendableNow is not zero/);
 });
 
-test("market proof keeps Vega focused on conversations, call lift, learning, and booked meetings", () => {
+test("market proof keeps Ghost Director focused on conversations, call lift, learning, and booked meetings", () => {
   const proof = buildVegaMarketProof({
     conversations7d: 3,
     meetingsBooked7d: 1,

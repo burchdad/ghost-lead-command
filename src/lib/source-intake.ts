@@ -152,7 +152,7 @@ function buildNextAction(input: {
     intentSignals: input.signalSummary ? [input.signalSummary] : [],
     confidence: input.email ? "email-ready" : input.phone || input.website ? "manual-contact-path" : "needs-enrichment",
   });
-  return `External signal intake from ${input.source}. Queue signal-to-meeting opener to ${role} at ${input.companyName} for ${input.niche}. Buyer fit: ${classifyBuyerFit(input.title)}. Signal: ${input.signalSummary}. Vega read: ${signalScoreboardSummary(scoreboard)} Next: ${scoreboard.nextMove}`;
+  return `External signal intake from ${input.source}. Queue signal-to-meeting opener to ${role} at ${input.companyName} for ${input.niche}. Buyer fit: ${classifyBuyerFit(input.title)}. Signal: ${input.signalSummary}. Ghost Director read: ${signalScoreboardSummary(scoreboard)} Next: ${scoreboard.nextMove}`;
 }
 
 async function queueFirstTouch(input: {
@@ -175,7 +175,7 @@ async function queueFirstTouch(input: {
   const generated = await generateSalesText({
     kind: "outreach",
     lead: input.lead,
-    input: `External buyer-signal intake. Write a short signal-to-meeting first-touch email. Use this Vega signal read for context: ${signalScoreboardSummary(scoreboard)}`,
+    input: `External buyer-signal intake. Write a short signal-to-meeting first-touch email. Use this Ghost Director signal read for context: ${signalScoreboardSummary(scoreboard)}`,
   });
 
   const trimmed = generated.text.trim();

@@ -107,7 +107,7 @@ function buildPrompt({ kind, channel, lead, input }: GenerateArgs) {
           ].join("\n");
 
   return [
-    "You are Vega Copy Chief inside Ghost Lead Command, writing as a sharp founder-led sales operator.",
+    "You are Ghost Director Copy Chief inside Ghost Lead Command, writing as a sharp founder-led sales operator.",
     "Write concise, practical sales copy that helps book qualified sales conversations for a lead-generation AI product.",
     "Position the offer as an intent-led outbound engine: find warm buyer signals, enrich the account, write context-aware outreach, route replies, and book meetings.",
     "Lead with the observed signal or likely pipeline leak before mentioning AI. The buyer should feel this is about revenue conversations, not software novelty.",

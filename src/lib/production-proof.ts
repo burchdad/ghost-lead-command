@@ -442,7 +442,7 @@ export async function runVegaProductionProof(input: { instruction?: string; post
         : "New first-touch email is paused. Work calls/replies and suppress bad contacts."
       : senderHealth.mode === "caution"
         ? `Limit to ${recommendedSendLimit} first-touch sends across active campaigns and prioritize named-business emails.`
-      : `Vega may send up to ${recommendedSendLimit} eligible first-touch emails today, then watch replies and phone assists.`;
+      : `Ghost Director may send up to ${recommendedSendLimit} eligible first-touch emails today, then watch replies and phone assists.`;
   const featureFlags = vegaFeatureFlagSnapshot({ workspaceName: workspace.name, workspaceSlug: workspace.slug });
   const enabledFoundationFlags = Object.entries(featureFlags).filter(([, enabled]) => enabled).map(([flag]) => flag);
   const capabilityReadiness = VEGA_CAPABILITY_REGISTRY.map((entry) => ({
@@ -553,7 +553,7 @@ export async function runVegaProductionProof(input: { instruction?: string; post
       campaignRows.find((row) => row.owner === "partner")
         ? "Keep partner campaigns separated in reporting and phone tasks; do not let partner send volume contaminate Ghost campaign learning."
         : "Partner campaign reporting is ready, but no recent partner campaign has enough proof yet.",
-      humanActions.length ? `Human focus: ${humanActions.slice(0, 3).join("; ")}.` : "No urgent human call list; let Vega source/send only within sender-health limits.",
+      humanActions.length ? `Human focus: ${humanActions.slice(0, 3).join("; ")}.` : "No urgent human call list; let Ghost Director source/send only within sender-health limits.",
     ].filter(Boolean),
     humanActions,
     reconciliationWarnings,
@@ -629,7 +629,7 @@ export async function runVegaProductionProof(input: { instruction?: string; post
     lineItem("Current status", report.marketProof.marketStatus),
     ...report.marketProof.milestones.map((item) => `- ${item.label}: ${item.status} (${item.metric})`),
     "",
-    "Vega capability groups",
+    "Ghost Director capability groups",
     ...report.phaseA.capabilityGroups.map((group) => `- ${group.label}: ${group.enabled ? "enabled/gated" : "available but disabled"}`),
     `Feature flags on: ${report.phaseA.enabledFoundationFlags.length ? report.phaseA.enabledFoundationFlags.join(", ") : "none"}`,
     "",
@@ -656,7 +656,7 @@ export async function runVegaProductionProof(input: { instruction?: string; post
     : { configured: false, sent: false, message: "Slack posting disabled." };
 
   await createAutomationEvent({
-    title: "Vega production proof loop",
+    title: "Ghost Director production proof loop",
     detail: `${report.sender.mode} sender mode. Today: ${report.today.emailsEligible} email eligible, ${report.today.callsDue} calls due, ${report.today.callbacksDue} callbacks due.`,
     status: senderHealth.mode === "stop" ? "needs_review" : "done",
     type: "agent",

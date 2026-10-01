@@ -79,7 +79,7 @@ function leadRunText(input: Awaited<ReturnType<typeof runVegaLeadRequest>>) {
   const effectiveScore = input.result.guardrails?.effective?.minScore;
 
   return [
-    `Vega ran the lead request for ${input.plan.niche}.`,
+    `Ghost Director ran the lead request for ${input.plan.niche}.`,
     `Source: ${input.plan.provider}`,
     `Location: ${input.plan.location}${input.plan.locations?.length ? ` (${input.plan.locations.length} markets)` : ""}`,
     requestedScore || effectiveScore ? `Score: ${requestedScore ?? "n/a"} requested / ${effectiveScore ?? "n/a"} effective` : "",
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
         `Morning standup posted. Bottleneck: ${result.bottleneck}. Stephen ask: ${result.stephenAsk}`,
       );
     });
-    return slackText("Vega is preparing the Nova x Vega morning standup now.");
+    return slackText("Ghost Director is preparing the Nova x Ghost Director morning standup now.");
   }
 
   if (isProductionProofRequest(text)) {
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
         `Production proof posted. Sender ${result.report.sender.mode}; ${result.report.emailPipeline.emailQualified} email-qualified; ${result.report.emailPipeline.sendableNow} sendable now; ${result.report.emailPipeline.heldBySenderGovernor} held by governor; ${result.report.today.callsDue} actionable calls; ${result.report.yesterday.meetingsBooked} booked yesterday.`,
       );
     });
-    return slackText("Vega is running the seven-day production proof and learning report now.");
+    return slackText("Ghost Director is running the seven-day production proof and learning report now.");
   }
 
   if (isSignalReportRequest(text)) {
@@ -165,7 +165,7 @@ export async function POST(request: Request) {
       await postSlackCommandResponse(
         responseUrl,
         [
-          `Vega Signal ranked ${result.items.length} warm-signal accounts. Perplexity: ${result.perplexity.configured ? "configured" : "not configured"}.`,
+          `Ghost Director Signal ranked ${result.items.length} warm-signal accounts. Perplexity: ${result.perplexity.configured ? "configured" : "not configured"}.`,
           ...result.items.slice(0, 8).map((item, index) =>
             `${index + 1}. ${item.companyName} (${item.signalScore}) - ${item.signalType}. ${item.signalSummary.slice(0, 180)} Next: ${item.nextMove}`,
           ),
@@ -173,7 +173,7 @@ export async function POST(request: Request) {
         ].join("\n"),
       );
     });
-    return slackText("Vega Signal is ranking the strongest intent and social-style evidence now.");
+    return slackText("Ghost Director Signal is ranking the strongest intent and social-style evidence now.");
   }
 
   if (isClosingSprintRequest(text)) {
@@ -190,7 +190,7 @@ export async function POST(request: Request) {
       });
       await postSlackCommandResponse(responseUrl, `${result.summary}\nNext: ${result.nextMoves.join(" ")}`);
     });
-    return slackText("Vega is running the weekly closing sprint now. I'll post the bottleneck and next moves when it finishes.");
+    return slackText("Ghost Director is running the weekly closing sprint now. I'll post the bottleneck and next moves when it finishes.");
   }
 
   if (isDominanceLoopRequest(text)) {
@@ -205,7 +205,7 @@ export async function POST(request: Request) {
         ].filter(Boolean).join("\n"),
       );
     });
-    return slackText("Vega is running the dominance loop across source, signal, specialists, booking, and deliverability now.");
+    return slackText("Ghost Director is running the dominance loop across source, signal, specialists, booking, and deliverability now.");
   }
 
   if (isVegaOpsRequest(text)) {
@@ -217,7 +217,7 @@ export async function POST(request: Request) {
         `${result.summary}\nBottleneck: ${result.bottleneck}\nStephen ask: ${result.stephenAsk}`,
       );
     });
-    return slackText(execute ? "Vega is running the ops loop now." : "Vega is preparing the sub-agent ops brief now.");
+    return slackText(execute ? "Ghost Director is running the ops loop now." : "Ghost Director is preparing the sub-agent ops brief now.");
   }
 
   if (isRevenueWatchRequest(text)) {
@@ -225,7 +225,7 @@ export async function POST(request: Request) {
       const result = await runVegaRevenueWatch({ instruction: text, execute: true });
       await postSlackCommandResponse(responseUrl, `${result.summary}\nNext: ${result.nextMove}`);
     });
-    return slackText("Vega is watching replies, SendGrid signals, bookings, and source performance now.");
+    return slackText("Ghost Director is watching replies, SendGrid signals, bookings, and source performance now.");
   }
 
   if (isCallAssistWorkRequest(text)) {
@@ -240,7 +240,7 @@ export async function POST(request: Request) {
         ].join("\n"),
       );
     });
-    return slackText("Vega is building the Stephen/VA call-assist worklist now.");
+    return slackText("Ghost Director is building the Stephen/VA call-assist worklist now.");
   }
 
   if (isWarmLeadRequest(text)) {
@@ -254,7 +254,7 @@ export async function POST(request: Request) {
         ].join("\n"),
       );
     });
-    return slackText("Vega is ranking the warmest accounts now.");
+    return slackText("Ghost Director is ranking the warmest accounts now.");
   }
 
   if (isBookingDiagnosisRequest(text)) {
@@ -269,7 +269,7 @@ export async function POST(request: Request) {
         ].join("\n"),
       );
     });
-    return slackText("Vega is diagnosing the booking bottleneck now.");
+    return slackText("Ghost Director is diagnosing the booking bottleneck now.");
   }
 
   if (isConversionAuditRequest(text)) {
@@ -287,7 +287,7 @@ export async function POST(request: Request) {
         ].filter(Boolean).join("\n"),
       );
     });
-    return slackText("Vega is auditing conversion quality, reply capture, sender health, and booking leakage now.");
+    return slackText("Ghost Director is auditing conversion quality, reply capture, sender health, and booking leakage now.");
   }
 
   const specialistKind = classifyVegaSpecialistRequest(text);
@@ -296,7 +296,7 @@ export async function POST(request: Request) {
       const result = await runVegaSpecialist(specialistKind, { limit: 10 });
       await postSlackCommandResponse(responseUrl, specialistSlackSummary(result));
     });
-    return slackText(`Vega is running the ${specialistKind} specialist lane now.`);
+    return slackText(`Ghost Director is running the ${specialistKind} specialist lane now.`);
   }
 
   if (isLeadRequest(text)) {
@@ -304,7 +304,7 @@ export async function POST(request: Request) {
       const result = await runVegaLeadRequest({ text });
       await postSlackCommandResponse(responseUrl, leadRunText(result));
     });
-    return slackText("Vega is running that lead request now. I'll post the sourcing result back here when the run finishes.");
+    return slackText("Ghost Director is running that lead request now. I'll post the sourcing result back here when the run finishes.");
   }
 
   if (isReplyWorkRequest(text)) {
@@ -320,7 +320,7 @@ export async function POST(request: Request) {
         ].filter(Boolean).join("\n"),
       );
     });
-    return slackText("Vega is working recent replies now. I'll post the conversion result back here when it finishes.");
+    return slackText("Ghost Director is working recent replies now. I'll post the conversion result back here when it finishes.");
   }
 
   if (isApprovalRequest(text)) {
@@ -331,11 +331,11 @@ export async function POST(request: Request) {
       await postSlackCommandResponse(
         responseUrl,
         blocked
-          ? `Vega paused approval: ${"blockReason" in result ? result.blockReason : "conversion quality gate blocked it."}`
-          : `Vega approval complete: approved ${result.approved}/${result.attempted}; sent ${result.sent}; dry-run ${result.dryRunQueued}; failed ${result.failed}.`,
+          ? `Ghost Director paused approval: ${"blockReason" in result ? result.blockReason : "conversion quality gate blocked it."}`
+          : `Ghost Director approval complete: approved ${result.approved}/${result.attempted}; sent ${result.sent}; dry-run ${result.dryRunQueued}; failed ${result.failed}.`,
       );
     });
-    return slackText("Vega is auto-sending the next SendGrid-ready email batch now. I'll post the result when it finishes.");
+    return slackText("Ghost Director is auto-sending the next SendGrid-ready email batch now. I'll post the result when it finishes.");
   }
 
   if (normalized.includes("nova") || normalized.includes("director")) {
@@ -353,8 +353,8 @@ export async function POST(request: Request) {
     const result = await runLeadCommandAudit({ postToSlack: true });
     return slackText(
       result.slack?.sent
-        ? `Vega audit posted. Bottleneck: ${result.bottleneck}`
-        : `Vega audit prepared. Bottleneck: ${result.bottleneck}`,
+        ? `Ghost Director audit posted. Bottleneck: ${result.bottleneck}`
+        : `Ghost Director audit prepared. Bottleneck: ${result.bottleneck}`,
     );
   }
 
@@ -369,40 +369,40 @@ export async function POST(request: Request) {
         "Lead Command commands:",
         "`recommend` - post today's auto-send slate.",
         "`run roofing in Texas score 85 limit 5` - propose a scoped sourcing plan.",
-        "`Vega, need 10 new leads in HVAC between Tyler and Dallas, Texas` - run sourcing and queue approval-ready outreach.",
-        "`Vega, auto-send outreach 10` - let Vega send the next eligible SendGrid-ready emails.",
-        "`Vega, work replies` - queue response drafts for hot/booked replies and prep bookings.",
-        "`Vega, watch replies` - monitor SendGrid, replies, bookings, and source scorecard after sends.",
-        "`Vega, show warmest leads` - rank the top accounts Vega should work next.",
-        "`Vega, why are we not booking calls today?` - diagnose booking blockers and next moves.",
-        "`Vega, conversion audit` - find exactly where leads are leaking between source, valid contact, send, reply, opportunity, and booking.",
-        "`Vega, why no replies` - audit reply-rate, sender health, source quality, and copy/contact gaps.",
-        "`Vega, refresh intent feed` - rank warm buyer signals and public web context before choosing the next accounts.",
-        "`Vega, run learning loop` - tune source plays from live reply/send outcomes.",
-        "`Vega, scout social intent` - run competitor/social-style signal plays and queue qualified leads.",
-        "`Vega, Echo handoff` or `Vega, LinkedIn post engagement leads` - rank Echo-published post reactors/commenters/impression signals and queue manual InMail/DM tasks.",
-        "`Vega, check LinkedIn events` - verify LinkedIn Events Management and lead-gen-enabled event availability.",
-        "`Vega, queue LinkedIn InMails 10` - create manual Sales Navigator connection, DM, or InMail tasks for social-fit leads.",
-        "`Vega, review the waitlist` - review Vega early-access contestants and surface top beta/design-partner candidates.",
-        "`Vega, push bookings` - work engaged replies toward calendar-ready follow-up.",
-        "`Vega, work calls` - post the due Stephen/VA phone-assist worklist with numbers, opener, assignee, and attempts.",
-        "`Vega, work contact paths` - refresh manual phone/website tasks and blocked contact paths.",
-        "`Vega, tune copy` - rewrite pending email drafts using the offer/copy scorecard.",
-        "`Vega, protect deliverability` - suppress failed contacts and reject risky pending sends.",
-        "`Vega, run specialists` - run copy, cadence, replies, booking, contact paths, and deliverability together.",
-        "`Vega, closing sprint for 10 closes this week` - run Vega's close-this-week operating loop and report the bottleneck.",
-        "`Vega, dominance loop` - run the full source, signal, specialist, booking, deliverability, and closing loop.",
-        "`Vega, morning standup` - post the Stephen/Nova/Vega scoreboard, Nova directive, Vega orders, and today's lead targets.",
-        "`Vega, production proof` - post the seven-day proof loop: delivery, replies, calls, meetings, source quality, campaign split, and sender governor.",
-        "`Vega, ops brief` - post the sub-agent chain-of-command report for Vega, Nova, and Stephen.",
-        "`Vega, run ops loop` - run Vega's safe autonomy lanes and post what each sub-agent did.",
-        "`Vega, closing sprint approve 10` - run the sprint and approve a SendGrid-ready batch if available.",
-        "`Vega, approve 10` - approve the next 10 SendGrid-ready outreach items without relying on Slack buttons.",
-        "`Vega, automate outreach 10` - safely auto-approve the next capped SendGrid-ready batch.",
+        "`Ghost Director, need 10 new leads in HVAC between Tyler and Dallas, Texas` - run sourcing and queue approval-ready outreach.",
+        "`Ghost Director, auto-send outreach 10` - let Ghost Director send the next eligible SendGrid-ready emails.",
+        "`Ghost Director, work replies` - queue response drafts for hot/booked replies and prep bookings.",
+        "`Ghost Director, watch replies` - monitor SendGrid, replies, bookings, and source scorecard after sends.",
+        "`Ghost Director, show warmest leads` - rank the top accounts Ghost Director should work next.",
+        "`Ghost Director, why are we not booking calls today?` - diagnose booking blockers and next moves.",
+        "`Ghost Director, conversion audit` - find exactly where leads are leaking between source, valid contact, send, reply, opportunity, and booking.",
+        "`Ghost Director, why no replies` - audit reply-rate, sender health, source quality, and copy/contact gaps.",
+        "`Ghost Director, refresh intent feed` - rank warm buyer signals and public web context before choosing the next accounts.",
+        "`Ghost Director, run learning loop` - tune source plays from live reply/send outcomes.",
+        "`Ghost Director, scout social intent` - run competitor/social-style signal plays and queue qualified leads.",
+        "`Ghost Director, Echo handoff` or `Ghost Director, LinkedIn post engagement leads` - rank Echo-published post reactors/commenters/impression signals and queue manual InMail/DM tasks.",
+        "`Ghost Director, check LinkedIn events` - verify LinkedIn Events Management and lead-gen-enabled event availability.",
+        "`Ghost Director, queue LinkedIn InMails 10` - create manual Sales Navigator connection, DM, or InMail tasks for social-fit leads.",
+        "`Ghost Director, review the waitlist` - review Ghost Director early-access contestants and surface top beta/design-partner candidates.",
+        "`Ghost Director, push bookings` - work engaged replies toward calendar-ready follow-up.",
+        "`Ghost Director, work calls` - post the due Stephen/VA phone-assist worklist with numbers, opener, assignee, and attempts.",
+        "`Ghost Director, work contact paths` - refresh manual phone/website tasks and blocked contact paths.",
+        "`Ghost Director, tune copy` - rewrite pending email drafts using the offer/copy scorecard.",
+        "`Ghost Director, protect deliverability` - suppress failed contacts and reject risky pending sends.",
+        "`Ghost Director, run specialists` - run copy, cadence, replies, booking, contact paths, and deliverability together.",
+        "`Ghost Director, closing sprint for 10 closes this week` - run Ghost Director's close-this-week operating loop and report the bottleneck.",
+        "`Ghost Director, dominance loop` - run the full source, signal, specialist, booking, deliverability, and closing loop.",
+        "`Ghost Director, morning standup` - post the Stephen/Nova/Ghost Director scoreboard, Nova directive, Ghost Director orders, and today's lead targets.",
+        "`Ghost Director, production proof` - post the seven-day proof loop: delivery, replies, calls, meetings, source quality, campaign split, and sender governor.",
+        "`Ghost Director, ops brief` - post the sub-agent chain-of-command report for Ghost Director, Nova, and Stephen.",
+        "`Ghost Director, run ops loop` - run Ghost Director's safe autonomy lanes and post what each sub-agent did.",
+        "`Ghost Director, closing sprint approve 10` - run the sprint and approve a SendGrid-ready batch if available.",
+        "`Ghost Director, approve 10` - approve the next 10 SendGrid-ready outreach items without relying on Slack buttons.",
+        "`Ghost Director, automate outreach 10` - safely auto-approve the next capped SendGrid-ready batch.",
         "`digest` - post the current ops digest.",
         "`nova` - have the Lead Gen Director brief the Nova CEO AI Agent in Slack.",
         "`director status` - post the Director-to-Nova lead-gen briefing.",
-        "`audit` - post Vega's full Lead Command audit with escalation actions.",
+        "`audit` - post Ghost Director's full Lead Command audit with escalation actions.",
         "Approve plans and outreach directly from the Slack buttons.",
       ].join("\n"),
     );

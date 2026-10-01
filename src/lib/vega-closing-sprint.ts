@@ -198,7 +198,7 @@ export async function runVegaClosingSprint(input: ClosingSprintInput = {}) {
   const shouldApprove = Boolean(input.autoApprove);
 
   await createAutomationEvent({
-    title: "Vega closing sprint started",
+    title: "Ghost Director closing sprint started",
     detail: `Target ${before.targetCloses} closes / ${before.targetBooked} booked calls. Bottleneck: ${currentBottleneck}.`,
     status: "running",
     type: "agent",
@@ -243,7 +243,7 @@ export async function runVegaClosingSprint(input: ClosingSprintInput = {}) {
   const moves = getClosingSprintNextMoves(after, afterBottleneck);
 
   await createAutomationEvent({
-    title: "Vega closing sprint finished",
+    title: "Ghost Director closing sprint finished",
     detail: `Bottleneck now: ${afterBottleneck}. Next: ${moves[0]}`,
     status: after.bookedCalls >= after.targetBooked || actions.some((action) => action.status === "done") ? "done" : "needs_review",
     type: "agent",
