@@ -52,7 +52,8 @@ export function getTwilioReadiness() {
   const status = getOutreachStatus();
   return {
     configured: status.twilioConfigured,
-    preferred: status.smsProvider === "twilio",
+    preferred: false,
+    retired: true,
     fromNumber: twilioFromNumber() ? "configured" : "missing",
     accountSid: clean(process.env.TWILIO_ACCOUNT_SID) ? "configured" : "missing",
     authToken: clean(process.env.TWILIO_AUTH_TOKEN) ? "configured" : "missing",
@@ -70,11 +71,7 @@ export function getOutreachStatus() {
   const telnyxConfigured = Boolean(
     clean(process.env.TELNYX_API_KEY) && telnyxFromNumber(),
   );
-  const twilioConfigured = Boolean(
-    clean(process.env.TWILIO_ACCOUNT_SID) &&
-      clean(process.env.TWILIO_AUTH_TOKEN) &&
-      twilioFromNumber(),
-  );
+  const twilioConfigured = false;
 
   return {
     mode: isLiveMode() ? "live" : "dry-run",
@@ -193,7 +190,7 @@ export async function sendTransactionalEmail(input: SendEmailInput): Promise<Del
 
 export async function sendSms(input: SendSmsInput): Promise<DeliveryResult> {
   const provider = input.provider || preferredSmsProvider();
-  if (provider === "twilio") return sendTwilioSms(input);
+  if (provider === "twilio") return sendTwilioSms();
   return sendTelnyxSms(input);
 }
 
@@ -250,58 +247,7 @@ async function sendTelnyxSms(input: SendSmsInput): Promise<DeliveryResult> {
   };
 }
 
-async function sendTwilioSms(input: SendSmsInput): Promise<DeliveryResult> {
-  const status = getOutreachStatus();
-  const text = sanitizeCustomerMessage(input.text, { channel: "sms" });
-
-  if (status.mode !== "live" || !status.twilioConfigured) {
-    return {
-      status: "queued",
-      provider: "twilio",
-      channel: "sms",
-      dryRun: true,
-      message: status.twilioConfigured
-        ? "SMS queued in dry-run mode. Set OUTREACH_SEND_MODE=live when you are ready to send."
-        : "SMS queued in dry-run mode. Add Twilio env vars before live sending.",
-    };
-  }
-
-  const accountSid = clean(process.env.TWILIO_ACCOUNT_SID);
-  const token = clean(process.env.TWILIO_AUTH_TOKEN);
-  const params = new URLSearchParams({
-    From: twilioFromNumber(),
-    To: input.to,
-    Body: text,
-  });
-
-  const response = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${accountSid}:${token}`).toString("base64")}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: params,
-    },
-  );
-
-  if (!response.ok) {
-    return {
-      status: "failed",
-      provider: "twilio",
-      channel: "sms",
-      dryRun: false,
-      message: `Twilio returned ${response.status}.`,
-    };
-  }
-
-  const data = (await response.json().catch(() => ({}))) as { sid?: string };
-  return {
-    status: "sent",
-    provider: "twilio",
-    channel: "sms",
-    dryRun: false,
-    providerId: data.sid,
-  };
+async function sendTwilioSms(): Promise<DeliveryResult> {
+  return { status: "failed", provider: "twilio", channel: "sms", dryRun: true,
+    message: "Twilio is retired for this lead system. No SMS was sent." };
 }
